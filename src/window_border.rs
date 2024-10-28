@@ -2,19 +2,24 @@ use std::ffi::c_ulong;
 use std::sync::LazyLock;
 use std::sync::OnceLock;
 use windows::{
-    core::*,
-    Win32::Foundation::*,
-    Win32::Graphics::Gdi::*,
-    Win32::Graphics::Dwm::*,
-    Win32::Graphics::Direct2D::*,
-    Win32::Graphics::Direct2D::Common::*,
-    Win32::Graphics::Dxgi::Common::*,
-    Win32::UI::WindowsAndMessaging::*,
+    core::*, Win32::Foundation::*, Win32::Graphics::Direct2D::Common::*,
+    Win32::Graphics::Direct2D::*, Win32::Graphics::Dwm::*, Win32::Graphics::Dxgi::Common::*,
+    Win32::Graphics::Gdi::*, Win32::UI::WindowsAndMessaging::*,
 };
 
-pub static RENDER_FACTORY: LazyLock<ID2D1Factory> = unsafe { LazyLock::new(|| 
-    D2D1CreateFactory::<ID2D1Factory>(D2D1_FACTORY_TYPE_MULTI_THREADED, None).expect("creating RENDER_FACTORY failed")) 
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+pub static RENDER_FACTORY: LazyLock<ID2D1Factory> = unsafe {
+    LazyLock::new(|| {
+        D2D1CreateFactory::<ID2D1Factory>(D2D1_FACTORY_TYPE_MULTI_THREADED, None)
+            .expect("creating RENDER_FACTORY failed")
+    })
 };
+
+use crate::border_config::Config;
+use crate::utils::{get_color_from_hex, get_color_from_rgba, get_color_from_oklch, get_color_from_hsl};
+use crate::logger::Logger;
 
 #[derive(Debug, Default)]
 pub struct WindowBorder {
@@ -50,12 +55,12 @@ impl WindowBorder {
                 None,
                 None,
                 hinstance,
-                Some(std::ptr::addr_of!(*self) as *const _)
+                Some(std::ptr::addr_of!(*self) as *const _),
             )?;
 
             let dpi_aware = SetProcessDPIAware();
             if !dpi_aware.as_bool() {
-                println!("Failed to make process DPI aware");
+                Logger::log("error", "Failed to make process DPI aware");
             }
         }
 
@@ -64,7 +69,7 @@ impl WindowBorder {
 
     pub fn init(&mut self, hinstance: HINSTANCE) -> Result<()> {
         unsafe {
-            // Make the window border transparent 
+            // Make the window border transparent
             let pos: i32 = -GetSystemMetrics(SM_CXVIRTUALSCREEN) - 8;
             let hrgn = CreateRectRgn(pos, 0, (pos + 1), 1);
             let mut bh: DWM_BLURBEHIND = Default::default();
@@ -73,21 +78,25 @@ impl WindowBorder {
                     dwFlags: DWM_BB_ENABLE | DWM_BB_BLURREGION,
                     fEnable: TRUE,
                     hRgnBlur: hrgn,
-                    fTransitionOnMaximized: FALSE
+                    fTransitionOnMaximized: FALSE,
                 };
             }
 
             DwmEnableBlurBehindWindow(self.border_window, &bh);
-            if SetLayeredWindowAttributes(self.border_window, COLORREF(0x00000000), 0, LWA_COLORKEY).is_err() {
+            if SetLayeredWindowAttributes(self.border_window, COLORREF(0x00000000), 0, LWA_COLORKEY)
+                .is_err()
+            {
                 println!("Error Setting Layered Window Attributes!");
             }
-            if SetLayeredWindowAttributes(self.border_window, COLORREF(0x00000000), 255, LWA_ALPHA).is_err() {
+            if SetLayeredWindowAttributes(self.border_window, COLORREF(0x00000000), 255, LWA_ALPHA)
+                .is_err()
+            {
                 println!("Error Setting Layered Window Attributes!");
             }
-            
+
             self.create_render_targets();
             self.render();
-            
+
             // TODO Here im running all the render commands again because it sometimes doesn't
             // render properly at first and I'm too lazy to figure out why. Definitely should be
             // looked into in the future.
@@ -110,87 +119,136 @@ impl WindowBorder {
     }
 
     pub fn create_render_targets(&mut self) -> Result<()> {
+        let config = Config::get();
+
         self.dpi = 96.0;
         self.render_target_properties = D2D1_RENDER_TARGET_PROPERTIES {
             r#type: D2D1_RENDER_TARGET_TYPE_DEFAULT,
-            pixelFormat: D2D1_PIXEL_FORMAT { 
-                format: DXGI_FORMAT_UNKNOWN, 
-                alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED 
+            pixelFormat: D2D1_PIXEL_FORMAT {
+                format: DXGI_FORMAT_UNKNOWN,
+                alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED,
             },
             dpiX: self.dpi,
             dpiY: self.dpi,
-            ..Default::default() };
-        self.hwnd_render_target_properties = D2D1_HWND_RENDER_TARGET_PROPERTIES { 
-            hwnd: self.border_window, 
-            pixelSize: Default::default(), 
-            presentOptions: D2D1_PRESENT_OPTIONS_IMMEDIATELY 
+            ..Default::default()
         };
-        self.border_brush = D2D1_BRUSH_PROPERTIES { 
-            opacity: 1.0 as f32, 
-            transform: Default::default() 
+        self.hwnd_render_target_properties = D2D1_HWND_RENDER_TARGET_PROPERTIES {
+            hwnd: self.border_window,
+            pixelSize: Default::default(),
+            presentOptions: D2D1_PRESENT_OPTIONS_IMMEDIATELY,
+        };
+        self.border_brush = D2D1_BRUSH_PROPERTIES {
+            opacity: 1.0 as f32,
+            transform: Default::default(),
         };
 
-        // Create a rounded_rect with radius depending on the force_border_radius variable 
+        // Create a rounded_rect with radius depending on the force_border_radius variable
         let mut border_radius = 0.0;
         let mut corner_preference = DWM_WINDOW_CORNER_PREFERENCE::default();
         if self.force_border_radius == -1.0 {
-            let result = unsafe { DwmGetWindowAttribute(
-                self.tracking_window,
-                DWMWA_WINDOW_CORNER_PREFERENCE,
-                std::ptr::addr_of_mut!(corner_preference) as *mut _,
-                size_of::<DWM_WINDOW_CORNER_PREFERENCE>() as u32
-            ) }; 
+            let result = unsafe {
+                DwmGetWindowAttribute(
+                    self.tracking_window,
+                    DWMWA_WINDOW_CORNER_PREFERENCE,
+                    std::ptr::addr_of_mut!(corner_preference) as *mut _,
+                    size_of::<DWM_WINDOW_CORNER_PREFERENCE>() as u32,
+                )
+            };
             if result.is_err() {
                 println!("Error getting window corner preference!");
             }
             match corner_preference.0 {
-                0 => border_radius = 6.0 + ((self.border_size/2) as f32),
+                0 => border_radius = 6.0 + ((self.border_size / 2) as f32),
                 1 => border_radius = 0.0,
-                2 => border_radius = 6.0 + ((self.border_size/2) as f32),
-                3 => border_radius = 3.0 + ((self.border_size/2) as f32),
+                2 => border_radius = 6.0 + ((self.border_size / 2) as f32),
+                3 => border_radius = 3.0 + ((self.border_size / 2) as f32),
                 _ => {}
             }
         } else {
             border_radius = self.force_border_radius;
         }
-        
-        self.rounded_rect = D2D1_ROUNDED_RECT { 
-            rect: Default::default(), 
-            radiusX: border_radius, 
-            radiusY: border_radius 
+
+        self.rounded_rect = D2D1_ROUNDED_RECT {
+            rect: Default::default(),
+            radiusX: border_radius,
+            radiusY: border_radius,
         };
 
-        // Get the Windows accent color
-        let mut pcr_colorization: u32 = 0;
-        let mut pf_opaqueblend: BOOL = FALSE;
-        let result = unsafe { DwmGetColorizationColor(&mut pcr_colorization, &mut pf_opaqueblend) };
-        if result.is_err() {
-            println!("Error getting Windows accent color!");
+        // Get the active color based on the configuration
+        if config.active_color == "accent" {
+            let mut pcr_colorization: u32 = 0;
+            let mut pf_opaqueblend: BOOL = FALSE;
+            let result =
+                unsafe { DwmGetColorizationColor(&mut pcr_colorization, &mut pf_opaqueblend) };
+
+            if result.is_err() {
+                println!("Error getting Windows accent color!");
+            } else {
+                let red = ((pcr_colorization & 0x00FF0000) >> 16) as f32 / 255.0;
+                let green = ((pcr_colorization & 0x0000FF00) >> 8) as f32 / 255.0;
+                let blue = (pcr_colorization & 0x000000FF) as f32 / 255.0;
+
+                self.active_color = D2D1_COLOR_F {
+                    r: red,
+                    g: green,
+                    b: blue,
+                    a: 1.0,
+                };
+            }
+        } else if (config.active_color.starts_with("rgb(")) || (config.active_color.starts_with("rgba(")) {
+            self.active_color = get_color_from_rgba(&config.active_color);
+        } else if (config.active_color.starts_with("oklch(")) {
+            self.active_color = get_color_from_oklch(&config.active_color);
+        } else if (config.inactive_color.starts_with("hsl(")) {
+            self.active_color = get_color_from_hsl(&config.active_color);
+        } else {
+            self.active_color = get_color_from_hex(&config.active_color);
         }
-        let red = ((pcr_colorization & 0x00FF0000) >> 16) as f32/255.0;
-        let green = ((pcr_colorization & 0x0000FF00) >> 8) as f32/255.0;
-        let blue = ((pcr_colorization & 0x000000FF) >> 0) as f32/255.0;
-        let avg = (red + green + blue)/3.0;
 
-        self.active_color = D2D1_COLOR_F {
-            r: red,
-            g: green,
-            b: blue,
-            a: 1.0
-        };
-        self.inactive_color = D2D1_COLOR_F {
-            r: avg/1.5 + red/10.0,
-            g: avg/1.5 + green/10.0,
-            b: avg/1.5 + blue/10.0,
-            a: 1.0
-        };
+        // Get the inactive color based on the configuration
+        if Config::get().inactive_color == "accent" {
+            let mut pcr_colorization: u32 = 0;
+            let mut pf_opaqueblend: BOOL = FALSE;
+            let result =
+                unsafe { DwmGetColorizationColor(&mut pcr_colorization, &mut pf_opaqueblend) };
+
+            if result.is_err() {
+                println!("Error getting Windows accent color!");
+            } else {
+                let red = ((pcr_colorization & 0x00FF0000) >> 16) as f32 / 255.0;
+                let green = ((pcr_colorization & 0x0000FF00) >> 8) as f32 / 255.0;
+                let blue = (pcr_colorization & 0x000000FF) as f32 / 255.0;
+                let avg = (red + green + blue) / 3.0;
+
+                self.inactive_color = D2D1_COLOR_F {
+                    r: avg / 1.5 + red / 10.0,
+                    g: avg / 1.5 + green / 10.0,
+                    b: avg / 1.5 + blue / 10.0,
+                    a: 1.0,
+                };
+            }
+        } else if (config.inactive_color.starts_with("rgb(")) || (config.inactive_color.starts_with("rgba(")) {
+            self.inactive_color = get_color_from_rgba(&config.inactive_color);
+        } else if (config.inactive_color.starts_with("oklch(")) {
+            self.inactive_color = get_color_from_oklch(&config.inactive_color);
+        } else if (config.inactive_color.starts_with("hsl(")) {
+            self.inactive_color = get_color_from_hsl(&config.inactive_color);
+        } else {
+            self.inactive_color = get_color_from_hex(&config.inactive_color);
+        }
+
         // Initialize the actual border color assuming it is in focus
         self.current_color = self.active_color;
 
         unsafe {
             let factory = &*RENDER_FACTORY;
             self.render_target.set(
-                factory.CreateHwndRenderTarget(&self.render_target_properties, &self.hwnd_render_target_properties).expect("creating self.render_target failed")
+                factory
+                    .CreateHwndRenderTarget(
+                        &self.render_target_properties,
+                        &self.hwnd_render_target_properties,
+                    )
+                    .expect("creating self.render_target failed"),
             );
         }
 
@@ -202,14 +260,16 @@ impl WindowBorder {
     }
 
     pub fn update_window_rect(&mut self) -> Result<()> {
-        let result = unsafe { DwmGetWindowAttribute(
-            self.tracking_window, 
-            DWMWA_EXTENDED_FRAME_BOUNDS,
-            std::ptr::addr_of_mut!(self.window_rect) as *mut _,
-            size_of::<RECT>() as u32
-        ) }; 
+        let result = unsafe {
+            DwmGetWindowAttribute(
+                self.tracking_window,
+                DWMWA_EXTENDED_FRAME_BOUNDS,
+                std::ptr::addr_of_mut!(self.window_rect) as *mut _,
+                size_of::<RECT>() as u32,
+            )
+        };
         if result.is_err() {
-            println!("Error getting frame rect!");
+            Logger::log("error", "Error getting frame rect!");
             // I have not tested if this actually works yet
             unsafe { SendMessageW(self.border_window, WM_DESTROY, WPARAM(0), LPARAM(0)) };
         }
@@ -250,13 +310,14 @@ impl WindowBorder {
                 hwnd_above_tracking = Ok(HWND_TOP);
             }
 
-            SetWindowPos(self.border_window,
+            SetWindowPos(
+                self.border_window,
                 hwnd_above_tracking.unwrap(),
                 self.window_rect.left,
                 self.window_rect.top,
                 self.window_rect.right - self.window_rect.left,
                 self.window_rect.bottom - self.window_rect.top,
-                u_flags 
+                u_flags,
             );
         }
         return Ok(());
@@ -266,7 +327,7 @@ impl WindowBorder {
         if unsafe { GetForegroundWindow() } == self.tracking_window {
             self.current_color = self.active_color;
         } else {
-            self.current_color = self.inactive_color; 
+            self.current_color = self.inactive_color;
         }
     }
 
@@ -274,28 +335,30 @@ impl WindowBorder {
         // Get the render target
         let render_target_option = self.render_target.get();
         if render_target_option.is_none() {
-            return Ok(()); 
+            return Ok(());
         }
         let render_target = render_target_option.unwrap();
 
-        self.hwnd_render_target_properties.pixelSize = D2D_SIZE_U { 
+        self.hwnd_render_target_properties.pixelSize = D2D_SIZE_U {
             width: (self.window_rect.right - self.window_rect.left) as u32,
-            height: (self.window_rect.bottom - self.window_rect.top) as u32
+            height: (self.window_rect.bottom - self.window_rect.top) as u32,
         };
 
         unsafe {
             render_target.Resize(&self.hwnd_render_target_properties.pixelSize as *const _);
             render_target.SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
 
-            let brush = render_target.CreateSolidColorBrush(&self.current_color, Some(&self.border_brush))?;
-            
-            self.rounded_rect.rect = D2D_RECT_F { 
-                left: (self.border_size/2 - self.border_offset) as f32, 
-                top: (self.border_size/2 - self.border_offset) as f32, 
-                right: (self.window_rect.right - self.window_rect.left - self.border_size/2 + self.border_offset) as f32, 
-                bottom: (self.window_rect.bottom - self.window_rect.top - self.border_size/2 + self.border_offset) as f32
-            };
+            let brush = render_target
+                .CreateSolidColorBrush(&self.current_color, Some(&self.border_brush))?;
 
+            self.rounded_rect.rect = D2D_RECT_F {
+                left: (self.border_size / 2 - self.border_offset) as f32,
+                top: (self.border_size / 2 - self.border_offset) as f32,
+                right: (self.window_rect.right - self.window_rect.left - self.border_size / 2
+                    + self.border_offset) as f32,
+                bottom: (self.window_rect.bottom - self.window_rect.top - self.border_size / 2
+                    + self.border_offset) as f32,
+            };
 
             render_target.BeginDraw();
             render_target.Clear(None);
@@ -303,7 +366,7 @@ impl WindowBorder {
                 &self.rounded_rect,
                 &brush,
                 self.border_size as f32,
-                None
+                None,
             );
             render_target.EndDraw(None, None);
         }
@@ -313,11 +376,16 @@ impl WindowBorder {
 
     // When CreateWindowExW is called, we can optionally pass a value to its LPARAM field which will
     // get sent to the window process on creation. In our code, we've passed a pointer to the
-    // WindowBorder structure during the window creation process, and here we are getting that pointer 
+    // WindowBorder structure during the window creation process, and here we are getting that pointer
     // and attaching it to the window using SetWindowLongPtrW.
-    pub unsafe extern "system" fn s_wnd_proc(window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    pub unsafe extern "system" fn s_wnd_proc(
+        window: HWND,
+        message: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT {
         let mut border_pointer: *mut WindowBorder = GetWindowLongPtrW(window, GWLP_USERDATA) as _;
-        
+
         if border_pointer == std::ptr::null_mut() && message == WM_CREATE {
             //println!("ref is null, assigning new ref");
             let create_struct: *mut CREATESTRUCTW = lparam.0 as *mut _;
@@ -327,29 +395,49 @@ impl WindowBorder {
         match border_pointer != std::ptr::null_mut() {
             true => return Self::wnd_proc(&mut *border_pointer, window, message, wparam, lparam),
             false => return DefWindowProcW(window, message, wparam, lparam),
-        }                                          
+        }
     }
 
-    pub unsafe fn wnd_proc(&mut self, window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    pub unsafe fn wnd_proc(
+        &mut self,
+        window: HWND,
+        message: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT {
         match message {
             WM_SHOWWINDOW => {
-                SetWindowPos(self.border_window,
+                SetWindowPos(
+                    self.border_window,
                     self.tracking_window,
                     0,
                     0,
                     0,
                     0,
-                    SWP_NOSENDCHANGING | SWP_NOACTIVATE | SWP_NOREDRAW | SWP_NOZORDER | SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW 
+                    SWP_NOSENDCHANGING
+                        | SWP_NOACTIVATE
+                        | SWP_NOREDRAW
+                        | SWP_NOZORDER
+                        | SWP_NOMOVE
+                        | SWP_NOSIZE
+                        | SWP_SHOWWINDOW,
                 );
             }
             WM_CLOSE => {
-                SetWindowPos(self.border_window,
+                SetWindowPos(
+                    self.border_window,
                     self.tracking_window,
                     0,
                     0,
                     0,
                     0,
-                    SWP_NOSENDCHANGING | SWP_NOACTIVATE | SWP_NOREDRAW | SWP_NOZORDER | SWP_NOMOVE | SWP_NOSIZE | SWP_HIDEWINDOW 
+                    SWP_NOSENDCHANGING
+                        | SWP_NOACTIVATE
+                        | SWP_NOREDRAW
+                        | SWP_NOZORDER
+                        | SWP_NOMOVE
+                        | SWP_NOSIZE
+                        | SWP_HIDEWINDOW,
                 );
             }
             WM_MOVE => {
@@ -359,30 +447,40 @@ impl WindowBorder {
                 // time so it's totally fine to leave as is, but it might still be worth trying to
                 // make better.
                 let mut is_cloaked = FALSE;
-                let result = unsafe { DwmGetWindowAttribute(
-                    self.tracking_window, 
-                    DWMWA_CLOAKED,
-                    std::ptr::addr_of_mut!(is_cloaked) as *mut _,
-                    size_of::<BOOL>() as u32
-                ) };
-                if result.is_err() || is_cloaked.as_bool() || !IsWindowVisible(self.tracking_window).as_bool() {
+                let result = unsafe {
+                    DwmGetWindowAttribute(
+                        self.tracking_window,
+                        DWMWA_CLOAKED,
+                        std::ptr::addr_of_mut!(is_cloaked) as *mut _,
+                        size_of::<BOOL>() as u32,
+                    )
+                };
+                if result.is_err()
+                    || is_cloaked.as_bool()
+                    || !IsWindowVisible(self.tracking_window).as_bool()
+                {
                     return LRESULT(0);
                 }
 
                 self.update_window_rect();
                 self.update_position();
                 self.render();
-            },
+            }
             WM_SETFOCUS => {
                 //println!("setting focus");
                 let mut is_cloaked = FALSE;
-                let result = unsafe { DwmGetWindowAttribute(
-                    self.tracking_window, 
-                    DWMWA_CLOAKED,
-                    std::ptr::addr_of_mut!(is_cloaked) as *mut _,
-                    size_of::<BOOL>() as u32
-                ) };
-                if result.is_err() || is_cloaked.as_bool() || !IsWindowVisible(self.tracking_window).as_bool() {
+                let result = unsafe {
+                    DwmGetWindowAttribute(
+                        self.tracking_window,
+                        DWMWA_CLOAKED,
+                        std::ptr::addr_of_mut!(is_cloaked) as *mut _,
+                        size_of::<BOOL>() as u32,
+                    )
+                };
+                if result.is_err()
+                    || is_cloaked.as_bool()
+                    || !IsWindowVisible(self.tracking_window).as_bool()
+                {
                     return LRESULT(0);
                 }
 
@@ -391,37 +489,51 @@ impl WindowBorder {
                     self.update_position();
                 }
                 self.render();
-            },
+            }
             WM_QUERYOPEN => {
-                SetWindowPos(self.border_window,
+                SetWindowPos(
+                    self.border_window,
                     self.tracking_window,
                     0,
                     0,
                     0,
                     0,
-                    SWP_NOSENDCHANGING | SWP_NOACTIVATE | SWP_NOREDRAW | SWP_NOZORDER | SWP_NOMOVE | SWP_NOSIZE | SWP_HIDEWINDOW 
+                    SWP_NOSENDCHANGING
+                        | SWP_NOACTIVATE
+                        | SWP_NOREDRAW
+                        | SWP_NOZORDER
+                        | SWP_NOMOVE
+                        | SWP_NOSIZE
+                        | SWP_HIDEWINDOW,
                 );
                 std::thread::sleep(std::time::Duration::from_millis(150));
-                SetWindowPos(self.border_window,
+                SetWindowPos(
+                    self.border_window,
                     self.tracking_window,
                     0,
                     0,
                     0,
                     0,
-                    SWP_NOSENDCHANGING | SWP_NOACTIVATE | SWP_NOREDRAW | SWP_NOZORDER | SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW 
+                    SWP_NOSENDCHANGING
+                        | SWP_NOACTIVATE
+                        | SWP_NOREDRAW
+                        | SWP_NOZORDER
+                        | SWP_NOMOVE
+                        | SWP_NOSIZE
+                        | SWP_SHOWWINDOW,
                 );
                 self.update_window_rect();
                 self.update_position();
                 self.render();
-            },
+            }
             WM_DESTROY => {
                 SetWindowLongPtrW(window, GWLP_USERDATA, 0);
                 PostQuitMessage(0);
-            },
+            }
             _ => { /*println!("message: {:?}", message)*/ }
         }
         LRESULT(0)
     }
 }
 
-
+unsafe impl Send for WindowBorder {}

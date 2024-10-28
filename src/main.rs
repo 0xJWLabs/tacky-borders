@@ -16,6 +16,8 @@ use windows::{
     Win32::UI::Accessibility::*,
     Win32::Graphics::Dwm::*,
 };
+use border_config::Config;
+use logger::Logger;
 
 extern "C" {
     pub static __ImageBase: IMAGE_DOS_HEADER;
@@ -25,9 +27,10 @@ mod window_border;
 mod event_hook;
 mod sys_tray_icon;
 mod border_config;
+mod utils;
+mod logger;
 
 pub static mut BORDERS: LazyLock<Mutex<HashMap<isize, isize>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
-pub static CONFIG: LazyLock<border_config::Config> = LazyLock::new(|| border_config::create_config());
 
 // This shit supposedly unsafe af but it works so idgaf. 
 pub struct SendHWND(HWND);
@@ -36,13 +39,13 @@ unsafe impl Sync for SendHWND {}
 
 fn main() {
     register_window_class();
-    println!("window class is registered!");
+    Logger ::log("debug", "Window class in registered!");
     enum_windows();
 
     let main_thread = unsafe { GetCurrentThreadId() };
     let tray_icon_option = sys_tray_icon::create_tray_icon(main_thread);
     if tray_icon_option.is_err() {
-        println!("Error creating tray icon!");
+        Logger ::log("error", "Error creating tray icon!");
     }
 
     let win_event_hook = set_event_hook();
@@ -55,7 +58,7 @@ fn main() {
                 if result.as_bool() {
                     ExitProcess(0);
                 } else {
-                    println!("Error. Could not unhook win event hook");
+                    Logger ::log("error", "Could not unhook win even hook");
                 }
             }
 
@@ -121,9 +124,23 @@ pub fn enum_windows() {
     }
 }
 
+pub fn restart_windows() {
+    let mut windows: Vec<HWND> = Vec::new();
+    unsafe {
+        EnumWindows(
+            Some(enum_windows_callback),
+            LPARAM(&mut windows as *mut _ as isize),
+        );
+    }
+    for hwnd in windows {
+        destroy_border_thread(hwnd);
+        spawn_border_thread(hwnd, 0);
+    }
+}
+
 pub fn spawn_border_thread(tracking_window: HWND, delay: u64) -> Result<()> {
     let borders_mutex = unsafe { &*BORDERS };
-    let config = unsafe { &*CONFIG };
+    let config = Config::get();
     let window = SendHWND(tracking_window);
 
     let thread = std::thread::spawn(move || {

@@ -6,8 +6,10 @@ edition = "2021"
 [dependencies]
 serde = "1.0.213"
 serde_yaml = "0.9.34"
+lazy_static = "1.5.0"
 tray-icon = "0.19.1"
-image = "0.25.4"
+open = "5.1.4"
+chrono = "0.4.38"
 
 [dependencies.windows]
 version = "0.58.0"
@@ -36,3 +38,6 @@ features = [
     "Media",
     "Media_Control"
 ]
+
+[build-dependencies]
+winres = "0.1.12"

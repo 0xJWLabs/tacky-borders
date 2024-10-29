@@ -1,20 +1,23 @@
-use tray_icon::{TrayIconBuilder, TrayIconEvent, menu::Menu, menu::MenuEvent, menu::MenuId, menu::MenuItem, Icon, TrayIcon};
-use windows::Win32::Foundation::WPARAM;
+use tray_icon::{
+    menu::Menu, menu::MenuEvent, menu::MenuId, menu::MenuItem, Icon, TrayIcon, TrayIconBuilder,
+    TrayIconEvent,
+};
 use windows::Win32::Foundation::LPARAM;
-use windows::Win32::UI::WindowsAndMessaging::WM_CLOSE;
+use windows::Win32::Foundation::WPARAM;
 use windows::Win32::UI::WindowsAndMessaging::PostThreadMessageW;
+use windows::Win32::UI::WindowsAndMessaging::WM_CLOSE;
 
-use crate::logger::Logger;
-use crate::utils::get_file_path;
 use crate::border_config::Config;
-use crate::restart_windows;
+use crate::logger::Logger;
+use crate::restart_borders;
+use crate::utils::get_file_path;
 
 pub fn create_tray_icon(main_thread: u32) -> Result<TrayIcon, tray_icon::Error> {
     let icon = match Icon::from_resource(1, Some((64, 64))) {
         Ok(icon) => icon,
         Err(err) => {
             Logger::log("error", "Failed to create icon");
-            Logger::log("debug",&format!("{:?}", err));
+            Logger::log("debug", &format!("{:?}", err));
             std::process::exit(1);
         }
     };
@@ -31,14 +34,19 @@ pub fn create_tray_icon(main_thread: u32) -> Result<TrayIcon, tray_icon::Error> 
         .build();
 
     MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
-        if event.id == MenuId::new("0") {
-            let _ = open::that(get_file_path("config.yaml"));
-        } else if event.id == MenuId::new("1") {
-            Config::reload();
-            restart_windows();
-        } else if event.id == MenuId::new("2") {
-            let result = unsafe { PostThreadMessageW(main_thread, WM_CLOSE, WPARAM(0), LPARAM(0)) };
-            Logger::log("debug", &format!("Sending WM_CLOSE to main_thread: {:?}", result));
+        match event.id.0.as_str() {
+            "0" => {
+                let _ = open::that(get_file_path("config.yaml"));
+            }
+            "1" => {
+                Config::reload();
+                restart_borders();
+            }
+            "2" => {
+                let result = unsafe { PostThreadMessageW(main_thread, WM_CLOSE, WPARAM(0), LPARAM(0)) };
+                Logger::log("debug", format!("Sending WM_CLOSE to main thread: {:?}", result).as_str());
+            },
+            _ => {},
         }
     }));
 

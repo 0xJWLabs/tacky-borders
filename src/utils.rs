@@ -4,11 +4,48 @@ use std::{
     path::Path,
 };
 
-use windows::Win32::Graphics::Direct2D::Common::*;
-use windows::Win32::Graphics::Dwm::*;
-use windows::Win32::Foundation::{BOOL, ERROR_SUCCESS};
+use windows::{
+    Win32::Foundation::*, Win32::Graphics::Direct2D::Common::*, Win32::Graphics::Dwm::*,
+    Win32::UI::WindowsAndMessaging::*,
+};
 
-use crate::{logger::Logger};
+use crate::*;
+
+use crate::border_config::Config;
+use crate::logger::Logger;
+
+pub fn get_width(rect: RECT) -> i32 {
+    return rect.right - rect.left;
+}
+
+pub fn get_height(rect: RECT) -> i32{
+    return rect.bottom - rect.top;
+}
+
+pub fn has_filtered_style(hwnd: HWND) -> bool {
+    let style = unsafe { GetWindowLongW(hwnd, GWL_STYLE) as u32 };
+    let ex_style = unsafe { GetWindowLongW(hwnd, GWL_EXSTYLE) as u32 };
+
+    if style & WS_CHILD.0 != 0 || ex_style & WS_EX_TOOLWINDOW.0 != 0 {
+        return true;
+    }
+    return false;
+}
+
+pub fn is_cloaked(hwnd: HWND) -> bool {
+    let mut is_cloaked = FALSE;
+    let result = unsafe { DwmGetWindowAttribute(
+        hwnd, 
+        DWMWA_CLOAKED,
+        std::ptr::addr_of_mut!(is_cloaked) as *mut _,
+        size_of::<BOOL>() as u32
+    ) };
+    if result.is_err() {
+        Logger::log("error", "Error getting is_cloacked");
+        return true;
+    }
+    return is_cloaked.as_bool(); 
+}
 
 pub fn get_file_path(filename: &str) -> String {
     let user_profile_path = match std::env::var("USERPROFILE") {
@@ -19,17 +56,29 @@ pub fn get_file_path(filename: &str) -> String {
             std::process::exit(1);
         }
     };
-    let dirpath = format!("{}\\.tacky-borders", user_profile_path);
-    let filepath = format!("{}\\{}", dirpath, filename);
 
-    if !Path::new(&dirpath).exists() {
-        if let Err(err) = fs::create_dir(&dirpath) {
-            Logger::log("error", &format!("Failed to create directory: {}", &dirpath));
+    // Paths for .config and fallback
+    let config_path = format!("{}\\.config\\tacky-borders", user_profile_path);
+    let fallback_path = format!("{}\\.tacky-borders", user_profile_path);
+
+    // Determine if either path exists, prioritize .config path
+    let dirpath = if Path::new(&config_path).exists() {
+        &config_path
+    } else if Path::new(&fallback_path).exists() {
+        &fallback_path
+    } else {
+        // Neither exists; use .config path by default and create it
+        if let Err(err) = fs::create_dir(&config_path) {
+            Logger::log("error", &format!("Failed to create directory: {}", &config_path));
             Logger::log("debug", &format!("{:?}", err));
             std::process::exit(1);
         }
-    }
-    return filepath;
+        &config_path
+    };
+
+    let filepath = format!("{}\\{}", dirpath, filename);
+
+    filepath
 }
 
 pub fn get_file(filename: &str, default_content: &str) -> std::fs::File {
@@ -61,12 +110,212 @@ pub fn get_file(filename: &str, default_content: &str) -> std::fs::File {
         Ok(file) => file,
         Err(err) => {
             Logger::log("error", &format!("Failed to open file: {}", &filepath));
-            Logger::log("debug",&format!("{:?}", err));
+            Logger::log("debug", &format!("{:?}", err));
             std::process::exit(1);
         }
     };
 
     file
+}
+
+pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()> {
+    let borders_mutex = unsafe { &*BORDERS };
+    let window = SendHWND(tracking_window);
+
+    let thread = std::thread::spawn(move || {
+        let window_sent = window;
+
+        // This delay can be used to wait for a window to finish its opening animation or for it to
+        // become visible if it is not so at first
+        std::thread::sleep(std::time::Duration::from_millis(delay));
+        if unsafe { !IsWindowVisible(window_sent.0).as_bool() } {
+            return;
+        }
+
+        //let before = std::time::Instant::now();
+        let active_color: D2D1_COLOR_F;
+        let inactive_color: D2D1_COLOR_F;
+        let config = Config::get();
+
+        // Get the active color based on the configuration
+        if config.active_color == "accent" {
+            let mut pcr_colorization: u32 = 0;
+            let mut pf_opaqueblend: BOOL = FALSE;
+            let result =
+                unsafe { DwmGetColorizationColor(&mut pcr_colorization, &mut pf_opaqueblend) };
+            if result.is_err() {
+                Logger::log("error", "Error getting windows accent color!");
+            }
+            let red = ((pcr_colorization & 0x00FF0000) >> 16) as f32 / 255.0;
+            let green = ((pcr_colorization & 0x0000FF00) >> 8) as f32 / 255.0;
+            let blue = ((pcr_colorization & 0x000000FF) >> 0) as f32 / 255.0;
+            active_color = D2D1_COLOR_F {
+                r: red,
+                g: green,
+                b: blue,
+                a: 1.0,
+            };
+        } else if (config.active_color.starts_with("rgb("))
+            || (config.active_color.starts_with("rgba("))
+        {
+            active_color = get_color_from_rgba(&config.active_color);
+        } else if (config.active_color.starts_with("oklch(")) {
+            active_color = get_color_from_oklch(&config.active_color);
+        } else if (config.inactive_color.starts_with("hsl(")) {
+            active_color = get_color_from_hsl(&config.active_color);
+        } else {
+            active_color = get_color_from_hex(&config.active_color);
+        }
+
+        // Get the inactive color based on the configuration
+        if config.inactive_color == "accent" {
+            let mut pcr_colorization: u32 = 0;
+            let mut pf_opaqueblend: BOOL = FALSE;
+            let result =
+                unsafe { DwmGetColorizationColor(&mut pcr_colorization, &mut pf_opaqueblend) };
+            if result.is_err() {
+                Logger::log("error", "Error getting windows accent color!");
+            }
+            let red = ((pcr_colorization & 0x00FF0000) >> 16) as f32 / 255.0;
+            let green = ((pcr_colorization & 0x0000FF00) >> 8) as f32 / 255.0;
+            let blue = ((pcr_colorization & 0x000000FF) >> 0) as f32 / 255.0;
+            let avg = (red + green + blue) / 3.0;
+            inactive_color = D2D1_COLOR_F {
+                r: avg / 1.5 + red / 10.0,
+                g: avg / 1.5 + green / 10.0,
+                b: avg / 1.5 + blue / 10.0,
+                a: 1.0,
+            };
+        } else if (config.inactive_color.starts_with("rgb("))
+            || (config.inactive_color.starts_with("rgba("))
+        {
+            inactive_color = get_color_from_rgba(&config.inactive_color);
+        } else if (config.inactive_color.starts_with("oklch(")) {
+            inactive_color = get_color_from_oklch(&config.inactive_color);
+        } else if (config.inactive_color.starts_with("hsl(")) {
+            inactive_color = get_color_from_hsl(&config.inactive_color);
+        } else {
+            inactive_color = get_color_from_hex(&config.inactive_color);
+        }
+        //println!("time it takes to get colors: {:?}", before.elapsed());
+
+        let mut border = window_border::WindowBorder {
+            tracking_window: window_sent.0,
+            border_size: config.border_size,
+            border_offset: config.border_offset,
+            force_border_radius: config.get_border_radius(),
+            active_color: active_color,
+            inactive_color: inactive_color,
+            ..Default::default()
+        };
+        drop(config);
+
+        let mut borders_hashmap = borders_mutex.lock().unwrap();
+        let window_isize = window_sent.0 .0 as isize;
+
+        // Check to see if the key already exists in the hashmap. If not, then continue
+        // adding the key and initializing the border. This is important because sometimes, the
+        // event_hook function will call spawn_border_thread multiple times for the same window.
+        if borders_hashmap.contains_key(&window_isize) {
+            //println!("Duplicate window: {:?}", borders_hashmap);
+            drop(borders_hashmap);
+            return;
+        }
+
+        let hinstance: HINSTANCE = unsafe { std::mem::transmute(&__ImageBase) };
+        border.create_border_window(hinstance);
+        borders_hashmap.insert(window_isize, border.border_window.0 as isize);
+        drop(borders_hashmap);
+
+        border.init(hinstance);
+    });
+
+    return Ok(());
+}
+
+pub fn destroy_border_for_window(tracking_window: HWND) -> Result<()> {
+    let mutex = unsafe { &*BORDERS };
+    let window = SendHWND(tracking_window);
+
+    let thread = std::thread::spawn(move || {
+        let window_sent = window;
+        let mut borders_hashmap = mutex.lock().unwrap();
+        let window_isize = window_sent.0.0 as isize;
+        let border_option = borders_hashmap.get(&window_isize);
+        
+        if border_option.is_some() {
+            let border_window: HWND = HWND((*border_option.unwrap()) as *mut _);
+            unsafe { SendMessageW(border_window, WM_DESTROY, WPARAM(0), LPARAM(0)) };
+            // TODO figure out why DestroyWindow doesn't work
+            //unsafe { DestroyWindow(border_window) };
+            borders_hashmap.remove(&window_isize);
+        }
+
+        drop(borders_hashmap);
+    });
+
+    return Ok(());
+}
+
+pub fn get_border_from_window(hwnd: HWND) -> Option<HWND> {
+    let mutex = unsafe { &*BORDERS };
+    let borders = mutex.lock().unwrap();
+    let hwnd_isize = hwnd.0 as isize;
+    let border_option = borders.get(&hwnd_isize);
+
+    if border_option.is_some() {
+        let border_window: HWND = HWND(*border_option.unwrap() as _);
+        drop(borders);
+        return Some(border_window);
+    } else {
+        drop(borders);
+        return None;
+    }
+}
+
+// Return true if the border exists in the border hashmap. Otherwise, return false.
+// Specify a delay to prevent the border from appearing while a window is in its opening animation.
+pub fn show_border_for_window(hwnd: HWND, delay: u64) -> bool {
+    let mutex = unsafe { &*BORDERS };
+    let borders = mutex.lock().unwrap();
+    let hwnd_isize = hwnd.0 as isize;
+    let border_option = borders.get(&hwnd_isize);
+
+    if border_option.is_some() {
+        let border_window: HWND = HWND(*border_option.unwrap() as _);
+        drop(borders);
+        unsafe { ShowWindow(border_window, SW_SHOWNA) };
+        return true;
+    } else {
+        drop(borders);
+
+        if is_cloaked(hwnd) || has_filtered_style(hwnd) {
+            return false;
+        }
+        create_border_for_window(hwnd, delay);
+        return false;
+    }
+}
+
+pub fn hide_border_for_window(hwnd: HWND) -> bool {
+    let mutex = unsafe { &*BORDERS };
+    let window = SendHWND(hwnd);
+
+    let thread = std::thread::spawn(move || {
+        let window_sent = window;
+        let borders = mutex.lock().unwrap();
+        let window_isize = window_sent.0.0 as isize;
+        let border_option = borders.get(&window_isize);
+
+        if border_option.is_some() {
+            let border_window: HWND = HWND(*border_option.unwrap() as _);
+            drop(borders);
+            unsafe { ShowWindow(border_window, SW_HIDE) };
+        } else {
+            drop(borders);
+        }
+    });
+    return true;
 }
 
 pub fn get_color_from_hex(hex: &str) -> D2D1_COLOR_F {
@@ -91,7 +340,10 @@ pub fn get_color_from_hex(hex: &str) -> D2D1_COLOR_F {
 }
 
 pub fn get_color_from_rgba(rgba: &str) -> D2D1_COLOR_F {
-    let rgba = rgba.trim_start_matches("rgb(").trim_start_matches("rgba(").trim_end_matches(')');
+    let rgba = rgba
+        .trim_start_matches("rgb(")
+        .trim_start_matches("rgba(")
+        .trim_end_matches(')');
     let components: Vec<&str> = rgba.split(',').map(|s| s.trim()).collect();
 
     // Check for correct number of components
@@ -133,13 +385,24 @@ pub fn get_color_from_oklch(oklch: &str) -> D2D1_COLOR_F {
         // Parse lightness, chroma, and hue values
         let lightness_str = components[0];
         let lightness: f64 = if lightness_str.ends_with('%') {
-            lightness_str.trim_end_matches('%').parse::<f64>().unwrap_or(0.0).clamp(0.0, 100.0) / 100.0 // Convert percentage to a 0.0 - 1.0 range
+            lightness_str
+                .trim_end_matches('%')
+                .parse::<f64>()
+                .unwrap_or(0.0)
+                .clamp(0.0, 100.0)
+                / 100.0 // Convert percentage to a 0.0 - 1.0 range
         } else {
             lightness_str.parse::<f64>().unwrap_or(0.0).clamp(0.0, 1.0) // Handle non-percentage case
         };
 
-        let chroma: f64 = components[1].parse::<f64>().unwrap_or(0.0).clamp(0.0, f64::MAX);
-        let hue: f64 = components[2].parse::<f64>().unwrap_or(0.0).clamp(0.0, 360.0);
+        let chroma: f64 = components[1]
+            .parse::<f64>()
+            .unwrap_or(0.0)
+            .clamp(0.0, f64::MAX);
+        let hue: f64 = components[2]
+            .parse::<f64>()
+            .unwrap_or(0.0)
+            .clamp(0.0, 360.0);
 
         // Convert OKLCH to RGB
         let (r, g, b) = oklch_to_rgb(lightness, chroma, hue);
@@ -175,18 +438,31 @@ pub fn get_color_from_hsl(hsl: &str) -> D2D1_COLOR_F {
     // Check for the correct number of components (3)
     if components.len() == 3 {
         // Parse hue, saturation, and lightness values
-        let hue: f64 = components[0].parse::<f64>().unwrap_or(0.0).clamp(0.0, 360.0);
-        
+        let hue: f64 = components[0]
+            .parse::<f64>()
+            .unwrap_or(0.0)
+            .clamp(0.0, 360.0);
+
         let saturation_str = components[1];
         let saturation: f64 = if saturation_str.ends_with('%') {
-            saturation_str.trim_end_matches('%').parse::<f64>().unwrap_or(0.0).clamp(0.0, 100.0) / 100.0 // Convert percentage to a 0.0 - 1.0 range
+            saturation_str
+                .trim_end_matches('%')
+                .parse::<f64>()
+                .unwrap_or(0.0)
+                .clamp(0.0, 100.0)
+                / 100.0 // Convert percentage to a 0.0 - 1.0 range
         } else {
             saturation_str.parse::<f64>().unwrap_or(0.0).clamp(0.0, 1.0) // Handle non-percentage case
         };
 
         let lightness_str = components[2];
         let lightness: f64 = if lightness_str.ends_with('%') {
-            lightness_str.trim_end_matches('%').parse::<f64>().unwrap_or(0.0).clamp(0.0, 100.0) / 100.0 // Convert percentage to a 0.0 - 1.0 range
+            lightness_str
+                .trim_end_matches('%')
+                .parse::<f64>()
+                .unwrap_or(0.0)
+                .clamp(0.0, 100.0)
+                / 100.0 // Convert percentage to a 0.0 - 1.0 range
         } else {
             lightness_str.parse::<f64>().unwrap_or(0.0).clamp(0.0, 1.0) // Handle non-percentage case
         };
@@ -221,7 +497,7 @@ fn hsl_to_rgb(hue: f64, saturation: f64, lightness: f64) -> (f64, f64, f64) {
     let c = (1.0 - (2.0 * lightness - 1.0).abs()) * saturation; // Chroma
     let x = c * (1.0 - ((hue / 60.0) % 2.0 - 1.0).abs()); // Second largest component
     let m = lightness - c / 2.0; // Match lightness
-    
+
     let (r_prime, g_prime, b_prime) = match hue {
         h if h < 60.0 => (c, x, 0.0),
         h if h < 120.0 => (x, c, 0.0),

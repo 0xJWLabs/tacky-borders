@@ -18,6 +18,7 @@ use windows::{
 };
 use border_config::Config;
 use logger::Logger;
+use utils::*;
 
 extern "C" {
     pub static __ImageBase: IMAGE_DOS_HEADER;
@@ -50,7 +51,7 @@ fn main() {
 
     let win_event_hook = set_event_hook();
     unsafe {
-        println!("Entering message loop!");
+        Logger::log("debug", "Entering message loop!");
         let mut message = MSG::default();
         while GetMessageW(&mut message, HWND::default(), 0, 0).into() {
             if message.message == WM_CLOSE {
@@ -66,7 +67,7 @@ fn main() {
             DispatchMessageW(&message);
             std::thread::sleep(std::time::Duration::from_millis(16))
         }
-        println!("MESSSAGE LOOP IN MAIN.RS EXITED. THIS SHOULD NOT HAPPEN");
+        Logger::log("debug", "MESSSAGE LOOP IN MAIN.RS EXITED. THIS SHOULD NOT HAPPEN");
     }
 }
 
@@ -87,7 +88,7 @@ pub fn register_window_class() -> Result<()> {
             
         if result == 0 {
             let last_error = GetLastError();
-            println!("ERROR: RegisterClassExW(&wcex): {:?}", last_error);
+            Logger::log("error", format!("RegisterClassExW(&wcex): {:?}", last_error).as_str());
         }
     }
 
@@ -116,115 +117,35 @@ pub fn enum_windows() {
             LPARAM(&mut windows as *mut _ as isize),
         );
     }
-    println!("Windows have been enumerated!");
-    println!("Windows: {:?}", windows);
+
+    Logger::log("debug", "Windows have been enumerated");
+    Logger::log("debug", format!("Windows: {:?}", windows).as_str());
 
     for hwnd in windows {
-        spawn_border_thread(hwnd, 0);
+        create_border_for_window(hwnd, 0);
     }
 }
 
-pub fn restart_windows() {
-    let mut windows: Vec<HWND> = Vec::new();
-    unsafe {
-        EnumWindows(
-            Some(enum_windows_callback),
-            LPARAM(&mut windows as *mut _ as isize),
-        );
-    }
-    for hwnd in windows {
-        destroy_border_thread(hwnd);
-        spawn_border_thread(hwnd, 0);
-    }
-}
-
-pub fn spawn_border_thread(tracking_window: HWND, delay: u64) -> Result<()> {
-    let borders_mutex = unsafe { &*BORDERS };
-    let config = Config::get();
-    let window = SendHWND(tracking_window);
-
-    let thread = std::thread::spawn(move || {
-        let window_sent = window;
-
-        std::thread::sleep(std::time::Duration::from_millis(delay));
-        if unsafe { !IsWindowVisible(window_sent.0).as_bool() } {
-            return;
-        }
-
-        let mut border = window_border::WindowBorder { 
-            tracking_window: window_sent.0, 
-            border_size: config.border_size, 
-            border_offset: config.border_offset,
-            force_border_radius: config.border_radius,
-            ..Default::default()
-        };
-
-        let mut borders_hashmap = borders_mutex.lock().unwrap();
-        let window_isize = window_sent.0.0 as isize; 
-
-        // Check to see if the key already exists in the hashmap. If not, then continue
-        // adding the key and initializing the border. This is important because sometimes, the
-        // event_hook function will call spawn_border_thread multiple times for the same window. 
-        if borders_hashmap.contains_key(&window_isize) {
-            //println!("Duplicate window: {:?}", borders_hashmap);
-            drop(borders_hashmap);
-            return;
-        }
-
-        let hinstance: HINSTANCE = unsafe { std::mem::transmute(&__ImageBase) };
-        border.create_border_window(hinstance);
-        borders_hashmap.insert(window_isize, border.border_window.0 as isize);
-        drop(borders_hashmap);
-        
-        border.init(hinstance);
-    });
-
-    return Ok(());
-}
-
-pub fn destroy_border_thread(tracking_window: HWND) -> Result<()> {
+pub fn restart_borders() {
     let mutex = unsafe { &*BORDERS };
-    let window = SendHWND(tracking_window);
-
-    let thread = std::thread::spawn(move || {
-        let window_sent = window;
-        let mut borders_hashmap = mutex.lock().unwrap();
-        let window_isize = window_sent.0.0 as isize;
-        let border_option = borders_hashmap.get(&window_isize);
-        
-        if border_option.is_some() {
-            let border_window: HWND = HWND((*border_option.unwrap()) as *mut _);
-            unsafe { SendMessageW(border_window, WM_DESTROY, WPARAM(0), LPARAM(0)) };
-            borders_hashmap.remove(&window_isize);
-        }
-
-        drop(borders_hashmap);
-    });
-
-    return Ok(());
+    let mut borders = mutex.lock().unwrap();
+    for value in borders.values() {
+        let border_window = HWND(*value as *mut _);
+        unsafe { SendMessageW(border_window, WM_DESTROY, WPARAM(0), LPARAM(0)) };
+    }
+    let _ = borders.drain();
+    drop(borders);
+    enum_windows();
 }
 
 unsafe extern "system" fn enum_windows_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
     if IsWindowVisible(hwnd).as_bool() {
-        let style = GetWindowLongW(hwnd, GWL_STYLE) as u32;
-        let ex_style = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
-        let mut is_cloaked = FALSE;
-        let result = unsafe { DwmGetWindowAttribute(
-            hwnd, 
-            DWMWA_CLOAKED,
-            std::ptr::addr_of_mut!(is_cloaked) as *mut _,
-            size_of::<BOOL>() as u32
-        ) };
-        if result.is_err() {
-            return FALSE;
+        if has_filtered_style(hwnd) || is_cloaked(hwnd) {
+            return TRUE;
         }
 
-        // Exclude certain window styles
-        if ex_style & WS_EX_TOOLWINDOW.0 == 0 && style & WS_CHILD.0 == 0 && !is_cloaked.as_bool() {
-            let visible_windows: &mut Vec<HWND> = std::mem::transmute(lparam.0);
-            println!("visible_windows: {:?}", visible_windows);
-            visible_windows.push(hwnd);
-        }
+        let visible_windows: &mut Vec<HWND> = std::mem::transmute(lparam.0);
+        visible_windows.push(hwnd);
     }
     TRUE 
 }

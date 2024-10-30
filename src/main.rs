@@ -5,48 +5,49 @@
     windows_subsystem = "windows"
 )]
 
-use std::sync::{Arc, Mutex, LazyLock};
-use std::collections::HashMap;
-use windows::{
-    core::*,
-    Win32::Foundation::*,
-    Win32::System::SystemServices::IMAGE_DOS_HEADER,
-    Win32::System::Threading::*,
-    Win32::UI::WindowsAndMessaging::*,
-    Win32::UI::Accessibility::*,
-    Win32::Graphics::Dwm::*,
-};
 use border_config::Config;
 use logger::Logger;
+use std::collections::HashMap;
+use std::ffi::*;
+use std::sync::{Arc, LazyLock, Mutex};
 use utils::*;
+use windows::{
+    core::*, Win32::Foundation::*, Win32::Graphics::Dwm::*,
+    Win32::System::SystemServices::IMAGE_DOS_HEADER, Win32::System::Threading::*,
+    Win32::UI::Accessibility::*, Win32::UI::WindowsAndMessaging::*,
+};
 
 extern "C" {
     pub static __ImageBase: IMAGE_DOS_HEADER;
 }
 
-mod window_border;
-mod event_hook;
-mod sys_tray_icon;
 mod border_config;
-mod utils;
+mod event_hook;
 mod logger;
+mod sys_tray_icon;
+mod utils;
+mod window_border;
 
-pub static mut BORDERS: LazyLock<Mutex<HashMap<isize, isize>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+pub static mut BORDERS: LazyLock<Mutex<HashMap<isize, isize>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
-// This shit supposedly unsafe af but it works so idgaf. 
+// This shit supposedly unsafe af but it works so idgaf.
 pub struct SendHWND(HWND);
 unsafe impl Send for SendHWND {}
 unsafe impl Sync for SendHWND {}
 
+const DWMWA_COLOR_NONE: u32 = 0xFFFFFFFE;
+
 fn main() {
     register_window_class();
-    Logger ::log("debug", "Window class in registered!");
+    Logger::log("debug", "Window class in registered!");
     enum_windows();
+    apply_colors();
 
     let main_thread = unsafe { GetCurrentThreadId() };
     let tray_icon_option = sys_tray_icon::create_tray_icon(main_thread);
     if tray_icon_option.is_err() {
-        Logger ::log("error", "Error creating tray icon!");
+        Logger::log("error", "Error creating tray icon!");
     }
 
     let win_event_hook = set_event_hook();
@@ -59,7 +60,7 @@ fn main() {
                 if result.as_bool() {
                     ExitProcess(0);
                 } else {
-                    Logger ::log("error", "Could not unhook win even hook");
+                    Logger::log("error", "Could not unhook win even hook");
                 }
             }
 
@@ -67,7 +68,10 @@ fn main() {
             DispatchMessageW(&message);
             std::thread::sleep(std::time::Duration::from_millis(16))
         }
-        Logger::log("debug", "MESSSAGE LOOP IN MAIN.RS EXITED. THIS SHOULD NOT HAPPEN");
+        Logger::log(
+            "debug",
+            "MESSSAGE LOOP IN MAIN.RS EXITED. THIS SHOULD NOT HAPPEN",
+        );
     }
 }
 
@@ -85,10 +89,13 @@ pub fn register_window_class() -> Result<()> {
             ..Default::default()
         };
         let result = RegisterClassExW(&wcex);
-            
+
         if result == 0 {
             let last_error = GetLastError();
-            Logger::log("error", format!("RegisterClassExW(&wcex): {:?}", last_error).as_str());
+            Logger::log(
+                "error",
+                format!("RegisterClassExW(&wcex): {:?}", last_error).as_str(),
+            );
         }
     }
 
@@ -138,6 +145,27 @@ pub fn restart_borders() {
     enum_windows();
 }
 
+fn apply_colors() {
+    let mut windows: Vec<HWND> = Vec::new();
+    unsafe {
+        EnumWindows(
+            Some(enum_windows_callback),
+            LPARAM(&mut windows as *mut _ as isize),
+        );
+    }
+
+    for hwnd in windows {
+        unsafe {
+            DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_BORDER_COLOR,
+                &DWMWA_COLOR_NONE as *const _ as *const c_void,
+                std::mem::size_of::<c_ulong>() as u32,
+            );
+        }
+    }
+}
+
 unsafe extern "system" fn enum_windows_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
     if IsWindowVisible(hwnd).as_bool() {
         if has_filtered_style(hwnd) || is_cloaked(hwnd) {
@@ -147,5 +175,5 @@ unsafe extern "system" fn enum_windows_callback(hwnd: HWND, lparam: LPARAM) -> B
         let visible_windows: &mut Vec<HWND> = std::mem::transmute(lparam.0);
         visible_windows.push(hwnd);
     }
-    TRUE 
+    TRUE
 }

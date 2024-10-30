@@ -18,7 +18,7 @@ pub fn get_width(rect: RECT) -> i32 {
     return rect.right - rect.left;
 }
 
-pub fn get_height(rect: RECT) -> i32{
+pub fn get_height(rect: RECT) -> i32 {
     return rect.bottom - rect.top;
 }
 
@@ -34,17 +34,19 @@ pub fn has_filtered_style(hwnd: HWND) -> bool {
 
 pub fn is_cloaked(hwnd: HWND) -> bool {
     let mut is_cloaked = FALSE;
-    let result = unsafe { DwmGetWindowAttribute(
-        hwnd, 
-        DWMWA_CLOAKED,
-        std::ptr::addr_of_mut!(is_cloaked) as *mut _,
-        size_of::<BOOL>() as u32
-    ) };
+    let result = unsafe {
+        DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_CLOAKED,
+            std::ptr::addr_of_mut!(is_cloaked) as *mut _,
+            size_of::<BOOL>() as u32,
+        )
+    };
     if result.is_err() {
         Logger::log("error", "Error getting is_cloacked");
         return true;
     }
-    return is_cloaked.as_bool(); 
+    return is_cloaked.as_bool();
 }
 
 pub fn get_file_path(filename: &str) -> String {
@@ -69,7 +71,10 @@ pub fn get_file_path(filename: &str) -> String {
     } else {
         // Neither exists; use .config path by default and create it
         if let Err(err) = fs::create_dir(&config_path) {
-            Logger::log("error", &format!("Failed to create directory: {}", &config_path));
+            Logger::log(
+                "error",
+                &format!("Failed to create directory: {}", &config_path),
+            );
             Logger::log("debug", &format!("{:?}", err));
             std::process::exit(1);
         }
@@ -240,9 +245,9 @@ pub fn destroy_border_for_window(tracking_window: HWND) -> Result<()> {
     let thread = std::thread::spawn(move || {
         let window_sent = window;
         let mut borders_hashmap = mutex.lock().unwrap();
-        let window_isize = window_sent.0.0 as isize;
+        let window_isize = window_sent.0 .0 as isize;
         let border_option = borders_hashmap.get(&window_isize);
-        
+
         if border_option.is_some() {
             let border_window: HWND = HWND((*border_option.unwrap()) as *mut _);
             unsafe { SendMessageW(border_window, WM_DESTROY, WPARAM(0), LPARAM(0)) };
@@ -304,7 +309,7 @@ pub fn hide_border_for_window(hwnd: HWND) -> bool {
     let thread = std::thread::spawn(move || {
         let window_sent = window;
         let borders = mutex.lock().unwrap();
-        let window_isize = window_sent.0.0 as isize;
+        let window_isize = window_sent.0 .0 as isize;
         let border_option = borders.get(&window_isize);
 
         if border_option.is_some() {
@@ -319,24 +324,64 @@ pub fn hide_border_for_window(hwnd: HWND) -> bool {
 }
 
 pub fn get_color_from_hex(hex: &str) -> D2D1_COLOR_F {
-    // Assuming hex is a string in the format "#FFFFFF" or "FFFFFF"
-    let hex = hex.trim_start_matches('#'); // Remove leading '#'
-
-    // Convert hex string to u32
-    let value = u32::from_str_radix(hex, 16).expect("Invalid hex color");
-
-    // Extract RGB components as f32 values
-    let red = ((value & 0x00FF0000) >> 16) as f32 / 255.0; // Red component
-    let green = ((value & 0x0000FF00) >> 8) as f32 / 255.0; // Green component
-    let blue = (value & 0x000000FF) as f32 / 255.0; // Blue component
-
-    // Return the D2D1_COLOR_F struct
-    D2D1_COLOR_F {
-        r: red,
-        g: green,
-        b: blue,
-        a: 1.0,
+    // Ensure the hex string starts with '#' and is of the correct length
+    if hex.len() != 7 && hex.len() != 9 && hex.len() != 4 && hex.len() != 5 || !hex.starts_with('#')
+    {
+        Logger::log(
+            "error",
+            format!("Invalid hex color format: {}", hex).as_str(),
+        );
     }
+
+    // Expand shorthand hex formats (#RGB or #RGBA to #RRGGBB or #RRGGBBAA)
+    let expanded_hex = match hex.len() {
+        4 => format!(
+            "#{}{}{}{}{}{}",
+            &hex[1..2],
+            &hex[1..2],
+            &hex[2..3],
+            &hex[2..3],
+            &hex[3..4],
+            &hex[3..4]
+        ),
+        5 => format!(
+            "#{}{}{}{}{}{}{}{}",
+            &hex[1..2],
+            &hex[1..2],
+            &hex[2..3],
+            &hex[2..3],
+            &hex[3..4],
+            &hex[3..4],
+            &hex[4..5],
+            &hex[4..5]
+        ),
+        _ => hex.to_string(),
+    };
+
+    // Convert each color component to f32 between 0.0 and 1.0, handling errors
+    let parse_component = |s: &str| -> f32 {
+        match u8::from_str_radix(s, 16) {
+            Ok(val) => val as f32 / 255.0,
+            Err(_) => {
+                println!("Error: Invalid component '{}' in hex: {}", s, expanded_hex);
+                0.0
+            }
+        }
+    };
+
+    // Parse RGB values
+    let r = parse_component(&expanded_hex[1..3]);
+    let g = parse_component(&expanded_hex[3..5]);
+    let b = parse_component(&expanded_hex[5..7]);
+
+    // Parse alpha value if present
+    let a = if expanded_hex.len() == 9 {
+        parse_component(&expanded_hex[7..9])
+    } else {
+        1.0
+    };
+
+    D2D1_COLOR_F { r, g, b, a }
 }
 
 pub fn get_color_from_rgba(rgba: &str) -> D2D1_COLOR_F {

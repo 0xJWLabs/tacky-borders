@@ -14,6 +14,24 @@ use crate::*;
 use crate::border_config::Config;
 use crate::logger::Logger;
 
+#[derive(Debug, Clone)]
+pub enum ColorBrush {
+    Solid(D2D1_COLOR_F),
+    Gradient([D2D1_GRADIENT_STOP; 2]),
+}
+
+// Implement Default for your own MyBrush enum
+impl Default for ColorBrush {
+    fn default() -> Self {
+        ColorBrush::Solid(D2D1_COLOR_F {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        })
+    }
+}
+
 pub fn get_width(rect: RECT) -> i32 {
     return rect.right - rect.left;
 }
@@ -138,8 +156,8 @@ pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()>
         }
 
         //let before = std::time::Instant::now();
-        let active_color: D2D1_COLOR_F;
-        let inactive_color: D2D1_COLOR_F;
+        let active_color: ColorBrush;
+        let inactive_color: ColorBrush;
         let config = Config::get();
 
         // Get the active color based on the configuration
@@ -154,22 +172,25 @@ pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()>
             let red = ((pcr_colorization & 0x00FF0000) >> 16) as f32 / 255.0;
             let green = ((pcr_colorization & 0x0000FF00) >> 8) as f32 / 255.0;
             let blue = ((pcr_colorization & 0x000000FF) >> 0) as f32 / 255.0;
-            active_color = D2D1_COLOR_F {
+            active_color = ColorBrush::Solid(D2D1_COLOR_F {
                 r: red,
                 g: green,
                 b: blue,
                 a: 1.0,
-            };
+            });
         } else if (config.active_color.starts_with("rgb("))
             || (config.active_color.starts_with("rgba("))
         {
-            active_color = get_color_from_rgba(&config.active_color);
+            active_color = ColorBrush::Solid(get_color_from_rgba(&config.active_color));
         } else if (config.active_color.starts_with("oklch(")) {
-            active_color = get_color_from_oklch(&config.active_color);
-        } else if (config.inactive_color.starts_with("hsl(")) {
-            active_color = get_color_from_hsl(&config.active_color);
+            active_color = ColorBrush::Solid(get_color_from_oklch(&config.active_color));
+        } else if (config.active_color.starts_with("hsl(")) {
+            active_color = ColorBrush::Solid(get_color_from_hsl(&config.active_color));
+        } else if (config.active_color.starts_with("gradient(")) {
+            let color = get_gradient_stops_from_string(&config.active_color);
+            active_color = ColorBrush::Gradient(color);
         } else {
-            active_color = get_color_from_hex(&config.active_color);
+            active_color = ColorBrush::Solid(get_color_from_hex(&config.active_color));
         }
 
         // Get the inactive color based on the configuration
@@ -185,23 +206,27 @@ pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()>
             let green = ((pcr_colorization & 0x0000FF00) >> 8) as f32 / 255.0;
             let blue = ((pcr_colorization & 0x000000FF) >> 0) as f32 / 255.0;
             let avg = (red + green + blue) / 3.0;
-            inactive_color = D2D1_COLOR_F {
+            inactive_color = ColorBrush::Solid(D2D1_COLOR_F {
                 r: avg / 1.5 + red / 10.0,
                 g: avg / 1.5 + green / 10.0,
                 b: avg / 1.5 + blue / 10.0,
                 a: 1.0,
-            };
+            });
         } else if (config.inactive_color.starts_with("rgb("))
             || (config.inactive_color.starts_with("rgba("))
         {
-            inactive_color = get_color_from_rgba(&config.inactive_color);
+            inactive_color = ColorBrush::Solid(get_color_from_rgba(&config.inactive_color));
         } else if (config.inactive_color.starts_with("oklch(")) {
-            inactive_color = get_color_from_oklch(&config.inactive_color);
+            inactive_color = ColorBrush::Solid(get_color_from_oklch(&config.inactive_color));
         } else if (config.inactive_color.starts_with("hsl(")) {
-            inactive_color = get_color_from_hsl(&config.inactive_color);
+            inactive_color = ColorBrush::Solid(get_color_from_hsl(&config.inactive_color));
+        } else if (config.inactive_color.starts_with("gradient(")) {
+            let color = get_gradient_stops_from_string(&config.inactive_color);
+            inactive_color = ColorBrush::Gradient(color);
         } else {
-            inactive_color = get_color_from_hex(&config.inactive_color);
+            inactive_color = ColorBrush::Solid(get_color_from_hex(&config.inactive_color));
         }
+
         //println!("time it takes to get colors: {:?}", before.elapsed());
 
         let mut border = window_border::WindowBorder {
@@ -323,6 +348,53 @@ pub fn hide_border_for_window(hwnd: HWND) -> bool {
     return true;
 }
 
+pub fn get_intermediate_color(hex1: &str, hex2: &str) -> D2D1_COLOR_F {
+    let color1 = get_color_from_hex(hex1);
+    let color2 = get_color_from_hex(hex2);
+
+    // Calculate intermediate color by averaging the components
+    D2D1_COLOR_F {
+        r: (color1.r + color2.r) / 2.0,
+        g: (color1.g + color2.g) / 2.0,
+        b: (color1.b + color2.b) / 2.0,
+        a: (color1.a + color2.a) / 2.0,
+    }
+}
+
+pub fn get_gradient_stops_from_string(gradient_str: &str) -> [D2D1_GRADIENT_STOP; 2] {
+    if !gradient_str.starts_with("gradient(") || !gradient_str.ends_with(')') {
+        Logger::log(
+            "error",
+            format!("Invalid gradient format: {}", gradient_str).as_str()
+        );
+    }
+
+    let color_str = &gradient_str[9..gradient_str.len() - 1];
+
+    let colors: Vec<&str> = color_str.split(',').collect();
+    if colors.len() != 2 {
+        Logger::log(
+            "error",
+            format!("Gradient must have exactly two colors").as_str()
+        );
+    }
+
+    let color1 = colors[0].trim();
+    let color2 = colors[1].trim();
+
+    let stops = [
+        D2D1_GRADIENT_STOP {
+            position: 0.0,
+            color: get_color_from_hex(color1),
+        },
+        D2D1_GRADIENT_STOP {
+            position: 1.0,
+            color: get_color_from_hex(color2),
+        }
+    ];
+    stops 
+}
+
 pub fn get_color_from_hex(hex: &str) -> D2D1_COLOR_F {
     // Ensure the hex string starts with '#' and is of the correct length
     if hex.len() != 7 && hex.len() != 9 && hex.len() != 4 && hex.len() != 5 || !hex.starts_with('#')
@@ -361,7 +433,7 @@ pub fn get_color_from_hex(hex: &str) -> D2D1_COLOR_F {
     // Convert each color component to f32 between 0.0 and 1.0, handling errors
     let parse_component = |s: &str| -> f32 {
         match u8::from_str_radix(s, 16) {
-            Ok(val) => val as f32 / 255.0,
+            Ok(val) => f32::from(val) / 255.0,
             Err(_) => {
                 println!("Error: Invalid component '{}' in hex: {}", s, expanded_hex);
                 0.0
@@ -394,9 +466,9 @@ pub fn get_color_from_rgba(rgba: &str) -> D2D1_COLOR_F {
     // Check for correct number of components
     if components.len() == 3 || components.len() == 4 {
         // Parse red, green, and blue values
-        let red: f32 = components[0].parse::<u32>().unwrap_or(0) as f32 / 255.0;
-        let green: f32 = components[1].parse::<u32>().unwrap_or(0) as f32 / 255.0;
-        let blue: f32 = components[2].parse::<u32>().unwrap_or(0) as f32 / 255.0;
+        let red: f32 = f32::from_bits(components[0].parse::<u32>().unwrap_or(0))/ 255.0;
+        let green: f32 = f32::from_bits(components[1].parse::<u32>().unwrap_or(0)) / 255.0;
+        let blue: f32 = f32::from_bits(components[2].parse::<u32>().unwrap_or(0)) / 255.0;
 
         let alpha: f32 = if components.len() == 4 {
             components[3].parse::<f32>().unwrap_or(1.0).clamp(0.0, 1.0)

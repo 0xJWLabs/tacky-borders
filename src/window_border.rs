@@ -1,4 +1,7 @@
+use std::ptr::{null_mut, NonNull};
+use std::os::raw::c_void;
 use std::ffi::c_ulong;
+use std::fmt;
 use std::sync::LazyLock;
 use std::sync::OnceLock;
 use windows::{
@@ -18,6 +21,58 @@ pub static RENDER_FACTORY: LazyLock<ID2D1Factory> = unsafe { LazyLock::new(||
     D2D1CreateFactory::<ID2D1Factory>(D2D1_FACTORY_TYPE_MULTI_THREADED, None).expect("creating RENDER_FACTORY failed")) 
 };
 
+struct BrushWrapper {
+    brush: ID2D1Brush,
+}
+
+impl fmt::Debug for BrushWrapper {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Ok(solid_brush) = self.brush.cast::<ID2D1SolidColorBrush>() {
+            let color = unsafe { solid_brush.GetColor() }; // Get the color
+            f.debug_struct("BrushWrapper")
+                .field("brush_type", &"Solid Color Brush")
+                .field("color", &color)
+                .finish()
+        } else if let Ok(gradient_brush) = self.brush.cast::<ID2D1LinearGradientBrush>() {
+            // Retrieve the gradient stop collection
+            let gradient_stop_collection = unsafe { gradient_brush.GetGradientStopCollection() };
+            let mut stops = Vec::new();
+            
+            // Assuming you have a way to get the count of stops and to retrieve them
+            if let Ok(gradient_stops) = gradient_stop_collection {
+                let count = unsafe { gradient_stops.GetGradientStopCount() }; // Get the count of gradient stops
+                
+                // Create a vector to hold the gradient stops
+                let mut gradient_stop_array: Vec<Common::D2D1_GRADIENT_STOP> = vec![Default::default(); count as usize];
+
+                // Get each gradient stop
+                unsafe {
+                    gradient_stops.GetGradientStops(&mut gradient_stop_array); // Fill the gradient stops
+
+                    // Iterate through the filled gradient stops
+                    for stop in gradient_stop_array.iter() {
+                        stops.push((stop.color, stop.position)); // Store the color and position
+                    }
+                }
+                
+                f.debug_struct("BrushWrapper")
+                    .field("brush_type", &"Linear Gradient Brush")
+                    .field("gradient_stops", &stops)
+                    .finish()
+            } else {
+                f.debug_struct("BrushWrapper")
+                    .field("brush_type", &"Linear Gradient Brush")
+                    .field("gradient_stops", &"Error retrieving gradient stop collection")
+                    .finish()
+            }
+        } else {
+            f.debug_struct("BrushWrapper")
+                .field("brush_type", &"Unknown Brush Type")
+                .finish()
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct WindowBorder {
     pub border_window: HWND,
@@ -32,9 +87,9 @@ pub struct WindowBorder {
     pub render_target: OnceLock<ID2D1HwndRenderTarget>,
     pub border_brush: D2D1_BRUSH_PROPERTIES,
     pub rounded_rect: D2D1_ROUNDED_RECT,
-    pub active_color: D2D1_COLOR_F,
-    pub inactive_color: D2D1_COLOR_F,
-    pub current_color: D2D1_COLOR_F,
+    pub active_color: ColorBrush,
+    pub inactive_color: ColorBrush,
+    pub current_color: ColorBrush,
 }
 
 impl WindowBorder {
@@ -164,7 +219,7 @@ impl WindowBorder {
         };
 
         // Initialize the actual border color assuming it is in focus
-        self.current_color = self.active_color;
+        self.current_color = self.active_color.clone();
 
         unsafe {
             let factory = &*RENDER_FACTORY;
@@ -232,9 +287,37 @@ impl WindowBorder {
 
     pub fn update_color(&mut self) {
         if unsafe { GetForegroundWindow() } == self.tracking_window {
-            self.current_color = self.active_color;
+            self.current_color = self.active_color.clone();
         } else {
-            self.current_color = self.inactive_color; 
+            self.current_color = self.inactive_color.clone(); 
+        }
+    }
+
+    fn create_brush(&self, render_target: &ID2D1RenderTarget) -> Result<ID2D1Brush> {
+        match &self.current_color {
+            ColorBrush::Solid(color) => {
+                let solid_brush = unsafe {
+                    render_target.CreateSolidColorBrush(color, Some(&self.border_brush))?
+                };
+
+                Ok(solid_brush.into())
+            }
+            ColorBrush::Gradient(color) => {
+                let gradient_stop_collection: ID2D1GradientStopCollection = unsafe {
+                    render_target.CreateGradientStopCollection(color, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP)?
+                };
+
+                let gradient_properties = D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES {
+                    startPoint: D2D_POINT_2F { x: 0.0, y: 0.0 },
+                    endPoint: D2D_POINT_2F { x: get_width(self.window_rect) as f32, y: get_height(self.window_rect) as f32 },
+                };
+
+                let gradient_brush = unsafe {
+                    render_target.CreateLinearGradientBrush(&gradient_properties, Some(&self.border_brush), Some(&gradient_stop_collection))?
+                };
+
+                Ok(gradient_brush.into())
+            }
         }
     }
 
@@ -255,8 +338,6 @@ impl WindowBorder {
             render_target.Resize(&self.hwnd_render_target_properties.pixelSize as *const _);
             render_target.SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
 
-            let brush = render_target.CreateSolidColorBrush(&self.current_color, Some(&self.border_brush))?;
-            
             self.rounded_rect.rect = D2D_RECT_F { 
                 left: (self.border_size/2 - self.border_offset) as f32, 
                 top: (self.border_size/2 - self.border_offset) as f32, 
@@ -264,6 +345,7 @@ impl WindowBorder {
                 bottom: (self.window_rect.bottom - self.window_rect.top - self.border_size/2 + self.border_offset) as f32
             };
 
+            let brush = self.create_brush(&render_target).unwrap();
 
             render_target.BeginDraw();
             render_target.Clear(None);

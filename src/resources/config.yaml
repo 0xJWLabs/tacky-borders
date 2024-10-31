@@ -1,20 +1,36 @@
+# Border configuration settings for the application
+
 # border_size adjusts the thickness of the borders in pixels
+# Default: 2
+# Example: Setting to 5 would create thicker borders around windows
 border_size: 2
-# border_offset adjusts how much to shrink or expand the border by in pixels to better fit the size of the window
+
+# border_offset adjusts how much to shrink or expand the border by in pixels
+# Default: -1 (no offset)
+# Example: Setting to -2 would reduce the border size by 2 pixels
+#          Setting to 1 would increase the size by 1 pixel
 border_offset: -1
-# border_radius lets you set your own custom radius for the border in pixels. Leave it at -1 to let the program handle the radius, or set it to anything other than -1 to use as the radius.
+
+# border_radius lets you set a custom radius for the border in pixels.
+# Leave it at -1 to let the program handle the radius automatically.
+# Default: -1
+# Example: Setting to 10 would create rounded corners with a radius of 10 pixels
 border_radius: -1 
 
+# window_rules defines the conditions for applying border settings to specific windows
 window_rules:
-  - match: "Global"
-    active_color: "gradient(#89b4fa, #CBA6F7, 0%, 0%, 100%, 0%)"
-    inactive_color: "#1E1E2E"
-  - match: "Class"
-    contains: "Windows.UI.Core.CoreWindow"
-    enabled: false
-  - match: "Title"
-    contains: "Flow.Launcher"
-    enabled: false
-  - match: "Title"
-    contains: "Zebar"
-    enabled: false
+  - match: "Global"  # Applies to all windows
+    active_color: "gradient(#89b4fa, #CBA6F7, 0%, 0%, 100%, 0%)"  # Gradient for active window border
+    inactive_color: "#1E1E2E"  # Color for inactive window border
+  
+  - match: "Class"  # Targets windows of a specific class
+    contains: "Windows.UI.Core.CoreWindow"  # Matches class name
+    enabled: false  # Rule is disabled
+
+  - match: "Title"  # Targets windows with specific titles
+    contains: "Flow.Launcher"  # Matches window title
+    enabled: false  # Rule is disabled
+
+  - match: "Title"  # Another title match
+    contains: "Zebar"  # Matches window title
+    enabled: false  # Rule is disabled

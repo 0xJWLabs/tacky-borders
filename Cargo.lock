@@ -1190,6 +1190,7 @@ name = "tacky-borders"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "dirs",
  "lazy_static",
  "open",
  "serde",

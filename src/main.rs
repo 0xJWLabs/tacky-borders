@@ -39,7 +39,6 @@ const DWMWA_COLOR_NONE: u32 = 0xFFFFFFFE;
 
 fn main() {
     let _ = register_window_class();
-    apply_colors();
     Logger::log("debug", "Window class in registered!");
     let _ = enum_windows();
 

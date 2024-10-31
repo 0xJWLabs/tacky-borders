@@ -260,7 +260,6 @@ pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()>
         }
 
         let config = config_mutex.lock().unwrap();
-        let (active_color, inactive_color) = get_colors_for_window(window_sent.0);
         //println!("time it takes to get colors: {:?}", before.elapsed());
 
         let mut border = window_border::WindowBorder {

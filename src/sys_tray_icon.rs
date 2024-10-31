@@ -1,16 +1,13 @@
-use tray_icon::{
-    menu::Menu, menu::MenuEvent, menu::MenuId, menu::MenuItem, Icon, TrayIcon, TrayIconBuilder,
-    TrayIconEvent,
-};
-use windows::Win32::Foundation::LPARAM;
 use windows::Win32::Foundation::WPARAM;
-use windows::Win32::UI::WindowsAndMessaging::PostThreadMessageW;
+use windows::Win32::Foundation::LPARAM;
 use windows::Win32::UI::WindowsAndMessaging::WM_CLOSE;
+use windows::Win32::UI::WindowsAndMessaging::PostThreadMessageW;
+use tray_icon::{TrayIconBuilder, menu::Menu, menu::MenuEvent, menu::MenuItem, Icon, TrayIcon};
 
 use crate::border_config::Config;
-use crate::logger::Logger;
 use crate::restart_borders;
-use crate::utils::get_file_path;
+use crate::logger::Logger;
+use crate::utils::*;
 
 pub fn create_tray_icon(main_thread: u32) -> Result<TrayIcon, tray_icon::Error> {
     let icon = match Icon::from_resource(1, Some((64, 64))) {
@@ -36,7 +33,9 @@ pub fn create_tray_icon(main_thread: u32) -> Result<TrayIcon, tray_icon::Error> 
     MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
         match event.id.0.as_str() {
             "0" => {
-                let _ = open::that(get_file_path("config.yaml"));
+                let config_dir = get_config();
+                let config_path = config_dir.join("config.yaml");
+                let _ = open::that(config_path);
             }
             "1" => {
                 Config::reload();

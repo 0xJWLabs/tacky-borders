@@ -1,22 +1,44 @@
-use std::{io::Read, sync::Mutex, str::FromStr};
+use serde::Deserializer;
+use serde::Deserialize;
+use serde::Serialize;
+use dirs::home_dir;
+use std::fs;
+use std::fs::DirBuilder;
+use std::str::FromStr;
+use std::sync::{LazyLock, Mutex};
 
-use crate::{logger::Logger, utils::get_file};
-use lazy_static::lazy_static;
-use serde::{Deserialize, Serialize, Deserializer};
+use crate::utils::*;
 
 const DEFAULT_CONFIG: &str = include_str!("resources/config.yaml");
 
-lazy_static! {
-    static ref CONFIG: Mutex<Config> = Mutex::new(Config::new());
+pub static CONFIG: LazyLock<Mutex<Config>> = LazyLock::new(|| Mutex::new(Config::new()));
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+// Maybe support Process later.
+// Getting the process name seems annoying.
+pub enum RuleMatch {
+  Global,
+  Title,
+  Class,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct WindowRule {
+  #[serde(rename = "match")]
+  pub rule_match: RuleMatch,
+  pub contains: Option<String>,
+  pub active_color: Option<String>,
+  pub inactive_color: Option<String>,
+  pub enabled: Option<bool>
+}
+
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
     pub border_size: i32,
     pub border_offset: i32,
     pub border_radius: BorderRadius,
-    pub active_color: String,
-    pub inactive_color: String,
+    pub window_rules: Vec<WindowRule>,
 }
 
 #[derive(Debug, Clone)]
@@ -41,25 +63,20 @@ impl<'de> Deserialize<'de> for BorderRadius {
 
 impl Config {
     fn new() -> Self {
-        let mut file = get_file("config.yaml", DEFAULT_CONFIG);
-        let mut contents = String::new();
-        match file.read_to_string(&mut contents) {
-            Ok(..) => {}
-            Err(err) => {
-                Logger::log("error", "Failed to read config file");
-                Logger::log("debug",&format!("{:?}", err));
-                std::process::exit(1);
-            }
+        let home_dir = home_dir().expect("can't find home path");
+        let config_dir = get_config();
+        let config_path = config_dir.join("config.yaml");
+
+        if !fs::exists(&config_path).expect("Couldn't check if config path exists") {
+            let _ = std::fs::write(&config_path, &DEFAULT_CONFIG.as_bytes()).expect("could not generate default config.yaml");
         }
 
-        let config: Config = match serde_yaml::from_str(contents.as_str()) {
-            Ok(config) => config,
-            Err(err) => {
-                Logger::log("error", "Failed to parse config file");
-                Logger::log("debug", &format!("{:?}", err));
-                std::process::exit(1);
-            }
-        };
+        let contents = match fs::read_to_string(&config_path) {
+            Ok(contents) => contents,
+            Err(err) => panic!("could not read config.yaml in: {}", config_path.display()),
+        }; 
+
+        let config: Config = serde_yaml::from_str(&contents).expect("error reading config.yaml");
 
         config
     }

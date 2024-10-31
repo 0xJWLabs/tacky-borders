@@ -1,29 +1,30 @@
+use dirs::home_dir;
 use std::{
-    fs::{self, File, OpenOptions},
+    fs::{self, DirBuilder, File, OpenOptions},
     io::Write,
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use windows::{
-    Win32::Foundation::*, Win32::Graphics::Direct2D::Common::*, Win32::Graphics::Dwm::*,
-    Win32::UI::WindowsAndMessaging::*,
+    core::Error, Win32::Foundation::*, Win32::Graphics::Direct2D::Common::*,
+    Win32::Graphics::Dwm::*, Win32::UI::WindowsAndMessaging::*,
 };
 
 use crate::*;
 
-use crate::border_config::Config;
+use crate::border_config::*;
 use crate::logger::Logger;
 
 #[derive(Debug, Clone)]
-pub enum ColorBrush {
+pub enum Color {
     Solid(D2D1_COLOR_F),
-    Gradient([D2D1_GRADIENT_STOP; 2]),
+    Gradient(Gradient),
 }
 
 // Implement Default for your own MyBrush enum
-impl Default for ColorBrush {
+impl Default for Color {
     fn default() -> Self {
-        ColorBrush::Solid(D2D1_COLOR_F {
+        Color::Solid(D2D1_COLOR_F {
             r: 0.0,
             g: 0.0,
             b: 0.0,
@@ -32,6 +33,36 @@ impl Default for ColorBrush {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Gradient {
+    pub coordinates: Option<[f32; 4]>,
+    pub direction: Option<String>, // Direction as a tuple (x, y) or start/end points
+    pub gradient_stops: [D2D1_GRADIENT_STOP; 2], // Array of gradient stops
+}
+
+// Files
+pub fn get_config() -> PathBuf {
+    let home_dir = home_dir().expect("can't find home path");
+    let config_dir = home_dir.join(".config").join("tacky-borders");
+    let fallback_dir = home_dir.join(".tacky-borders");
+
+    let dir_path = if fs::exists(&config_dir).expect("Couldn't check if config dir exists") {
+        config_dir
+    } else if fs::exists(&fallback_dir).expect("Couldn't check if config dir exists") {
+        fallback_dir
+    } else {
+        DirBuilder::new()
+            .recursive(true)
+            .create(&config_dir)
+            .expect("could not create config directory!");
+
+        config_dir
+    };
+
+    dir_path
+}
+
+// Windows
 pub fn get_width(rect: RECT) -> i32 {
     return rect.right - rect.left;
 }
@@ -40,14 +71,75 @@ pub fn get_height(rect: RECT) -> i32 {
     return rect.bottom - rect.top;
 }
 
+pub fn is_window_visible(hwnd: HWND) -> bool {
+    return unsafe { IsWindowVisible(hwnd).as_bool() };
+}
+
 pub fn has_filtered_style(hwnd: HWND) -> bool {
     let style = unsafe { GetWindowLongW(hwnd, GWL_STYLE) as u32 };
     let ex_style = unsafe { GetWindowLongW(hwnd, GWL_EXSTYLE) as u32 };
 
-    if style & WS_CHILD.0 != 0 || ex_style & WS_EX_TOOLWINDOW.0 != 0 {
+    if style & WS_CHILD.0 != 0
+        || ex_style & WS_EX_TOOLWINDOW.0 != 0
+        || ex_style & WS_EX_NOACTIVATE.0 != 0
+    {
         return true;
     }
+
     return false;
+}
+
+pub fn has_filtered_class_or_title(hwnd: HWND) -> bool {
+    let mut class_arr: [u16; 256] = [0; 256];
+    let mut title_arr: [u16; 256] = [0; 256];
+    if unsafe { GetWindowTextW(hwnd, &mut title_arr) } == 0 {
+        println!("error getting window title!");
+        return true;
+    }
+    if unsafe { GetClassNameW(hwnd, &mut class_arr) } == 0 {
+        println!("error getting class name!");
+        return true;
+    }
+
+    let class_binding = String::from_utf16_lossy(&class_arr);
+    let class_name = class_binding.split_once("\0").unwrap().0;
+
+    let title_binding = String::from_utf16_lossy(&title_arr);
+    let title = title_binding.split_once("\0").unwrap().0;
+
+    let config_mutex = &*CONFIG;
+    let config = config_mutex.lock().unwrap();
+
+    let mut condition = false;
+
+    for rule in config.window_rules.iter() {
+        match rule.rule_match {
+            RuleMatch::Global => {} 
+            RuleMatch::Title => {
+                if let Some(contains_str) = &rule.contains {
+                    if title.to_lowercase().contains(&contains_str.to_lowercase()) && rule.enabled == Some(false) {
+                        condition = true; 
+                        break;
+                    }
+                } else {
+                    Logger::log("error", "Expected `contains` on `Match=\"Title\"`");
+                }
+            }
+
+            RuleMatch::Class => {
+                if let Some(contains_str) = &rule.contains {
+                    if class_name.to_lowercase().contains(&contains_str.to_lowercase()) && rule.enabled == Some(false) {
+                        condition = true; 
+                        break;
+                    }
+                } else {
+                    Logger::log("error", "Expected `contains` on `Match=\"Class\"`");
+                }
+            }
+        }
+    }
+
+    return condition; 
 }
 
 pub fn is_cloaked(hwnd: HWND) -> bool {
@@ -61,89 +153,78 @@ pub fn is_cloaked(hwnd: HWND) -> bool {
         )
     };
     if result.is_err() {
-        Logger::log("error", "Error getting is_cloacked");
+        println!("error getting is_cloaked");
         return true;
     }
     return is_cloaked.as_bool();
 }
 
-pub fn get_file_path(filename: &str) -> String {
-    let user_profile_path = match std::env::var("USERPROFILE") {
-        Ok(user_profile_path) => user_profile_path,
-        Err(err) => {
-            Logger::log("error", "Failed to find USERPROFILE environment variable");
-            Logger::log("debug", &format!("{:?}", err));
-            std::process::exit(1);
-        }
-    };
+pub fn get_colors_for_window(_hwnd: HWND) -> (Color, Color) {
+    let mut class_arr: [u16; 256] = [0; 256];
+    let mut title_arr: [u16; 256] = [0; 256];
+    if unsafe { GetWindowTextW(_hwnd, &mut title_arr) } == 0 {
+        println!("error getting window title!");
+    }
+    if unsafe { GetClassNameW(_hwnd, &mut class_arr) } == 0 {
+        println!("error getting class name!");
+    }
 
-    // Paths for .config and fallback
-    let config_path = format!("{}\\.config\\tacky-borders", user_profile_path);
-    let fallback_path = format!("{}\\.tacky-borders", user_profile_path);
+    let class_binding = String::from_utf16_lossy(&class_arr);
+    let class_name = class_binding.split_once("\0").unwrap().0;
 
-    // Determine if either path exists, prioritize .config path
-    let dirpath = if Path::new(&config_path).exists() {
-        &config_path
-    } else if Path::new(&fallback_path).exists() {
-        &fallback_path
-    } else {
-        // Neither exists; use .config path by default and create it
-        if let Err(err) = fs::create_dir(&config_path) {
-            Logger::log(
-                "error",
-                &format!("Failed to create directory: {}", &config_path),
-            );
-            Logger::log("debug", &format!("{:?}", err));
-            std::process::exit(1);
-        }
-        &config_path
-    };
+    let title_binding = String::from_utf16_lossy(&title_arr);
+    let title = title_binding.split_once("\0").unwrap().0;
 
-    let filepath = format!("{}\\{}", dirpath, filename);
+    println!("{}", title);
 
-    filepath
-}
+    let config_mutex = &*CONFIG;
+    let config = config_mutex.lock().unwrap();
 
-pub fn get_file(filename: &str, default_content: &str) -> std::fs::File {
-    let filepath = get_file_path(filename);
+    let mut color_active = Color::Solid(D2D1_COLOR_F { r: 1.0, g: 1.0, b: 1.0, a: 1.0 });
+    let mut color_inactive = Color::Solid(D2D1_COLOR_F { r: 1.0, g: 1.0, b: 1.0, a: 1.0 });
 
-    if !Path::new(&filepath).exists() {
-        let mut file = match File::create(&filepath) {
-            Ok(file) => file,
-            Err(err) => {
-                Logger::log("error", &format!("Failed to create file: {}", &filepath));
-                Logger::log("debug", &format!("{:?}", err));
-                std::process::exit(1);
+    for rule in config.window_rules.iter() {
+        match rule.rule_match {
+            RuleMatch::Global => {
+                color_active = create_border_color(rule.active_color.as_deref().unwrap_or("accent"));
+                color_inactive = create_border_color(rule.inactive_color.as_deref().unwrap_or("accent"));
             }
-        };
 
-        if let Err(err) = file.write_all(default_content.as_bytes()) {
-            Logger::log("error", &format!("Failed to write to file: {}", &filepath));
-            Logger::log("debug", &format!("{:?}", err));
-            std::process::exit(1);
+            RuleMatch::Title => {
+                if let Some(contains_str) = &rule.contains {
+                    if title.to_lowercase().contains(&contains_str.to_lowercase()) {
+                        color_active = create_border_color(rule.active_color.as_deref().unwrap_or("accent"));
+                        color_inactive = create_border_color(rule.inactive_color.as_deref().unwrap_or("accent"));
+                        break;
+                    }
+                } else {
+                    Logger::log("error", "Expected `contains` on `Match=\"Title\"`");
+                }
+            }
+
+            RuleMatch::Class => {
+                if let Some(contains_str) = &rule.contains {
+                    if class_name.to_lowercase().contains(&contains_str.to_lowercase()) {
+                        color_active = create_border_color(rule.active_color.as_deref().unwrap_or("accent"));
+                        color_inactive = create_border_color(rule.inactive_color.as_deref().unwrap_or("accent"));
+                        break;
+                    }
+                } else {
+                    Logger::log("error", "Expected `contains` on `Match=\"Class\"`");
+                }
+            }
         }
     }
 
-    let file = match OpenOptions::new()
-        .read(true)
-        .write(true)
-        .append(true)
-        .open(&filepath)
-    {
-        Ok(file) => file,
-        Err(err) => {
-            Logger::log("error", &format!("Failed to open file: {}", &filepath));
-            Logger::log("debug", &format!("{:?}", err));
-            std::process::exit(1);
-        }
-    };
-
-    file
+    (color_active, color_inactive)
 }
 
 pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()> {
-    let borders_mutex = unsafe { &*BORDERS };
+    let borders_mutex = &*BORDERS;
+    let config_mutex = &*CONFIG;
     let window = SendHWND(tracking_window);
+
+    let (active_color, inactive_color) = get_colors_for_window(tracking_window);
 
     let thread = std::thread::spawn(move || {
         let window_sent = window;
@@ -155,78 +236,7 @@ pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()>
             return;
         }
 
-        //let before = std::time::Instant::now();
-        let active_color: ColorBrush;
-        let inactive_color: ColorBrush;
-        let config = Config::get();
-
-        // Get the active color based on the configuration
-        if config.active_color == "accent" {
-            let mut pcr_colorization: u32 = 0;
-            let mut pf_opaqueblend: BOOL = FALSE;
-            let result =
-                unsafe { DwmGetColorizationColor(&mut pcr_colorization, &mut pf_opaqueblend) };
-            if result.is_err() {
-                Logger::log("error", "Error getting windows accent color!");
-            }
-            let red = ((pcr_colorization & 0x00FF0000) >> 16) as f32 / 255.0;
-            let green = ((pcr_colorization & 0x0000FF00) >> 8) as f32 / 255.0;
-            let blue = ((pcr_colorization & 0x000000FF) >> 0) as f32 / 255.0;
-            active_color = ColorBrush::Solid(D2D1_COLOR_F {
-                r: red,
-                g: green,
-                b: blue,
-                a: 1.0,
-            });
-        } else if (config.active_color.starts_with("rgb("))
-            || (config.active_color.starts_with("rgba("))
-        {
-            active_color = ColorBrush::Solid(get_color_from_rgba(&config.active_color));
-        } else if (config.active_color.starts_with("oklch(")) {
-            active_color = ColorBrush::Solid(get_color_from_oklch(&config.active_color));
-        } else if (config.active_color.starts_with("hsl(")) {
-            active_color = ColorBrush::Solid(get_color_from_hsl(&config.active_color));
-        } else if (config.active_color.starts_with("gradient(")) {
-            let color = get_gradient_stops_from_string(&config.active_color);
-            active_color = ColorBrush::Gradient(color);
-        } else {
-            active_color = ColorBrush::Solid(get_color_from_hex(&config.active_color));
-        }
-
-        // Get the inactive color based on the configuration
-        if config.inactive_color == "accent" {
-            let mut pcr_colorization: u32 = 0;
-            let mut pf_opaqueblend: BOOL = FALSE;
-            let result =
-                unsafe { DwmGetColorizationColor(&mut pcr_colorization, &mut pf_opaqueblend) };
-            if result.is_err() {
-                Logger::log("error", "Error getting windows accent color!");
-            }
-            let red = ((pcr_colorization & 0x00FF0000) >> 16) as f32 / 255.0;
-            let green = ((pcr_colorization & 0x0000FF00) >> 8) as f32 / 255.0;
-            let blue = ((pcr_colorization & 0x000000FF) >> 0) as f32 / 255.0;
-            let avg = (red + green + blue) / 3.0;
-            inactive_color = ColorBrush::Solid(D2D1_COLOR_F {
-                r: avg / 1.5 + red / 10.0,
-                g: avg / 1.5 + green / 10.0,
-                b: avg / 1.5 + blue / 10.0,
-                a: 1.0,
-            });
-        } else if (config.inactive_color.starts_with("rgb("))
-            || (config.inactive_color.starts_with("rgba("))
-        {
-            inactive_color = ColorBrush::Solid(get_color_from_rgba(&config.inactive_color));
-        } else if (config.inactive_color.starts_with("oklch(")) {
-            inactive_color = ColorBrush::Solid(get_color_from_oklch(&config.inactive_color));
-        } else if (config.inactive_color.starts_with("hsl(")) {
-            inactive_color = ColorBrush::Solid(get_color_from_hsl(&config.inactive_color));
-        } else if (config.inactive_color.starts_with("gradient(")) {
-            let color = get_gradient_stops_from_string(&config.inactive_color);
-            inactive_color = ColorBrush::Gradient(color);
-        } else {
-            inactive_color = ColorBrush::Solid(get_color_from_hex(&config.inactive_color));
-        }
-
+        let config = config_mutex.lock().unwrap();
         //println!("time it takes to get colors: {:?}", before.elapsed());
 
         let mut border = window_border::WindowBorder {
@@ -253,21 +263,21 @@ pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()>
         }
 
         let hinstance: HINSTANCE = unsafe { std::mem::transmute(&__ImageBase) };
-        border.create_border_window(hinstance);
+        let _ = border.create_border_window(hinstance);
         borders_hashmap.insert(window_isize, border.border_window.0 as isize);
         drop(borders_hashmap);
 
-        border.init(hinstance);
+        let _ = border.init(hinstance);
     });
 
     return Ok(());
 }
 
 pub fn destroy_border_for_window(tracking_window: HWND) -> Result<()> {
-    let mutex = unsafe { &*BORDERS };
+    let mutex = &*BORDERS;
     let window = SendHWND(tracking_window);
 
-    let thread = std::thread::spawn(move || {
+    let _ = std::thread::spawn(move || {
         let window_sent = window;
         let mut borders_hashmap = mutex.lock().unwrap();
         let window_isize = window_sent.0 .0 as isize;
@@ -276,8 +286,6 @@ pub fn destroy_border_for_window(tracking_window: HWND) -> Result<()> {
         if border_option.is_some() {
             let border_window: HWND = HWND((*border_option.unwrap()) as *mut _);
             unsafe { SendMessageW(border_window, WM_DESTROY, WPARAM(0), LPARAM(0)) };
-            // TODO figure out why DestroyWindow doesn't work
-            //unsafe { DestroyWindow(border_window) };
             borders_hashmap.remove(&window_isize);
         }
 
@@ -288,7 +296,7 @@ pub fn destroy_border_for_window(tracking_window: HWND) -> Result<()> {
 }
 
 pub fn get_border_from_window(hwnd: HWND) -> Option<HWND> {
-    let mutex = unsafe { &*BORDERS };
+    let mutex = &*BORDERS;
     let borders = mutex.lock().unwrap();
     let hwnd_isize = hwnd.0 as isize;
     let border_option = borders.get(&hwnd_isize);
@@ -303,35 +311,34 @@ pub fn get_border_from_window(hwnd: HWND) -> Option<HWND> {
     }
 }
 
-// Return true if the border exists in the border hashmap. Otherwise, return false.
-// Specify a delay to prevent the border from appearing while a window is in its opening animation.
+// Return true if the border exists in the border hashmap. Otherwise, create a new border and
+// return false.
+// We can also specify a delay to prevent the border from appearing while a window is in its
+// opening animation.
 pub fn show_border_for_window(hwnd: HWND, delay: u64) -> bool {
-    let mutex = unsafe { &*BORDERS };
-    let borders = mutex.lock().unwrap();
-    let hwnd_isize = hwnd.0 as isize;
-    let border_option = borders.get(&hwnd_isize);
-
-    if border_option.is_some() {
-        let border_window: HWND = HWND(*border_option.unwrap() as _);
-        drop(borders);
-        unsafe { ShowWindow(border_window, SW_SHOWNA) };
+    let border_window = get_border_from_window(hwnd);
+    if border_window.is_some() {
+        unsafe {
+            let _ = ShowWindow(border_window.unwrap(), SW_SHOWNA);
+        }
         return true;
     } else {
-        drop(borders);
-
-        if is_cloaked(hwnd) || has_filtered_style(hwnd) {
+        if is_cloaked(hwnd)
+            || has_filtered_style(hwnd)
+            || has_filtered_class_or_title(hwnd)
+        {
             return false;
         }
-        create_border_for_window(hwnd, delay);
+        let _ = create_border_for_window(hwnd, delay);
         return false;
     }
 }
 
 pub fn hide_border_for_window(hwnd: HWND) -> bool {
-    let mutex = unsafe { &*BORDERS };
+    let mutex = &*BORDERS;
     let window = SendHWND(hwnd);
 
-    let thread = std::thread::spawn(move || {
+    let _ = std::thread::spawn(move || {
         let window_sent = window;
         let borders = mutex.lock().unwrap();
         let window_isize = window_sent.0 .0 as isize;
@@ -340,7 +347,9 @@ pub fn hide_border_for_window(hwnd: HWND) -> bool {
         if border_option.is_some() {
             let border_window: HWND = HWND(*border_option.unwrap() as _);
             drop(borders);
-            unsafe { ShowWindow(border_window, SW_HIDE) };
+            unsafe {
+                let _ = ShowWindow(border_window, SW_HIDE);
+            }
         } else {
             drop(borders);
         }
@@ -348,51 +357,40 @@ pub fn hide_border_for_window(hwnd: HWND) -> bool {
     return true;
 }
 
-pub fn get_intermediate_color(hex1: &str, hex2: &str) -> D2D1_COLOR_F {
-    let color1 = get_color_from_hex(hex1);
-    let color2 = get_color_from_hex(hex2);
-
-    // Calculate intermediate color by averaging the components
-    D2D1_COLOR_F {
-        r: (color1.r + color2.r) / 2.0,
-        g: (color1.g + color2.g) / 2.0,
-        b: (color1.b + color2.b) / 2.0,
-        a: (color1.a + color2.a) / 2.0,
-    }
-}
-
-pub fn get_gradient_stops_from_string(gradient_str: &str) -> [D2D1_GRADIENT_STOP; 2] {
-    if !gradient_str.starts_with("gradient(") || !gradient_str.ends_with(')') {
-        Logger::log(
-            "error",
-            format!("Invalid gradient format: {}", gradient_str).as_str()
-        );
-    }
-
-    let color_str = &gradient_str[9..gradient_str.len() - 1];
-
-    let colors: Vec<&str> = color_str.split(',').collect();
-    if colors.len() != 2 {
-        Logger::log(
-            "error",
-            format!("Gradient must have exactly two colors").as_str()
-        );
-    }
-
-    let color1 = colors[0].trim();
-    let color2 = colors[1].trim();
-
-    let stops = [
-        D2D1_GRADIENT_STOP {
-            position: 0.0,
-            color: get_color_from_hex(color1),
-        },
-        D2D1_GRADIENT_STOP {
-            position: 1.0,
-            color: get_color_from_hex(color2),
+pub fn create_border_color(color: &str) -> Color {
+    if color == "accent" {
+        let mut pcr_colorization: u32 = 0;
+        let mut pf_opaqueblend: BOOL = FALSE;
+        let result = unsafe { DwmGetColorizationColor(&mut pcr_colorization, &mut pf_opaqueblend) };
+        if result.is_err() {
+            Logger::log("error", "Error getting windows accent color!");
+            return Color::Solid(D2D1_COLOR_F {
+                r: 1.0,
+                g: 1.0,
+                b: 1.0,
+                a: 1.0,
+            });
         }
-    ];
-    stops 
+        let red = ((pcr_colorization & 0x00FF0000) >> 16) as f32 / 255.0;
+        let green = ((pcr_colorization & 0x0000FF00) >> 8) as f32 / 255.0;
+        let blue = ((pcr_colorization & 0x000000FF) >> 0) as f32 / 255.0;
+        Color::Solid(D2D1_COLOR_F {
+            r: red,
+            g: green,
+            b: blue,
+            a: 1.0,
+        })
+    } else if (color.starts_with("rgb(")) || (color.starts_with("rgba(")) {
+        Color::Solid(get_color_from_rgba(&color))
+    } else if (color.starts_with("oklch(")) {
+        Color::Solid(get_color_from_oklch(&color))
+    } else if (color.starts_with("hsl(")) {
+        Color::Solid(get_color_from_hsl(&color))
+    } else if (color.starts_with("gradient(")) {
+        Color::Gradient(get_gradient_color_from_string(&color))
+    } else {
+        Color::Solid(get_color_from_hex(&color))
+    }
 }
 
 pub fn get_color_from_hex(hex: &str) -> D2D1_COLOR_F {
@@ -466,7 +464,7 @@ pub fn get_color_from_rgba(rgba: &str) -> D2D1_COLOR_F {
     // Check for correct number of components
     if components.len() == 3 || components.len() == 4 {
         // Parse red, green, and blue values
-        let red: f32 = f32::from_bits(components[0].parse::<u32>().unwrap_or(0))/ 255.0;
+        let red: f32 = f32::from_bits(components[0].parse::<u32>().unwrap_or(0)) / 255.0;
         let green: f32 = f32::from_bits(components[1].parse::<u32>().unwrap_or(0)) / 255.0;
         let blue: f32 = f32::from_bits(components[2].parse::<u32>().unwrap_or(0)) / 255.0;
 
@@ -541,13 +539,6 @@ pub fn get_color_from_oklch(oklch: &str) -> D2D1_COLOR_F {
     }
 }
 
-// Placeholder for the actual OKLCH to RGB conversion function
-fn oklch_to_rgb(lightness: f64, chroma: f64, hue: f64) -> (f64, f64, f64) {
-    // Implement the conversion from OKLCH to RGB here
-    // For now, returning a placeholder RGB value
-    (lightness, chroma, hue) // This is just a placeholder; replace with actual conversion logic
-}
-
 pub fn get_color_from_hsl(hsl: &str) -> D2D1_COLOR_F {
     let hsl = hsl.trim_start_matches("hsl(").trim_end_matches(')');
     let components: Vec<&str> = hsl.split(',').map(|s| s.trim()).collect(); // Split by commas
@@ -604,7 +595,66 @@ pub fn get_color_from_hsl(hsl: &str) -> D2D1_COLOR_F {
     }
 }
 
-// Placeholder for the actual HSL to RGB conversion function
+// Color Functions
+pub fn get_gradient_color_from_string(gradient_str: &str) -> Gradient {
+    if !gradient_str.starts_with("gradient(") || !gradient_str.ends_with(')') {
+        Logger::log(
+            "error",
+            format!("Invalid gradient format: {}", gradient_str).as_str(),
+        );
+    }
+
+    let color_str = &gradient_str[9..gradient_str.len() - 1];
+
+    let colors: Vec<&str> = color_str.split(',').collect();
+    if colors.len() != 2 && colors.len() != 3 && colors.len() != 6 {
+        Logger::log(
+            "error",
+            format!("Gradient must have exactly two colors, x coordinates, and y coordinates")
+                .as_str(),
+        );
+    }
+
+    let color1 = colors[0].trim();
+    let color2 = colors[1].trim();
+
+    let direction = match colors.len() {
+        3 => Some(colors[2].trim().to_string()), // Use index 2 for the third element and wrap in Some
+        2 => Some("to right".to_string()),
+        _ => None,
+    };
+
+    let coordinates = match colors.len() {
+        6 => {
+            let start_x = convert_string_to_decimal(colors[2]).unwrap();
+            let start_y = convert_string_to_decimal(colors[3]).unwrap();
+            let end_x = convert_string_to_decimal(colors[4]).unwrap();
+            let end_y = convert_string_to_decimal(colors[5]).unwrap();
+
+            Some([start_x, start_y, end_x, end_y])
+        }
+        _ => None,
+    };
+
+    let gradients = Gradient {
+        direction: direction,
+        coordinates: coordinates,
+        gradient_stops: [
+            D2D1_GRADIENT_STOP {
+                position: 0.0,
+                color: get_color_from_hex(color1),
+            },
+            D2D1_GRADIENT_STOP {
+                position: 1.0,
+                color: get_color_from_hex(color2),
+            },
+        ],
+    };
+
+    gradients
+}
+
+// Converter
 fn hsl_to_rgb(hue: f64, saturation: f64, lightness: f64) -> (f64, f64, f64) {
     // Implement the conversion from HSL to RGB here
     // For now, returning a placeholder RGB value
@@ -630,4 +680,39 @@ fn hsl_to_rgb(hue: f64, saturation: f64, lightness: f64) -> (f64, f64, f64) {
     let b = (b_prime + m).clamp(0.0, 1.0);
 
     (r, g, b)
+}
+
+// Placeholder for the actual OKLCH to RGB conversion function
+fn oklch_to_rgb(lightness: f64, chroma: f64, hue: f64) -> (f64, f64, f64) {
+    // Implement the conversion from OKLCH to RGB here
+    // For now, returning a placeholder RGB value
+    (lightness, chroma, hue) // This is just a placeholder; replace with actual conversion logic
+}
+
+fn convert_string_to_decimal(input: &str) -> Result<f32> {
+    let trimmed = input.trim();
+
+    // Check if the string represents a percentage
+    if let Some(percent_str) = trimmed.strip_suffix("%") {
+        let percent: f32 = percent_str
+            .parse::<f32>()
+            .map_err(|_| Error::new(HRESULT(0), "Invalid percentage"))?;
+        if percent < 0.0 || percent > 100.0 {
+            Logger::log("error", "Percentage out of range (0- 100)");
+        }
+
+        Ok(percent / 100.0)
+    } else {
+        // Assume it's a decimal string
+        let value: f32 = trimmed
+            .parse::<f32>()
+            .map_err(|_| Error::new(HRESULT(0), "Invalid decimal"))?;
+
+        // Ensure the decimal value is between 0 and 1
+        if value < 0.0 || value > 1.0 {
+            Logger::log("error", "Percentage out of range (0- 100)");
+        }
+
+        Ok(value) // Return the decimal value as is
+    }
 }

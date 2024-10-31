@@ -28,8 +28,7 @@ mod sys_tray_icon;
 mod utils;
 mod window_border;
 
-pub static mut BORDERS: LazyLock<Mutex<HashMap<isize, isize>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+pub static BORDERS: LazyLock<Mutex<HashMap<isize, isize>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 // This shit supposedly unsafe af but it works so idgaf.
 pub struct SendHWND(HWND);
@@ -39,9 +38,9 @@ unsafe impl Sync for SendHWND {}
 const DWMWA_COLOR_NONE: u32 = 0xFFFFFFFE;
 
 fn main() {
-    register_window_class();
+    let _ = register_window_class();
     Logger::log("debug", "Window class in registered!");
-    enum_windows();
+    let _ = enum_windows();
     apply_colors();
 
     let main_thread = unsafe { GetCurrentThreadId() };
@@ -80,7 +79,7 @@ pub fn register_window_class() -> Result<()> {
         let window_class = w!("tacky-border");
         let hinstance: HINSTANCE = std::mem::transmute(&__ImageBase);
 
-        let mut wcex = WNDCLASSEXW {
+        let wcex = WNDCLASSEXW {
             cbSize: size_of::<WNDCLASSEXW>() as u32,
             lpfnWndProc: Some(window_border::WindowBorder::s_wnd_proc),
             hInstance: hinstance,
@@ -89,13 +88,10 @@ pub fn register_window_class() -> Result<()> {
             ..Default::default()
         };
         let result = RegisterClassExW(&wcex);
-
+            
         if result == 0 {
             let last_error = GetLastError();
-            Logger::log(
-                "error",
-                format!("RegisterClassExW(&wcex): {:?}", last_error).as_str(),
-            );
+            Logger::log("error", format!("RegisterClassExW(&wcex): {:?}", last_error).as_str());
         }
     }
 
@@ -116,25 +112,19 @@ pub fn set_event_hook() -> HWINEVENTHOOK {
     }
 }
 
-pub fn enum_windows() {
-    let mut windows: Vec<HWND> = Vec::new();
+pub fn enum_windows() -> Result<()> {
     unsafe {
-        EnumWindows(
+        let _ = EnumWindows(
             Some(enum_windows_callback),
-            LPARAM(&mut windows as *mut _ as isize),
+            LPARAM::default(),
         );
     }
-
     Logger::log("debug", "Windows have been enumerated");
-    Logger::log("debug", format!("Windows: {:?}", windows).as_str());
-
-    for hwnd in windows {
-        create_border_for_window(hwnd, 0);
-    }
+    return Ok(());
 }
 
 pub fn restart_borders() {
-    let mutex = unsafe { &*BORDERS };
+    let mutex = &*BORDERS;
     let mut borders = mutex.lock().unwrap();
     for value in borders.values() {
         let border_window = HWND(*value as *mut _);
@@ -142,7 +132,7 @@ pub fn restart_borders() {
     }
     let _ = borders.drain();
     drop(borders);
-    enum_windows();
+    let _ = enum_windows();
 }
 
 fn apply_colors() {
@@ -166,14 +156,12 @@ fn apply_colors() {
     }
 }
 
-unsafe extern "system" fn enum_windows_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
-    if IsWindowVisible(hwnd).as_bool() {
-        if has_filtered_style(hwnd) || is_cloaked(hwnd) {
-            return TRUE;
-        }
-
-        let visible_windows: &mut Vec<HWND> = std::mem::transmute(lparam.0);
-        visible_windows.push(hwnd);
+unsafe extern "system" fn enum_windows_callback(_hwnd: HWND, _lparam: LPARAM) -> BOOL {
+    // Returning FALSE will exit the EnumWindows loop so we must return TRUE here
+    if !is_window_visible(_hwnd) || is_cloaked(_hwnd) || has_filtered_style(_hwnd) || has_filtered_class_or_title(_hwnd) {
+        return TRUE;
     }
-    TRUE
+
+    let _ = create_border_for_window(_hwnd, 0);
+    return TRUE; 
 }

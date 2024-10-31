@@ -114,11 +114,13 @@ pub fn has_filtered_class_or_title(hwnd: HWND) -> bool {
 
     for rule in config.window_rules.iter() {
         match rule.rule_match {
-            RuleMatch::Global => {} 
+            RuleMatch::Global => {}
             RuleMatch::Title => {
                 if let Some(contains_str) = &rule.contains {
-                    if title.to_lowercase().contains(&contains_str.to_lowercase()) && rule.enabled == Some(false) {
-                        condition = true; 
+                    if title.to_lowercase().contains(&contains_str.to_lowercase())
+                        && rule.enabled == Some(false)
+                    {
+                        condition = true;
                         break;
                     }
                 } else {
@@ -128,8 +130,12 @@ pub fn has_filtered_class_or_title(hwnd: HWND) -> bool {
 
             RuleMatch::Class => {
                 if let Some(contains_str) = &rule.contains {
-                    if class_name.to_lowercase().contains(&contains_str.to_lowercase()) && rule.enabled == Some(false) {
-                        condition = true; 
+                    if class_name
+                        .to_lowercase()
+                        .contains(&contains_str.to_lowercase())
+                        && rule.enabled == Some(false)
+                    {
+                        condition = true;
                         break;
                     }
                 } else {
@@ -139,7 +145,7 @@ pub fn has_filtered_class_or_title(hwnd: HWND) -> bool {
         }
     }
 
-    return condition; 
+    return condition;
 }
 
 pub fn is_cloaked(hwnd: HWND) -> bool {
@@ -175,26 +181,38 @@ pub fn get_colors_for_window(_hwnd: HWND) -> (Color, Color) {
     let title_binding = String::from_utf16_lossy(&title_arr);
     let title = title_binding.split_once("\0").unwrap().0;
 
-    println!("{}", title);
-
     let config_mutex = &*CONFIG;
     let config = config_mutex.lock().unwrap();
 
-    let mut color_active = Color::Solid(D2D1_COLOR_F { r: 1.0, g: 1.0, b: 1.0, a: 1.0 });
-    let mut color_inactive = Color::Solid(D2D1_COLOR_F { r: 1.0, g: 1.0, b: 1.0, a: 1.0 });
+    let mut color_active = Color::Solid(D2D1_COLOR_F {
+        r: 1.0,
+        g: 1.0,
+        b: 1.0,
+        a: 1.0,
+    });
+    let mut color_inactive = Color::Solid(D2D1_COLOR_F {
+        r: 1.0,
+        g: 1.0,
+        b: 1.0,
+        a: 1.0,
+    });
 
     for rule in config.window_rules.iter() {
         match rule.rule_match {
             RuleMatch::Global => {
-                color_active = create_border_color(rule.active_color.as_deref().unwrap_or("accent"));
-                color_inactive = create_border_color(rule.inactive_color.as_deref().unwrap_or("accent"));
+                color_active =
+                    create_border_color(rule.active_color.as_deref().unwrap_or("accent"));
+                color_inactive =
+                    create_border_color(rule.inactive_color.as_deref().unwrap_or("accent"));
             }
 
             RuleMatch::Title => {
                 if let Some(contains_str) = &rule.contains {
                     if title.to_lowercase().contains(&contains_str.to_lowercase()) {
-                        color_active = create_border_color(rule.active_color.as_deref().unwrap_or("accent"));
-                        color_inactive = create_border_color(rule.inactive_color.as_deref().unwrap_or("accent"));
+                        color_active =
+                            create_border_color(rule.active_color.as_deref().unwrap_or("accent"));
+                        color_inactive =
+                            create_border_color(rule.inactive_color.as_deref().unwrap_or("accent"));
                         break;
                     }
                 } else {
@@ -204,9 +222,14 @@ pub fn get_colors_for_window(_hwnd: HWND) -> (Color, Color) {
 
             RuleMatch::Class => {
                 if let Some(contains_str) = &rule.contains {
-                    if class_name.to_lowercase().contains(&contains_str.to_lowercase()) {
-                        color_active = create_border_color(rule.active_color.as_deref().unwrap_or("accent"));
-                        color_inactive = create_border_color(rule.inactive_color.as_deref().unwrap_or("accent"));
+                    if class_name
+                        .to_lowercase()
+                        .contains(&contains_str.to_lowercase())
+                    {
+                        color_active =
+                            create_border_color(rule.active_color.as_deref().unwrap_or("accent"));
+                        color_inactive =
+                            create_border_color(rule.inactive_color.as_deref().unwrap_or("accent"));
                         break;
                     }
                 } else {
@@ -237,6 +260,7 @@ pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()>
         }
 
         let config = config_mutex.lock().unwrap();
+        let (active_color, inactive_color) = get_colors_for_window(window_sent.0);
         //println!("time it takes to get colors: {:?}", before.elapsed());
 
         let mut border = window_border::WindowBorder {
@@ -323,10 +347,7 @@ pub fn show_border_for_window(hwnd: HWND, delay: u64) -> bool {
         }
         return true;
     } else {
-        if is_cloaked(hwnd)
-            || has_filtered_style(hwnd)
-            || has_filtered_class_or_title(hwnd)
-        {
+        if is_cloaked(hwnd) || has_filtered_style(hwnd) || has_filtered_class_or_title(hwnd) {
             return false;
         }
         let _ = create_border_for_window(hwnd, delay);

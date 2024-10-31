@@ -39,9 +39,9 @@ const DWMWA_COLOR_NONE: u32 = 0xFFFFFFFE;
 
 fn main() {
     let _ = register_window_class();
+    apply_colors();
     Logger::log("debug", "Window class in registered!");
     let _ = enum_windows();
-    apply_colors();
 
     let main_thread = unsafe { GetCurrentThreadId() };
     let tray_icon_option = sys_tray_icon::create_tray_icon(main_thread);
@@ -113,10 +113,12 @@ pub fn set_event_hook() -> HWINEVENTHOOK {
 }
 
 pub fn enum_windows() -> Result<()> {
+    let mut windows: Vec<HWND> = Vec::new();
     unsafe {
         let _ = EnumWindows(
             Some(enum_windows_callback),
-            LPARAM::default(),
+            LPARAM(&mut windows as *mut _ as isize),
+            // LPARAM::default(),
         );
     }
     Logger::log("debug", "Windows have been enumerated");
@@ -136,15 +138,15 @@ pub fn restart_borders() {
 }
 
 fn apply_colors() {
-    let mut windows: Vec<HWND> = Vec::new();
+    let mut visible_windows: Vec<HWND> = Vec::new();
     unsafe {
         EnumWindows(
             Some(enum_windows_callback),
-            LPARAM(&mut windows as *mut _ as isize),
+            LPARAM(&mut visible_windows as *mut _ as isize),
         );
     }
 
-    for hwnd in windows {
+    for hwnd in visible_windows {
         unsafe {
             DwmSetWindowAttribute(
                 hwnd,
@@ -156,12 +158,30 @@ fn apply_colors() {
     }
 }
 
+fn create_borders() {
+    let mut windows: Vec<HWND> = Vec::new();
+    unsafe {
+        EnumWindows(
+            Some(enum_windows_callback),
+            LPARAM(&mut windows as *mut _ as isize),
+        );
+    }
+
+    for hwnd in windows {
+        create_border_for_window(hwnd, 0);
+    }
+}
+
 unsafe extern "system" fn enum_windows_callback(_hwnd: HWND, _lparam: LPARAM) -> BOOL {
     // Returning FALSE will exit the EnumWindows loop so we must return TRUE here
     if !is_window_visible(_hwnd) || is_cloaked(_hwnd) || has_filtered_style(_hwnd) || has_filtered_class_or_title(_hwnd) {
         return TRUE;
     }
-
     let _ = create_border_for_window(_hwnd, 0);
-    return TRUE; 
+
+    let visible_windows: &mut Vec<HWND> = std::mem::transmute(_lparam.0);
+    visible_windows.push(_hwnd);
+
+    // First, safely cast the LPARAM's inner value (`isize`) to a raw pointer
+    return TRUE;
 }

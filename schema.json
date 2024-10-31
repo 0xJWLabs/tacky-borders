@@ -1,0 +1,96 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "StaticConfig",
+    "type": "object",
+    "properties": {
+        "border_size": {
+            "type": "integer",
+            "description": "Adjusts the thickness of the borders in pixels.",
+            "default": 2,
+            "examples": [
+                2,
+                5
+            ]
+        },
+        "border_offset": {
+            "type": "integer",
+            "description": "Shrinks or expands the border to better fit the size of the window.",
+            "default": -1,
+            "examples": [
+                -1,
+                -2,
+                1
+            ]
+        },
+        "border_radius": {
+            "type": "integer",
+            "description": "Sets a custom radius for the border in pixels; -1 lets the program handle it automatically.",
+            "default": -1,
+            "examples": [
+                -1,
+                10
+            ]
+        },
+        "window_rules": {
+            "type": "array",
+            "description": "Defines conditions for applying border settings to specific windows.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "match": {
+                        "type": "string",
+                        "description": "Defines the match type for the rule. Possible values: 'Global', 'Class', 'Title'.",
+                        "examples": [
+                            "Global",
+                            "Class",
+                            "Title"
+                        ]
+                    },
+                    "contains": {
+                        "type": "string",
+                        "description": "Specifies the value to match against window class or title.",
+                        "examples": [
+                            "Windows.UI.Core.CoreWindow",
+                            "Flow.Launcher",
+                            "Zebar"
+                        ]
+                    },
+                    "active_color": {
+                        "type": "string",
+                        "description": "Color or gradient applied to active window borders.",
+                        "examples": [
+                            "gradient(#89b4fa, #CBA6F7, 0%, 0%, 100%, 0%)",
+                            "#FF5733"
+                        ]
+                    },
+                    "inactive_color": {
+                        "type": "string",
+                        "description": "Color applied to inactive window borders.",
+                        "examples": [
+                            "#1E1E2E",
+                            "#282C34"
+                        ]
+                    },
+                    "enabled": {
+                        "type": "boolean",
+                        "description": "Indicates if the rule is enabled.",
+                        "default": true,
+                        "examples": [
+                            true,
+                            false
+                        ]
+                    }
+                },
+                "required": [
+                    "match"
+                ]
+            }
+        }
+    },
+    "required": [
+        "border_size",
+        "border_offset",
+        "border_radius",
+        "window_rules"
+    ]
+}

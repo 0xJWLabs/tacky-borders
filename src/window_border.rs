@@ -304,13 +304,14 @@ impl WindowBorder {
             }
             ColorBrush::Gradient(color) => {
                 let gradient_stop_collection: ID2D1GradientStopCollection = unsafe {
-                    render_target.CreateGradientStopCollection(color, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP)?
+                    render_target.CreateGradientStopCollection(color, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_WRAP)?
                 };
 
                 let gradient_properties = D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES {
                     startPoint: D2D_POINT_2F { x: 0.0, y: 0.0 },
                     endPoint: D2D_POINT_2F { x: get_width(self.window_rect) as f32, y: get_height(self.window_rect) as f32 },
                 };
+
 
                 let gradient_brush = unsafe {
                     render_target.CreateLinearGradientBrush(&gradient_properties, Some(&self.border_brush), Some(&gradient_stop_collection))?

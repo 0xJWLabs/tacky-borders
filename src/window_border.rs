@@ -38,6 +38,7 @@ pub struct WindowBorder {
     pub last_render_time_inactive: Option<std::time::Instant>,
     pub use_active_animation: bool,
     pub use_inactive_animation: bool,
+    pub timer_id: Option<i8>,
 }
 
 impl WindowBorder {
@@ -200,24 +201,6 @@ impl WindowBorder {
         Ok(())
     }
 
-    // pub fn create_animation_thread(&self) -> Result<()> {
-    //     if self.use_active_animation || self.use_inactive_animation {
-    //         let window_sent: SendHWND = SendHWND(self.border_window);
-    //         std::thread::spawn(move || loop {
-    //             let window = window_sent.clone().0;
-    //             if is_window_visible(window) {
-    //                 unsafe {
-    //                     let _ = PostMessageW(window, WM_PAINT, WPARAM(0), LPARAM(0));
-    //                 }
-    //             }
-    //
-    //             std::thread::sleep(std::time::Duration::from_millis(200));
-    //         });
-    //     }
-    //
-    //     Ok(())
-    // }
-
     pub fn create_animation_thread(&self) -> Result<()> {
         if self.use_active_animation || self.use_inactive_animation {
             let window_sent: SendHWND = SendHWND(self.border_window);
@@ -226,7 +209,6 @@ impl WindowBorder {
                 if is_window_visible(window) {
                     unsafe {
                         // Post initial WM_PAINT to start the rendering process
-                        let _ = SetTimer(window, 1, 16, None); // ~60 FPS
                         let _ = PostMessageW(window, WM_PAINT, WPARAM(0), LPARAM(0));
                     }
                 }
@@ -429,13 +411,13 @@ impl WindowBorder {
                 .as_secs_f32();
             if self.use_active_animation && is_active {
                 self.last_render_time_active = Some(now);
-                self.active_gradient_angle += 360.0 * elapsed;
+                self.active_gradient_angle += 180.0 * elapsed;
                 if self.active_gradient_angle > 360.0 {
                     self.active_gradient_angle -= 360.0;
                 }
             } else if self.use_inactive_animation && !is_active {
                 self.last_render_time_inactive = Some(now);
-                self.inactive_gradient_angle += 360.0 * elapsed;
+                self.inactive_gradient_angle += 180.0 * elapsed;
                 if self.inactive_gradient_angle > 360.0 {
                     self.inactive_gradient_angle -= 360.0;
                 }
@@ -568,8 +550,10 @@ impl WindowBorder {
             WM_PAINT => {
                 let _ = self.render();
                 let _ = ValidateRect(window, None);
-                // Schedule next frame
-                // let _ = SetTimer(window, 1, 16, None); // ~60 FPS
+                if self.timer_id.is_none() {
+                    let _ = SetTimer(window, 1, 16, None);
+                    self.timer_id = Some(1);
+                }
             }
             WM_TIMER => {
                 let _ = InvalidateRect(window, None, false);

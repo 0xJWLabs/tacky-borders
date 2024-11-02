@@ -243,7 +243,7 @@ pub fn has_native_border(hwnd: HWND) -> bool {
     }
 }
 
-pub fn get_show_cmd(hwnd: HWND) -> u32 {
+pub fn _get_show_cmd(hwnd: HWND) -> u32 {
     let mut wp: WINDOWPLACEMENT = WINDOWPLACEMENT::default();
     let result = unsafe { GetWindowPlacement(hwnd, std::ptr::addr_of_mut!(wp)) };
     if result.is_err() {

@@ -154,10 +154,10 @@ pub fn has_filtered_class_or_title(hwnd: HWND) -> bool {
                 if let Some(contains_str) = &rule.contains {
                     let check_fn: Box<dyn Fn(&str) -> bool> = match rule.match_strategy {
                         Some(MatchType::Contains) => {
-                            Box::new(move |s: &str| name.to_lowercase().contains(&s.to_lowercase()) && rule.enabled == Some(false))
+                            Box::new(move |s: &str| name.to_lowercase().contains(&s.to_lowercase()) && rule.border_enabled == Some(false))
                         }
                         Some(MatchType::Equals) => {
-                            Box::new(move |s: &str| name.to_lowercase() == s.to_lowercase() && rule.enabled == Some(false))
+                            Box::new(move |s: &str| name.to_lowercase() == s.to_lowercase() && rule.border_enabled == Some(false))
                         }
                         Some(MatchType::Regex) => {
                             let regex_pattern = format!(r"{}", regex::escape(&contains_str)); // Using regex::escape to escape any special regex characters
@@ -166,14 +166,14 @@ pub fn has_filtered_class_or_title(hwnd: HWND) -> bool {
                             });
                             
                             if let Ok(regex) = regex {
-                                return regex.is_match(name) && rule.enabled == Some(false);
+                                return regex.is_match(name) && rule.border_enabled == Some(false);
                             } else {
                                 Logger::log("error", "Expected valid regex on `Match`");
                                 return false;
                             }
                         }
                         None => {
-                            Box::new(move |s: &str| name.to_lowercase() == s.to_lowercase() && rule.enabled == Some(false))
+                            Box::new(move |s: &str| name.to_lowercase() == s.to_lowercase() && rule.border_enabled == Some(false))
                         } 
                     };
 
@@ -295,10 +295,10 @@ pub fn get_colors_for_window(_hwnd: HWND) -> (Color, Color) {
                 if let Some(contains_str) = &rule.contains {
                     let matches = match rule.match_strategy {
                         Some(MatchType::Contains) => {
-                            name.to_lowercase().contains(&contains_str.to_lowercase()) && rule.enabled == Some(false)
+                            name.to_lowercase().contains(&contains_str.to_lowercase()) && rule.border_enabled == Some(false)
                         }
                         Some(MatchType::Equals) => {
-                            name.to_lowercase() == contains_str.to_lowercase() && rule.enabled == Some(false)
+                            name.to_lowercase() == contains_str.to_lowercase() && rule.border_enabled == Some(false)
                         }
                         Some(MatchType::Regex) => {
                             match Regex::new(&contains_str) {
@@ -310,7 +310,7 @@ pub fn get_colors_for_window(_hwnd: HWND) -> (Color, Color) {
                             }
                         }
                         None => {
-                            name.to_lowercase() == contains_str.to_lowercase() && rule.enabled == Some(false)
+                            name.to_lowercase() == contains_str.to_lowercase() && rule.border_enabled == Some(false)
                         }
                     };
             

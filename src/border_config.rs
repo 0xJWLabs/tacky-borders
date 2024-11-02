@@ -52,7 +52,7 @@ pub struct WindowRule {
   pub active_color: Option<ColorConfig>,
   pub inactive_color: Option<ColorConfig>,
   pub match_strategy: Option<MatchType>,
-  pub enabled: Option<bool>
+  pub border_enabled: Option<bool>,
 }
 
 

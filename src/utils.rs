@@ -1,21 +1,26 @@
 use dirs::home_dir;
 use regex::Regex;
 use std::{
-    fs::{self, DirBuilder, File, OpenOptions},
-    io::Write,
-    ops::Deref,
-    path::{Path, PathBuf},
+    fs::{self, DirBuilder},
+    path::PathBuf,
 };
 
 use windows::{
-    core::Error, Win32::Foundation::*, Win32::Graphics::Direct2D::Common::*,
-    Win32::Graphics::Dwm::*, Win32::UI::WindowsAndMessaging::*,
+    Win32::Foundation::*, Win32::Graphics::Direct2D::Common::*, Win32::Graphics::Dwm::*,
+    Win32::UI::WindowsAndMessaging::*,
 };
 
 use crate::*;
 
 use crate::border_config::*;
 use crate::logger::Logger;
+
+pub const WM_APP_0: u32 = WM_APP;
+pub const WM_APP_1: u32 = WM_APP + 1;
+pub const WM_APP_2: u32 = WM_APP + 2;
+pub const WM_APP_3: u32 = WM_APP + 3;
+pub const WM_APP_4: u32 = WM_APP + 4;
+pub const WM_APP_5: u32 = WM_APP + 5;
 
 #[derive(Debug, Clone)]
 pub enum Color {
@@ -101,15 +106,19 @@ pub fn get_config() -> PathBuf {
 
 // Windows
 pub fn get_rect_width(rect: RECT) -> i32 {
-    return rect.right - rect.left;
+    rect.right - rect.left
 }
 
 pub fn get_rect_height(rect: RECT) -> i32 {
-    return rect.bottom - rect.top;
+    rect.bottom - rect.top
 }
 
 pub fn is_window_visible(hwnd: HWND) -> bool {
-    return unsafe { IsWindowVisible(hwnd).as_bool() };
+    unsafe { IsWindowVisible(hwnd).as_bool() }
+}
+
+pub fn is_window_active(hwnd: HWND) -> bool {
+    unsafe { GetForegroundWindow() == hwnd }
 }
 
 pub fn has_filtered_style(hwnd: HWND) -> bool {
@@ -123,80 +132,83 @@ pub fn has_filtered_style(hwnd: HWND) -> bool {
         return true;
     }
 
-    return false;
+    false
 }
 
-pub fn has_filtered_class_or_title(hwnd: HWND) -> bool {
-    let mut class_arr: [u16; 256] = [0; 256];
+pub fn get_window_rule(hwnd: HWND) -> WindowRule {
     let mut title_arr: [u16; 256] = [0; 256];
+    let mut class_arr: [u16; 256] = [0; 256];
+
     if unsafe { GetWindowTextW(hwnd, &mut title_arr) } == 0 {
         println!("error getting window title!");
-        return true;
     }
     if unsafe { GetClassNameW(hwnd, &mut class_arr) } == 0 {
         println!("error getting class name!");
-        return true;
     }
 
-    let class_binding = String::from_utf16_lossy(&class_arr);
-    let class_name = class_binding.split_once("\0").unwrap().0;
+    let title = String::from_utf16_lossy(&title_arr)
+        .trim_end_matches('\0')
+        .to_string();
+    let class = String::from_utf16_lossy(&class_arr)
+        .trim_end_matches('\0')
+        .to_string();
 
-    let title_binding = String::from_utf16_lossy(&title_arr);
-    let title = title_binding.split_once("\0").unwrap().0;
-
+    // Lock the config mutex
     let config_mutex = &*CONFIG;
     let config = config_mutex.lock().unwrap();
 
+    let mut global_rule: WindowRule = WindowRule {
+        rule_match: MatchDetails {
+            match_type: RuleMatch::Global,
+            match_value: None,
+            match_strategy: None,
+            active_color: None,
+            inactive_color: None,
+            border_enabled: None,
+        },
+    };
+
     for rule in config.window_rules.iter() {
-        match rule.rule_match.match_type {
-            RuleMatch::Global => {}
-            RuleMatch::Title | RuleMatch::Class => {
-                let name = if rule.rule_match.match_type == RuleMatch::Title {
-                    &title
-                } else {
-                    &class_name
-                };
+        let name = match rule.rule_match.match_type {
+            RuleMatch::Title => &title,
+            RuleMatch::Class => &class,
+            RuleMatch::Global => {
+                global_rule = rule.clone();
+                continue;
+            }
+        };
 
-                if let Some(contains_str) = &rule.rule_match.match_value {
-                    let check_fn: Box<dyn Fn(&str) -> bool> = match rule.rule_match.match_strategy {
-                        Some(MatchType::Contains) => Box::new(move |s: &str| {
-                            name.to_lowercase().contains(&s.to_lowercase())
-                                && rule.rule_match.border_enabled == Some(false)
-                        }),
-                        Some(MatchType::Equals) => Box::new(move |s: &str| {
-                            name.to_lowercase() == s.to_lowercase()
-                                && rule.rule_match.border_enabled == Some(false)
-                        }),
-                        Some(MatchType::Regex) => {
-                            let regex = Regex::new(contains_str).map_err(|e| {
-                                Logger::log("error", &format!("Invalid regex pattern: {}", e));
-                            });
-
-                            if let Ok(regex) = regex {
-                                return regex.is_match(name)
-                                    && rule.rule_match.border_enabled == Some(false);
-                            } else {
-                                Logger::log("error", "Expected valid regex on `Match`");
-                                return false;
+        if let Some(contains_str) = &rule.rule_match.match_value {
+            match rule.rule_match.match_strategy {
+                Some(MatchType::Contains) => {
+                    if name.to_lowercase().contains(&contains_str.to_lowercase()) {
+                        return rule.clone();
+                    }
+                }
+                Some(MatchType::Equals) => {
+                    if name.to_lowercase() == contains_str.to_lowercase() {
+                        return rule.clone();
+                    }
+                }
+                Some(MatchType::Regex) => {
+                    match Regex::new(contains_str) {
+                        Ok(regex) => {
+                            if regex.is_match(name) {
+                                return rule.clone();
                             }
                         }
-                        None => Box::new(move |s: &str| {
-                            name.to_lowercase() == s.to_lowercase()
-                                && rule.rule_match.border_enabled == Some(false)
-                        }),
-                    };
-
-                    if check_fn(&contains_str.to_lowercase()) {
-                        return true;
+                        Err(e) => {
+                            println!("Invalid regex pattern: {}", e); // Use your logger here
+                        }
                     }
-                } else {
-                    Logger::log("error", "Expected `contains` on `Match`");
                 }
+                None => {}
             }
         }
     }
 
-    false
+    // Return the global rule if no specific rule matches
+    global_rule
 }
 
 pub fn is_cloaked(hwnd: HWND) -> bool {
@@ -213,13 +225,7 @@ pub fn is_cloaked(hwnd: HWND) -> bool {
         println!("error getting is_cloaked");
         return true;
     }
-    return is_cloaked.as_bool();
-}
-
-pub fn is_active_window(hwnd: HWND) -> bool {
-    unsafe {
-        return GetForegroundWindow() == hwnd;
-    }
+    is_cloaked.as_bool()
 }
 
 // If the tracking window does not have a window edge or is maximized, then there should be no
@@ -233,7 +239,7 @@ pub fn has_native_border(hwnd: HWND) -> bool {
             return false;
         }
 
-        return true;
+        true
     }
 }
 
@@ -244,40 +250,11 @@ pub fn get_show_cmd(hwnd: HWND) -> u32 {
         println!("error getting window_placement!");
         return 0;
     }
-    return wp.showCmd;
+    wp.showCmd
 }
 
 pub fn get_colors_for_window(_hwnd: HWND) -> (Color, Color) {
-    let mut class_arr: [u16; 256] = [0; 256];
-    let mut title_arr: [u16; 256] = [0; 256];
-    if unsafe { GetWindowTextW(_hwnd, &mut title_arr) } == 0 {
-        println!("error getting window title!");
-    }
-    if unsafe { GetClassNameW(_hwnd, &mut class_arr) } == 0 {
-        println!("error getting class name!");
-    }
-
-    let class_binding = String::from_utf16_lossy(&class_arr);
-    let class_name = class_binding.split_once("\0").unwrap().0;
-
-    let title_binding = String::from_utf16_lossy(&title_arr);
-    let title = title_binding.split_once("\0").unwrap().0;
-
-    let config_mutex = &*CONFIG;
-    let config = config_mutex.lock().unwrap();
-
-    let mut color_active = Color::Solid(D2D1_COLOR_F {
-        r: 1.0,
-        g: 1.0,
-        b: 1.0,
-        a: 1.0,
-    });
-    let mut color_inactive = Color::Solid(D2D1_COLOR_F {
-        r: 1.0,
-        g: 1.0,
-        b: 1.0,
-        a: 1.0,
-    });
+    let window_rule = get_window_rule(_hwnd);
 
     let get_color = |color_config: &Option<ColorConfig>, default: &str| match color_config {
         Some(ColorConfig::String(color)) => create_solid_color(color.to_string()),
@@ -300,54 +277,8 @@ pub fn get_colors_for_window(_hwnd: HWND) -> (Color, Color) {
         }),
     );
 
-    for rule in config.window_rules.iter() {
-        match rule.rule_match.match_type {
-            RuleMatch::Global => {
-                colors.0 = get_color(&rule.rule_match.active_color, "accent");
-                colors.1 = get_color(&rule.rule_match.inactive_color, "accent");
-            }
-
-            RuleMatch::Title | RuleMatch::Class => {
-                let name = if rule.rule_match.match_type == RuleMatch::Title {
-                    &title
-                } else {
-                    &class_name
-                };
-
-                if let Some(contains_str) = &rule.rule_match.match_value {
-                    let matches = match rule.rule_match.match_strategy {
-                        Some(MatchType::Contains) => {
-                            name.to_lowercase().contains(&contains_str.to_lowercase())
-                                && rule.rule_match.border_enabled == Some(false)
-                        }
-                        Some(MatchType::Equals) => {
-                            name.to_lowercase() == contains_str.to_lowercase()
-                                && rule.rule_match.border_enabled == Some(false)
-                        }
-                        Some(MatchType::Regex) => match Regex::new(contains_str) {
-                            Ok(regex) => regex.is_match(name),
-                            Err(e) => {
-                                Logger::log("error", &format!("Invalid regex pattern: {}", e));
-                                false
-                            }
-                        },
-                        None => {
-                            name.to_lowercase() == contains_str.to_lowercase()
-                                && rule.rule_match.border_enabled == Some(false)
-                        }
-                    };
-
-                    if matches {
-                        colors.0 = get_color(&rule.rule_match.active_color, "accent");
-                        colors.1 = get_color(&rule.rule_match.inactive_color, "accent");
-                        break;
-                    }
-                } else {
-                    Logger::log("error", "Expected `contains` on `Match`");
-                }
-            }
-        }
-    }
+    colors.0 = get_color(&window_rule.rule_match.active_color, "accent");
+    colors.1 = get_color(&window_rule.rule_match.inactive_color, "accent");
 
     colors
 }
@@ -359,13 +290,21 @@ pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()>
 
     let (active_color, inactive_color) = get_colors_for_window(tracking_window);
 
-    let thread = std::thread::spawn(move || {
+    let _ = std::thread::spawn(move || {
         let window_sent = window;
 
         // This delay can be used to wait for a window to finish its opening animation or for it to
         // become visible if it is not so at first
         std::thread::sleep(std::time::Duration::from_millis(delay));
-        if unsafe { !IsWindowVisible(window_sent.0).as_bool() } {
+
+        if !is_window_visible(window_sent.0) {
+            return;
+        }
+
+        let window_rule = get_window_rule(window_sent.0);
+
+        if window_rule.rule_match.border_enabled == Some(false) {
+            println!("border is disabled for this window, exiting!");
             return;
         }
 
@@ -388,8 +327,8 @@ pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()>
             border_size: config.border_size,
             border_offset: config.border_offset,
             border_radius: config.get_border_radius(),
-            active_color: active_color,
-            inactive_color: inactive_color,
+            active_color,
+            inactive_color,
             use_active_animation,
             use_inactive_animation,
             ..Default::default()
@@ -414,10 +353,10 @@ pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()>
         borders_hashmap.insert(window_isize, border.border_window.0 as isize);
         drop(borders_hashmap);
 
-        let _ = border.init(hinstance);
+        let _ = border.init();
     });
 
-    return Ok(());
+    Ok(())
 }
 
 pub fn destroy_border_for_window(tracking_window: HWND) -> Result<()> {
@@ -430,8 +369,8 @@ pub fn destroy_border_for_window(tracking_window: HWND) -> Result<()> {
         let window_isize = window_sent.0 .0 as isize;
         let border_option = borders_hashmap.get(&window_isize);
 
-        if border_option.is_some() {
-            let border_window: HWND = HWND((*border_option.unwrap()) as *mut _);
+        if let Some(option) = border_option {
+            let border_window: HWND = HWND((*option) as *mut _);
             unsafe { SendMessageW(border_window, WM_DESTROY, WPARAM(0), LPARAM(0)) };
             borders_hashmap.remove(&window_isize);
         }
@@ -439,7 +378,7 @@ pub fn destroy_border_for_window(tracking_window: HWND) -> Result<()> {
         drop(borders_hashmap);
     });
 
-    return Ok(());
+    Ok(())
 }
 
 pub fn get_border_from_window(hwnd: HWND) -> Option<HWND> {
@@ -448,13 +387,13 @@ pub fn get_border_from_window(hwnd: HWND) -> Option<HWND> {
     let hwnd_isize = hwnd.0 as isize;
     let border_option = borders.get(&hwnd_isize);
 
-    if border_option.is_some() {
-        let border_window: HWND = HWND(*border_option.unwrap() as _);
+    if let Some(option) = border_option {
+        let border_window: HWND = HWND(*option as _);
         drop(borders);
-        return Some(border_window);
+        Some(border_window)
     } else {
         drop(borders);
-        return None;
+        None
     }
 }
 
@@ -464,41 +403,33 @@ pub fn get_border_from_window(hwnd: HWND) -> Option<HWND> {
 // opening animation.
 pub fn show_border_for_window(hwnd: HWND, delay: u64) -> bool {
     let border_window = get_border_from_window(hwnd);
-    if border_window.is_some() {
+    if let Some(window) = border_window {
         unsafe {
-            let _ = ShowWindow(border_window.unwrap(), SW_SHOWNA);
+            let _ = PostMessageW(window, WM_APP_2, WPARAM(0), LPARAM(0));
         }
-        return true;
+        true
     } else {
-        if is_cloaked(hwnd) || has_filtered_style(hwnd) || has_filtered_class_or_title(hwnd) {
+        if is_cloaked(hwnd) || has_filtered_style(hwnd) {
             return false;
         }
         let _ = create_border_for_window(hwnd, delay);
-        return false;
+        false
     }
 }
 
 pub fn hide_border_for_window(hwnd: HWND) -> bool {
-    let mutex = &*BORDERS;
     let window = SendHWND(hwnd);
 
     let _ = std::thread::spawn(move || {
         let window_sent = window;
-        let borders = mutex.lock().unwrap();
-        let window_isize = window_sent.0 .0 as isize;
-        let border_option = borders.get(&window_isize);
-
-        if border_option.is_some() {
-            let border_window: HWND = HWND(*border_option.unwrap() as _);
-            drop(borders);
+        let border_window = get_border_from_window(window_sent.0);
+        if let Some(window) = border_window {
             unsafe {
-                let _ = ShowWindow(border_window, SW_HIDE);
+                let _ = PostMessageW(window, WM_APP_3, WPARAM(0), LPARAM(0));
             }
-        } else {
-            drop(borders);
         }
     });
-    return true;
+    true
 }
 
 pub fn create_solid_color(color: String) -> Color {
@@ -517,7 +448,7 @@ pub fn create_solid_color(color: String) -> Color {
         }
         let red = ((pcr_colorization & 0x00FF0000) >> 16) as f32 / 255.0;
         let green = ((pcr_colorization & 0x0000FF00) >> 8) as f32 / 255.0;
-        let blue = ((pcr_colorization & 0x000000FF) >> 0) as f32 / 255.0;
+        let blue = (pcr_colorization & 0x000000FF) as f32 / 255.0;
         Color::Solid(D2D1_COLOR_F {
             r: red,
             g: green,
@@ -526,10 +457,6 @@ pub fn create_solid_color(color: String) -> Color {
         })
     } else if (color.starts_with("rgb(")) || (color.starts_with("rgba(")) {
         Color::Solid(get_color_from_rgba(&color))
-    } else if (color.starts_with("oklch(")) {
-        Color::Solid(get_color_from_oklch(&color))
-    } else if (color.starts_with("hsl(")) {
-        Color::Solid(get_color_from_hsl(&color))
     } else {
         Color::Solid(get_color_from_hex(&color))
     }
@@ -561,25 +488,6 @@ pub fn create_gradient_colors(color: GradientColor) -> Color {
         gradient_stops,
         animation: color.animation,
     })
-}
-
-pub fn get_gradient_colors(colors: Vec<String>) -> Vec<D2D1_GRADIENT_STOP> {
-    let num_colors = colors.len();
-    if num_colors == 0 {
-        return Vec::new();
-    }
-
-    colors
-        .into_iter()
-        .enumerate()
-        .map(|(i, hex)| {
-            let position = i as f32 / (num_colors - 1) as f32;
-            D2D1_GRADIENT_STOP {
-                position,
-                color: get_color_from_hex(hex.as_str()),
-            }
-        })
-        .collect()
 }
 
 pub fn get_color_from_hex(hex: &str) -> D2D1_COLOR_F {
@@ -677,172 +585,5 @@ pub fn get_color_from_rgba(rgba: &str) -> D2D1_COLOR_F {
         g: 0.0,
         b: 0.0,
         a: 1.0,
-    }
-}
-
-pub fn get_color_from_oklch(oklch: &str) -> D2D1_COLOR_F {
-    let oklch = oklch.trim_start_matches("oklch(").trim_end_matches(')');
-    let components: Vec<&str> = oklch.split(',').map(|s| s.trim()).collect(); // Split by commas
-
-    // Check for the correct number of components (3)
-    if components.len() == 3 {
-        // Parse lightness, chroma, and hue values
-        let lightness_str = components[0];
-        let lightness: f64 = if lightness_str.ends_with('%') {
-            lightness_str
-                .trim_end_matches('%')
-                .parse::<f64>()
-                .unwrap_or(0.0)
-                .clamp(0.0, 100.0)
-                / 100.0 // Convert percentage to a 0.0 - 1.0 range
-        } else {
-            lightness_str.parse::<f64>().unwrap_or(0.0).clamp(0.0, 1.0) // Handle non-percentage case
-        };
-
-        let chroma: f64 = components[1]
-            .parse::<f64>()
-            .unwrap_or(0.0)
-            .clamp(0.0, f64::MAX);
-        let hue: f64 = components[2]
-            .parse::<f64>()
-            .unwrap_or(0.0)
-            .clamp(0.0, 360.0);
-
-        // Convert OKLCH to RGB
-        let (r, g, b) = oklch_to_rgb(lightness, chroma, hue);
-
-        return D2D1_COLOR_F {
-            r: r as f32, // Convert back to f32 for D2D1_COLOR_F
-            g: g as f32,
-            b: b as f32,
-            a: 1.0, // Default alpha value
-        };
-    }
-
-    // Return a default color if parsing fails
-    D2D1_COLOR_F {
-        r: 0.0,
-        g: 0.0,
-        b: 0.0,
-        a: 1.0,
-    }
-}
-
-pub fn get_color_from_hsl(hsl: &str) -> D2D1_COLOR_F {
-    let hsl = hsl.trim_start_matches("hsl(").trim_end_matches(')');
-    let components: Vec<&str> = hsl.split(',').map(|s| s.trim()).collect(); // Split by commas
-
-    // Check for the correct number of components (3)
-    if components.len() == 3 {
-        // Parse hue, saturation, and lightness values
-        let hue: f64 = components[0]
-            .parse::<f64>()
-            .unwrap_or(0.0)
-            .clamp(0.0, 360.0);
-
-        let saturation_str = components[1];
-        let saturation: f64 = if saturation_str.ends_with('%') {
-            saturation_str
-                .trim_end_matches('%')
-                .parse::<f64>()
-                .unwrap_or(0.0)
-                .clamp(0.0, 100.0)
-                / 100.0 // Convert percentage to a 0.0 - 1.0 range
-        } else {
-            saturation_str.parse::<f64>().unwrap_or(0.0).clamp(0.0, 1.0) // Handle non-percentage case
-        };
-
-        let lightness_str = components[2];
-        let lightness: f64 = if lightness_str.ends_with('%') {
-            lightness_str
-                .trim_end_matches('%')
-                .parse::<f64>()
-                .unwrap_or(0.0)
-                .clamp(0.0, 100.0)
-                / 100.0 // Convert percentage to a 0.0 - 1.0 range
-        } else {
-            lightness_str.parse::<f64>().unwrap_or(0.0).clamp(0.0, 1.0) // Handle non-percentage case
-        };
-
-        // Convert HSL to RGB
-        let (r, g, b) = hsl_to_rgb(hue, saturation, lightness);
-
-        return D2D1_COLOR_F {
-            r: r as f32, // Convert back to f32 for D2D1_COLOR_F
-            g: g as f32,
-            b: b as f32,
-            a: 1.0, // Default alpha value
-        };
-    }
-
-    // Return a default color if parsing fails
-    D2D1_COLOR_F {
-        r: 0.0,
-        g: 0.0,
-        b: 0.0,
-        a: 1.0,
-    }
-}
-
-// Converter
-fn hsl_to_rgb(hue: f64, saturation: f64, lightness: f64) -> (f64, f64, f64) {
-    // Implement the conversion from HSL to RGB here
-    // For now, returning a placeholder RGB value
-    // This is just a placeholder; replace with actual conversion logic
-
-    // HSL to RGB conversion logic
-    let c = (1.0 - (2.0 * lightness - 1.0).abs()) * saturation; // Chroma
-    let x = c * (1.0 - ((hue / 60.0) % 2.0 - 1.0).abs()); // Second largest component
-    let m = lightness - c / 2.0; // Match lightness
-
-    let (r_prime, g_prime, b_prime) = match hue {
-        h if h < 60.0 => (c, x, 0.0),
-        h if h < 120.0 => (x, c, 0.0),
-        h if h < 180.0 => (0.0, c, x),
-        h if h < 240.0 => (0.0, x, c),
-        h if h < 300.0 => (x, 0.0, c),
-        _ => (c, 0.0, x),
-    };
-
-    // Convert to RGB and apply match lightness
-    let r = (r_prime + m).clamp(0.0, 1.0);
-    let g = (g_prime + m).clamp(0.0, 1.0);
-    let b = (b_prime + m).clamp(0.0, 1.0);
-
-    (r, g, b)
-}
-
-// Placeholder for the actual OKLCH to RGB conversion function
-fn oklch_to_rgb(lightness: f64, chroma: f64, hue: f64) -> (f64, f64, f64) {
-    // Implement the conversion from OKLCH to RGB here
-    // For now, returning a placeholder RGB value
-    (lightness, chroma, hue) // This is just a placeholder; replace with actual conversion logic
-}
-
-fn convert_string_to_decimal(input: &str) -> Result<f32> {
-    let trimmed = input.trim();
-
-    // Check if the string represents a percentage
-    if let Some(percent_str) = trimmed.strip_suffix("%") {
-        let percent: f32 = percent_str
-            .parse::<f32>()
-            .map_err(|_| Error::new(HRESULT(0), "Invalid percentage"))?;
-        if percent < 0.0 || percent > 100.0 {
-            Logger::log("error", "Percentage out of range (0- 100)");
-        }
-
-        Ok(percent / 100.0)
-    } else {
-        // Assume it's a decimal string
-        let value: f32 = trimmed
-            .parse::<f32>()
-            .map_err(|_| Error::new(HRESULT(0), "Invalid decimal"))?;
-
-        // Ensure the decimal value is between 0 and 1
-        if value < 0.0 || value > 1.0 {
-            Logger::log("error", "Percentage out of range (0- 100)");
-        }
-
-        Ok(value) // Return the decimal value as is
     }
 }

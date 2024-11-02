@@ -1,16 +1,11 @@
 use crate::logger::Logger;
 use crate::utils::*;
 use crate::*;
-use std::ffi::c_ulong;
-use std::fmt;
-use std::os::raw::c_void;
-use std::ptr::{null_mut, NonNull};
 use std::sync::LazyLock;
 use std::sync::OnceLock;
 use windows::{
-    core::*, Foundation::Numerics::*, Win32::Foundation::*, Win32::Graphics::Direct2D::Common::*,
-    Win32::Graphics::Direct2D::*, Win32::Graphics::Dwm::*, Win32::Graphics::Dxgi::Common::*,
-    Win32::Graphics::Gdi::*, Win32::UI::HiDpi::*, Win32::UI::WindowsAndMessaging::*,
+    Foundation::Numerics::*, Win32::Graphics::Direct2D::Common::*, Win32::Graphics::Direct2D::*,
+    Win32::Graphics::Dxgi::Common::*, Win32::Graphics::Gdi::*,
 };
 
 pub static RENDER_FACTORY: LazyLock<ID2D1Factory> = unsafe {
@@ -67,7 +62,7 @@ impl WindowBorder {
         Ok(())
     }
 
-    pub fn init(&mut self, hinstance: HINSTANCE) -> Result<()> {
+    pub fn init(&mut self) -> Result<()> {
         unsafe {
             // Make the window border transparent
             let pos: i32 = -GetSystemMetrics(SM_CXVIRTUALSCREEN) - 8;
@@ -115,7 +110,7 @@ impl WindowBorder {
             }
         }
 
-        return Ok(());
+        Ok(())
     }
 
     pub fn create_render_targets(&mut self) -> Result<()> {
@@ -139,7 +134,7 @@ impl WindowBorder {
             presentOptions: D2D1_PRESENT_OPTIONS_IMMEDIATELY,
         };
         self.brush_properties = D2D1_BRUSH_PROPERTIES {
-            opacity: 1.0 as f32,
+            opacity: 1.0,
             transform: Matrix3x2::identity(),
         };
 
@@ -202,12 +197,10 @@ impl WindowBorder {
         let _ = self.update_position(None);
         let _ = self.create_animation_thread();
 
-        return Ok(());
+        Ok(())
     }
 
     pub fn create_animation_thread(&self) -> Result<()> {
-        let active = unsafe { GetForegroundWindow() } == self.tracking_window;
-
         if self.use_active_animation || self.use_inactive_animation {
             let window_sent: SendHWND = SendHWND(self.border_window);
             std::thread::spawn(move || loop {
@@ -222,7 +215,7 @@ impl WindowBorder {
             });
         }
 
-        return Ok(());
+        Ok(())
     }
 
     pub fn update_window_rect(&mut self) -> Result<()> {
@@ -246,17 +239,14 @@ impl WindowBorder {
         self.window_rect.right += self.border_size;
         self.window_rect.bottom += self.border_size;
 
-        return Ok(());
+        Ok(())
     }
 
     pub fn update_position(&mut self, c_flags: Option<SET_WINDOW_POS_FLAGS>) -> Result<()> {
         unsafe {
             // Place the window border above the tracking window
             let mut hwnd_above_tracking = GetWindow(self.tracking_window, GW_HWNDPREV);
-            let custom_flags = match c_flags {
-                Some(flags) => flags,
-                None => SET_WINDOW_POS_FLAGS::default(),
-            };
+            let custom_flags = c_flags.unwrap_or_default();
             let mut u_flags = SWP_NOSENDCHANGING | SWP_NOACTIVATE | SWP_NOREDRAW | custom_flags;
 
             // If hwnd_above_tracking is the window border itself, we have what we want and there's
@@ -264,7 +254,7 @@ impl WindowBorder {
             // If hwnd_above_tracking returns an error, it's likely that tracking_window is already
             //  the highest in z-order, so we use HWND_TOP to place the window border above.
             if hwnd_above_tracking == Ok(self.border_window) {
-                u_flags = u_flags | SWP_NOZORDER;
+                u_flags |= SWP_NOZORDER;
             } else if hwnd_above_tracking.is_err() {
                 hwnd_above_tracking = Ok(HWND_TOP);
             }
@@ -283,7 +273,7 @@ impl WindowBorder {
                 let _ = ShowWindow(self.border_window, SW_HIDE);
             }
         }
-        return Ok(());
+        Ok(())
     }
 
     pub fn update_color(&mut self) -> Result<()> {
@@ -293,7 +283,7 @@ impl WindowBorder {
             self.current_color = self.inactive_color.clone();
         }
 
-        return Ok(());
+        Ok(())
     }
 
     pub fn create_brush(&self, render_target: &ID2D1RenderTarget) -> Result<ID2D1Brush> {
@@ -318,19 +308,15 @@ impl WindowBorder {
                 let width = get_rect_width(self.window_rect) as f32;
                 let height = get_rect_width(self.window_rect) as f32;
 
-                let mut start_point = D2D_POINT_2F::default();
-                let mut end_point = D2D_POINT_2F::default();
-
-                let active = unsafe { GetForegroundWindow() } == self.tracking_window;
-
-                let condition = if active {
+                let is_active = is_window_active(self.tracking_window);
+                let condition = if is_active {
                     self.use_active_animation
                 } else {
                     self.use_inactive_animation
                 };
 
-                if condition {
-                    let gradient_angle = if active {
+                let (start_point, end_point) = if condition {
+                    let gradient_angle = if is_active {
                         self.active_gradient_angle
                     } else {
                         self.inactive_gradient_angle
@@ -341,14 +327,16 @@ impl WindowBorder {
 
                     let angle_rad = gradient_angle.to_radians();
                     let (sin, cos) = angle_rad.sin_cos();
-                    start_point = D2D_POINT_2F {
-                        x: center_x - radius * cos,
-                        y: center_y - radius * sin,
-                    };
-                    end_point = D2D_POINT_2F {
-                        x: center_x + radius * cos,
-                        y: center_y + radius * sin,
-                    };
+                    (
+                        D2D_POINT_2F {
+                            x: center_x - radius * cos,
+                            y: center_y - radius * sin,
+                        },
+                        D2D_POINT_2F {
+                            x: center_x + radius * cos,
+                            y: center_y + radius * sin,
+                        },
+                    )
                 } else {
                     let (start_x, start_y, end_x, end_y) = match color.direction.clone() {
                         Some(coords) => (
@@ -356,17 +344,18 @@ impl WindowBorder {
                             coords[1] * height,
                             coords[2] * width,
                             coords[3] * height,
-                        ), // Use coordinates if they exist
-                        None => (0.0 * width, 0.0 * height, 1.0 * width, 1.0 * height),
+                        ),
+                        None => (0.0, 0.0, width, height),
                     };
 
-                    start_point = D2D_POINT_2F {
-                        x: start_x,
-                        y: start_y,
-                    };
-
-                    end_point = D2D_POINT_2F { x: end_x, y: end_y };
-                }
+                    (
+                        D2D_POINT_2F {
+                            x: start_x,
+                            y: start_y,
+                        },
+                        D2D_POINT_2F { x: end_x, y: end_y },
+                    )
+                };
 
                 let gradient_properties = D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES {
                     startPoint: start_point,
@@ -408,21 +397,25 @@ impl WindowBorder {
         };
 
         unsafe {
-            render_target.Resize(&self.hwnd_render_target_properties.pixelSize as *const _);
+            let _ = render_target.Resize(&self.hwnd_render_target_properties.pixelSize as *const _);
 
             let now = std::time::Instant::now();
-            let active = unsafe { GetForegroundWindow() } == self.tracking_window;
-            let last_render_time = if active { self.last_render_time_active } else { self.last_render_time_inactive };
+            let is_active = is_window_active(self.tracking_window);
+            let last_render_time = if is_active {
+                self.last_render_time_active
+            } else {
+                self.last_render_time_inactive
+            };
             let elapsed = now
                 .duration_since(last_render_time.unwrap_or(now))
                 .as_secs_f32();
-            if self.use_active_animation && active {
+            if self.use_active_animation && is_active {
                 self.last_render_time_active = Some(now);
                 self.active_gradient_angle += 360.0 * elapsed;
                 if self.active_gradient_angle > 360.0 {
                     self.active_gradient_angle -= 360.0;
                 }
-            } else if self.use_inactive_animation && !active {
+            } else if self.use_inactive_animation && !is_active {
                 self.last_render_time_inactive = Some(now);
                 self.inactive_gradient_angle += 360.0 * elapsed;
                 if self.inactive_gradient_angle > 360.0 {
@@ -430,9 +423,7 @@ impl WindowBorder {
                 }
             }
 
-            // render_target.SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
             let brush = self.create_brush(render_target)?;
-
             render_target.BeginDraw();
             render_target.Clear(None);
             render_target.DrawRoundedRectangle(
@@ -441,7 +432,7 @@ impl WindowBorder {
                 self.border_size as f32,
                 None,
             );
-            render_target.EndDraw(None, None);
+            let _ = render_target.EndDraw(None, None);
             let _ = InvalidateRect(self.border_window, None, false);
         }
 
@@ -460,15 +451,15 @@ impl WindowBorder {
     ) -> LRESULT {
         let mut border_pointer: *mut WindowBorder = GetWindowLongPtrW(window, GWLP_USERDATA) as _;
 
-        if border_pointer == std::ptr::null_mut() && message == WM_CREATE {
+        if border_pointer.is_null() && message == WM_CREATE {
             //println!("ref is null, assigning new ref");
             let create_struct: *mut CREATESTRUCTW = lparam.0 as *mut _;
             border_pointer = (*create_struct).lpCreateParams as *mut _;
             SetWindowLongPtrW(window, GWLP_USERDATA, border_pointer as _);
         }
-        match border_pointer != std::ptr::null_mut() {
-            true => return Self::wnd_proc(&mut *border_pointer, window, message, wparam, lparam),
-            false => return DefWindowProcW(window, message, wparam, lparam),
+        match !border_pointer.is_null() {
+            true => Self::wnd_proc(&mut *border_pointer, window, message, wparam, lparam),
+            false => DefWindowProcW(window, message, wparam, lparam),
         }
     }
 
@@ -480,11 +471,8 @@ impl WindowBorder {
         lparam: LPARAM,
     ) -> LRESULT {
         match message {
-            5000 => {
-                if self.pause
-                    || is_cloaked(self.tracking_window)
-                    || !is_window_visible(self.tracking_window)
-                {
+            WM_APP_0 => {
+                if self.pause {
                     return LRESULT(0);
                 }
 
@@ -495,34 +483,31 @@ impl WindowBorder {
                     let _ = self.update_position(Some(SWP_SHOWWINDOW));
                 }
 
-                let old_rect = self.window_rect.clone();
+                let old_rect = self.window_rect;
                 let _ = self.update_window_rect();
                 let _ = self.update_position(None);
 
-                // When a window is minimized, all four of these points go way below 0 and we end
-                // up with a weird rect that we don't want. So, we just swap out with old_rect.
+                // TODO When a window is minimized, all four of these points go way below 0, and for some
+                // reason, render() will sometimes render at this minimized size, even when the
+                // render_target size and rounded_rect.rect are changed correctly after an
+                // update_window_rect call. So, this is a temporary solution but it should absolutely be
+                // looked further into.
                 if self.window_rect.top <= 0
                     && self.window_rect.left <= 0
                     && self.window_rect.right <= 0
                     && self.window_rect.bottom <= 0
                 {
                     self.window_rect = old_rect;
-                    return LRESULT(0);
-                }
-
-                // Only re-render the border when its size changes
-                if get_rect_width(self.window_rect) != get_rect_width(old_rect)
+                } else if get_rect_width(self.window_rect) != get_rect_width(old_rect)
                     || get_rect_height(self.window_rect) != get_rect_height(old_rect)
                 {
+                    // Only re-render the border when its size changes
                     let _ = self.render();
                 }
             }
             // EVENT_OBJECT_REORDER
-            5001 => {
-                if self.pause
-                    || is_cloaked(self.tracking_window)
-                    || !is_window_visible(self.tracking_window)
-                {
+            WM_APP_1 => {
+                if self.pause {
                     return LRESULT(0);
                 }
 
@@ -531,7 +516,7 @@ impl WindowBorder {
                 let _ = self.render();
             }
             // EVENT_OBJECT_SHOW / EVENT_OBJECT_UNCLOAKED
-            5002 => {
+            WM_APP_2 => {
                 if has_native_border(self.tracking_window) {
                     let _ = self.update_window_rect();
                     let _ = self.update_position(Some(SWP_SHOWWINDOW));
@@ -540,19 +525,19 @@ impl WindowBorder {
                 self.pause = false;
             }
             // EVENT_OBJECT_HIDE / EVENT_OBJECT_CLOAKED
-            5003 => {
+            WM_APP_3 => {
                 let _ = self.update_position(Some(SWP_HIDEWINDOW));
                 self.pause = true;
             }
             // EVENT_OBJECT_MINIMIZESTART
-            5004 => {
+            WM_APP_4 => {
                 let _ = self.update_position(Some(SWP_HIDEWINDOW));
                 self.pause = true;
             }
             // EVENT_SYSTEM_MINIMIZEEND
             // When a window is about to be unminimized, hide the border and let the thread sleep
             // for 200ms to wait for the window animation to finish, then show the border.
-            5005 => {
+            WM_APP_5 => {
                 std::thread::sleep(std::time::Duration::from_millis(200));
 
                 if has_native_border(self.tracking_window) {
@@ -564,7 +549,7 @@ impl WindowBorder {
             }
             WM_PAINT => {
                 let _ = self.render();
-                ValidateRect(window, None);
+                let _ = ValidateRect(window, None);
                 // Schedule next frame
                 let _ = SetTimer(window, 1, 16, None); // ~60 FPS
             }

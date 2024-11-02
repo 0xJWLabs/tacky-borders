@@ -1,11 +1,6 @@
-use dirs::home_dir;
-use serde::de::{self, Visitor};
 use serde::Deserialize;
 use serde::Deserializer;
-use serde::Serialize;
-use std::fmt;
 use std::fs;
-use std::fs::DirBuilder;
 use std::str::FromStr;
 use std::sync::{LazyLock, Mutex};
 
@@ -130,7 +125,7 @@ impl<'de> Deserialize<'de> for ColorConfig {
         use serde::de::{self, MapAccess, Visitor};
         use std::fmt;
 
-        const FIELDS: &'static [&'static str] = &["colors", "direction", "animation"];
+        const FIELDS: &[&str] = &["colors", "direction", "animation"];
 
         struct ColorConfigVisitor;
 
@@ -196,18 +191,17 @@ impl<'de> Deserialize<'de> for ColorConfig {
 
 impl Config {
     fn new() -> Self {
-        let home_dir = home_dir().expect("can't find home path");
         let config_dir = get_config();
         let config_path = config_dir.join("config.yaml");
 
         if !fs::exists(&config_path).expect("Couldn't check if config path exists") {
-            let _ = std::fs::write(&config_path, &DEFAULT_CONFIG.as_bytes())
+            std::fs::write(&config_path, DEFAULT_CONFIG.as_bytes())
                 .expect("could not generate default config.yaml");
         }
 
         let contents = match fs::read_to_string(&config_path) {
             Ok(contents) => contents,
-            Err(err) => panic!("could not read config.yaml in: {}", config_path.display()),
+            Err(_err) => panic!("could not read config.yaml in: {}", config_path.display()),
         };
 
         let config: Config = serde_yaml::from_str(&contents).expect("error reading config.yaml");
@@ -219,7 +213,7 @@ impl Config {
         *config = Self::new();
         drop(config);
     }
-    pub fn get() -> Self {
+    pub fn _get() -> Self {
         CONFIG.lock().unwrap().clone()
     }
 

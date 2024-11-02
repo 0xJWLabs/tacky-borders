@@ -1,20 +1,18 @@
-// TODO remove allow unused and fix all the warnings generated
-#![allow(unused)]
+// #![allow(unused)]
 #![cfg_attr(
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
 )]
 
-use border_config::Config;
 use logger::Logger;
 use std::collections::HashMap;
 use std::ffi::*;
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{LazyLock, Mutex};
 use utils::*;
 use windows::{
     core::*, Win32::Foundation::*, Win32::Graphics::Dwm::*,
     Win32::System::SystemServices::IMAGE_DOS_HEADER, Win32::System::Threading::*,
-    Win32::UI::Accessibility::*, Win32::UI::WindowsAndMessaging::*, Win32::UI::HiDpi::*,
+    Win32::UI::Accessibility::*, Win32::UI::HiDpi::*, Win32::UI::WindowsAndMessaging::*,
 };
 
 extern "C" {
@@ -28,7 +26,8 @@ mod sys_tray_icon;
 mod utils;
 mod window_border;
 
-pub static BORDERS: LazyLock<Mutex<HashMap<isize, isize>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+pub static BORDERS: LazyLock<Mutex<HashMap<isize, isize>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 // This shit supposedly unsafe af but it works so idgaf.
 #[derive(Debug, PartialEq, Clone)]
@@ -37,7 +36,8 @@ unsafe impl Send for SendHWND {}
 unsafe impl Sync for SendHWND {}
 
 fn main() {
-    let dpi_aware = unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
+    let dpi_aware =
+        unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
     if dpi_aware.is_err() {
         println!("Failed to make process DPI aware");
     }
@@ -66,7 +66,7 @@ fn main() {
                 }
             }
 
-            TranslateMessage(&message);
+            let _ = TranslateMessage(&message);
             DispatchMessageW(&message);
             std::thread::sleep(std::time::Duration::from_millis(16))
         }
@@ -91,19 +91,19 @@ pub fn register_window_class() -> Result<()> {
             ..Default::default()
         };
         let result = RegisterClassExW(&wcex);
-            
+
         if result == 0 {
             let last_error = GetLastError();
             println!("ERROR: RegisterClassExW(&wcex): {:?}", last_error);
         }
     }
 
-    return Ok(());
+    Ok(())
 }
 
 pub fn set_event_hook() -> HWINEVENTHOOK {
     unsafe {
-        return SetWinEventHook(
+        SetWinEventHook(
             EVENT_MIN,
             EVENT_MAX,
             None,
@@ -111,7 +111,7 @@ pub fn set_event_hook() -> HWINEVENTHOOK {
             0,
             0,
             WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS,
-        );
+        )
     }
 }
 
@@ -125,7 +125,8 @@ pub fn enum_windows() -> Result<()> {
         );
     }
     Logger::log("debug", "Windows have been enumerated");
-    return Ok(());
+
+    Ok(())
 }
 
 pub fn restart_borders() {
@@ -140,10 +141,10 @@ pub fn restart_borders() {
     let _ = enum_windows();
 }
 
-fn apply_colors() {
+fn _apply_colors() {
     let mut visible_windows: Vec<HWND> = Vec::new();
     unsafe {
-        EnumWindows(
+        let _ = EnumWindows(
             Some(enum_windows_callback),
             LPARAM(&mut visible_windows as *mut _ as isize),
         );
@@ -151,7 +152,7 @@ fn apply_colors() {
 
     for hwnd in visible_windows {
         unsafe {
-            DwmSetWindowAttribute(
+            let _ = DwmSetWindowAttribute(
                 hwnd,
                 DWMWA_BORDER_COLOR,
                 &DWMWA_COLOR_NONE as *const _ as *const c_void,
@@ -163,7 +164,7 @@ fn apply_colors() {
 
 unsafe extern "system" fn enum_windows_callback(_hwnd: HWND, _lparam: LPARAM) -> BOOL {
     // Returning FALSE will exit the EnumWindows loop so we must return TRUE here
-    if !is_window_visible(_hwnd) || is_cloaked(_hwnd) || has_filtered_style(_hwnd) || has_filtered_class_or_title(_hwnd) {
+    if !is_window_visible(_hwnd) || is_cloaked(_hwnd) || has_filtered_style(_hwnd) {
         return TRUE;
     }
     let _ = create_border_for_window(_hwnd, 0);
@@ -172,5 +173,5 @@ unsafe extern "system" fn enum_windows_callback(_hwnd: HWND, _lparam: LPARAM) ->
     visible_windows.push(_hwnd);
 
     // First, safely cast the LPARAM's inner value (`isize`) to a raw pointer
-    return TRUE;
+    TRUE
 }

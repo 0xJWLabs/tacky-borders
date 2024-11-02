@@ -1,36 +1,35 @@
-# Border configuration settings for the application
+# Border configuration settings
 
-# border_size adjusts the thickness of the borders in pixels
-# Default: 2
-# Example: Setting to 5 would create thicker borders around windows
+# Valid colors:
+# - hex (e.g., #ffffff for white)
+# - hexa (e.g., #ffffff80 for semi transparent white)
+# - rgb (e.g., rgb(0, 0, 0) for black)
+# - rgba (e.g., rgba(255, 0, 0, 0.5) for semi transparent red)
+
 border_size: 2
 
-# border_offset adjusts how much to shrink or expand the border by in pixels
-# Default: -1 (no offset)
-# Example: Setting to -2 would reduce the border size by 2 pixels
-#          Setting to 1 would increase the size by 1 pixel
+# border_offset: Adjusts border size in pixels (default: -1).
+# Example: -2 reduces size by 2 pixels; 1 increases by 1 pixel.
 border_offset: -1
 
-# border_radius lets you set a custom radius for the border in pixels.
-# Leave it at -1 to let the program handle the radius automatically.
-# Default: -1
-# Example: Setting to 10 would create rounded corners with a radius of 10 pixels
+# border_radius: Custom radius for borders in pixels; -1 for auto (default: -1).
+# Example: Setting to 10 creates rounded corners.
 border_radius: -1 
 
-# window_rules defines the conditions for applying border settings to specific windows
+# window_rules: Conditions for applying border settings to specific windows.
 window_rules:
   - match: "Global"  # Applies to all windows
-    active_color: "gradient(#89b4fa, #CBA6F7, 0%, 0%, 100%, 0%)"  # Gradient for active window border
-    inactive_color: "#1E1E2E"  # Color for inactive window border
+    active_color: "gradient(#89b4fa, #CBA6F7, 0%, 0%, 100%, 0%)"  # Active border gradient
+    inactive_color: "#1E1E2E"  # Inactive border color
   
-  - match: "Class"  # Targets windows of a specific class
+  - match: "Class"  # Specific class targeting
     contains: "Windows.UI.Core.CoreWindow"  # Matches class name
     enabled: false  # Rule is disabled
 
-  - match: "Title"  # Targets windows with specific titles
+  - match: "Title"  # Specific title targeting
     contains: "Flow.Launcher"  # Matches window title
     enabled: false  # Rule is disabled
 
-  - match: "Title"  # Another title match
+  - match: "Title"  # Another title targeting
     contains: "Zebar"  # Matches window title
     enabled: false  # Rule is disabled

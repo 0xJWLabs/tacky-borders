@@ -14,8 +14,9 @@ use utils::*;
 use windows::{
     core::*, Win32::Foundation::*, Win32::Graphics::Dwm::*,
     Win32::System::SystemServices::IMAGE_DOS_HEADER, Win32::System::Threading::*,
-    Win32::UI::Accessibility::*, Win32::UI::WindowsAndMessaging::*,
+    Win32::UI::Accessibility::*, Win32::UI::WindowsAndMessaging::*, Win32::UI::HiDpi::*,
 };
+use animation_manager::*;
 
 extern "C" {
     pub static __ImageBase: IMAGE_DOS_HEADER;
@@ -27,17 +28,22 @@ mod logger;
 mod sys_tray_icon;
 mod utils;
 mod window_border;
+mod animation_manager;
 
 pub static BORDERS: LazyLock<Mutex<HashMap<isize, isize>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 // This shit supposedly unsafe af but it works so idgaf.
+#[derive(Debug, PartialEq, Clone)]
 pub struct SendHWND(HWND);
 unsafe impl Send for SendHWND {}
 unsafe impl Sync for SendHWND {}
 
-const DWMWA_COLOR_NONE: u32 = 0xFFFFFFFE;
-
 fn main() {
+    let dpi_aware = unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
+    if dpi_aware.is_err() {
+        println!("Failed to make process DPI aware");
+    }
+
     let _ = register_window_class();
     Logger::log("debug", "Window class in registered!");
     let _ = enum_windows();
@@ -47,6 +53,8 @@ fn main() {
     if tray_icon_option.is_err() {
         Logger::log("error", "Error creating tray icon!");
     }
+
+    // animation_manager();
 
     let win_event_hook = set_event_hook();
     unsafe {
@@ -90,7 +98,7 @@ pub fn register_window_class() -> Result<()> {
             
         if result == 0 {
             let last_error = GetLastError();
-            Logger::log("error", format!("RegisterClassExW(&wcex): {:?}", last_error).as_str());
+            println!("ERROR: RegisterClassExW(&wcex): {:?}", last_error);
         }
     }
 
@@ -154,20 +162,6 @@ fn apply_colors() {
                 std::mem::size_of::<c_ulong>() as u32,
             );
         }
-    }
-}
-
-fn create_borders() {
-    let mut windows: Vec<HWND> = Vec::new();
-    unsafe {
-        EnumWindows(
-            Some(enum_windows_callback),
-            LPARAM(&mut windows as *mut _ as isize),
-        );
-    }
-
-    for hwnd in windows {
-        create_border_for_window(hwnd, 0);
     }
 }
 

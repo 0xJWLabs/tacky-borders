@@ -1,8 +1,7 @@
 use dirs::home_dir;
+use rainbow::{Rainbow, RAINBOW};
 use std::{
-    fs::{self, DirBuilder, File, OpenOptions},
-    io::Write,
-    path::{Path, PathBuf},
+    fs::{self, DirBuilder, File, OpenOptions}, io::Write, ops::Deref, path::{Path, PathBuf}
 };
 
 use windows::{
@@ -35,9 +34,45 @@ impl Default for Color {
 
 #[derive(Debug, Clone)]
 pub struct Gradient {
-    pub coordinates: Option<[f32; 4]>,
-    pub direction: Option<String>, // Direction as a tuple (x, y) or start/end points
-    pub gradient_stops: [D2D1_GRADIENT_STOP; 2], // Array of gradient stops
+    pub direction: Option<Vec<f32>>,
+    pub gradient_stops: Vec<D2D1_GRADIENT_STOP>, // Array of gradient stops
+    pub animation: Option<bool>,
+}
+
+
+impl Default for Gradient {
+    fn default() -> Self {
+        Gradient {
+            direction: None,
+            gradient_stops: vec![
+                D2D1_GRADIENT_STOP {
+                    position: 0.0,
+                    color: D2D1_COLOR_F {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 1.0,
+                    }
+                },
+                D2D1_GRADIENT_STOP {
+                    position: 1.0,
+                    color: D2D1_COLOR_F {
+                        r: 1.0,
+                        g: 1.0,
+                        b: 1.0,
+                        a: 1.0,
+                    },
+                }
+            ],
+            animation: Some(false), 
+        }
+    }
+}
+
+impl AsRef<GradientColor> for GradientColor {
+    fn as_ref(&self) -> &GradientColor {
+        self
+    }
 }
 
 // Files
@@ -63,11 +98,11 @@ pub fn get_config() -> PathBuf {
 }
 
 // Windows
-pub fn get_width(rect: RECT) -> i32 {
+pub fn get_rect_width(rect: RECT) -> i32 {
     return rect.right - rect.left;
 }
 
-pub fn get_height(rect: RECT) -> i32 {
+pub fn get_rect_height(rect: RECT) -> i32 {
     return rect.bottom - rect.top;
 }
 
@@ -165,6 +200,37 @@ pub fn is_cloaked(hwnd: HWND) -> bool {
     return is_cloaked.as_bool();
 }
 
+pub fn is_active_window(hwnd: HWND) -> bool {
+    unsafe {
+        return GetForegroundWindow() == hwnd;
+    }
+}
+
+// If the tracking window does not have a window edge or is maximized, then there should be no
+// border.
+pub fn has_native_border(hwnd: HWND) -> bool {
+    unsafe {
+        let style = GetWindowLongW(hwnd, GWL_STYLE) as u32;
+        let ex_style = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
+
+        if ex_style & WS_EX_WINDOWEDGE.0 == 0 || style & WS_MAXIMIZE.0 != 0 {
+            return false;
+        }
+
+        return true;
+    }
+}
+
+pub fn get_show_cmd(hwnd: HWND) -> u32 {
+    let mut wp: WINDOWPLACEMENT = WINDOWPLACEMENT::default();
+    let result = unsafe { GetWindowPlacement(hwnd, std::ptr::addr_of_mut!(wp)) };
+    if result.is_err() {
+        println!("error getting window_placement!");
+        return 0; 
+    }
+    return wp.showCmd;
+}
+
 pub fn get_colors_for_window(_hwnd: HWND) -> (Color, Color) {
     let mut class_arr: [u16; 256] = [0; 256];
     let mut title_arr: [u16; 256] = [0; 256];
@@ -197,39 +263,40 @@ pub fn get_colors_for_window(_hwnd: HWND) -> (Color, Color) {
         a: 1.0,
     });
 
+    fn get_color(color_config: &Option<ColorConfig>, default: &str) -> Color {
+        match color_config {
+            Some(config) => match config {
+                ColorConfig::String(color) => create_solid_color(color.to_string()),
+                ColorConfig::Struct(color) => create_gradient_colors(color.clone()),
+            },
+            None => create_solid_color(default.to_string()),
+        }
+    }
+
     for rule in config.window_rules.iter() {
         match rule.rule_match {
             RuleMatch::Global => {
-                color_active =
-                    create_border_color(rule.active_color.as_deref().unwrap_or("accent"));
-                color_inactive =
-                    create_border_color(rule.inactive_color.as_deref().unwrap_or("accent"));
+                color_active = get_color(&rule.active_color, "accent");
+                color_inactive = get_color(&rule.inactive_color, "accent");
             }
-
+    
             RuleMatch::Title => {
                 if let Some(contains_str) = &rule.contains {
                     if title.to_lowercase().contains(&contains_str.to_lowercase()) {
-                        color_active =
-                            create_border_color(rule.active_color.as_deref().unwrap_or("accent"));
-                        color_inactive =
-                            create_border_color(rule.inactive_color.as_deref().unwrap_or("accent"));
+                        color_active = get_color(&rule.active_color, "accent");
+                        color_inactive = get_color(&rule.inactive_color, "accent");
                         break;
                     }
                 } else {
                     Logger::log("error", "Expected `contains` on `Match=\"Title\"`");
                 }
             }
-
+    
             RuleMatch::Class => {
                 if let Some(contains_str) = &rule.contains {
-                    if class_name
-                        .to_lowercase()
-                        .contains(&contains_str.to_lowercase())
-                    {
-                        color_active =
-                            create_border_color(rule.active_color.as_deref().unwrap_or("accent"));
-                        color_inactive =
-                            create_border_color(rule.inactive_color.as_deref().unwrap_or("accent"));
+                    if class_name.to_lowercase().contains(&contains_str.to_lowercase()) {
+                        color_active = get_color(&rule.active_color, "accent");
+                        color_inactive = get_color(&rule.inactive_color, "accent");
                         break;
                     }
                 } else {
@@ -260,15 +327,24 @@ pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()>
         }
 
         let config = config_mutex.lock().unwrap();
+
+        let use_animation = match active_color {
+            Color::Gradient(ref color) => color.animation == Some(true),
+            _ => false,
+        } || match inactive_color {
+            Color::Gradient(ref color) => color.animation== Some(true),
+            _ => false,
+        };
         //println!("time it takes to get colors: {:?}", before.elapsed());
 
         let mut border = window_border::WindowBorder {
             tracking_window: window_sent.0,
             border_size: config.border_size,
             border_offset: config.border_offset,
-            force_border_radius: config.get_border_radius(),
+            border_radius: config.get_border_radius(),
             active_color: active_color,
             inactive_color: inactive_color,
+            use_animation: use_animation, 
             ..Default::default()
         };
         drop(config);
@@ -287,6 +363,7 @@ pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()>
 
         let hinstance: HINSTANCE = unsafe { std::mem::transmute(&__ImageBase) };
         let _ = border.create_border_window(hinstance);
+
         borders_hashmap.insert(window_isize, border.border_window.0 as isize);
         drop(borders_hashmap);
 
@@ -377,7 +454,7 @@ pub fn hide_border_for_window(hwnd: HWND) -> bool {
     return true;
 }
 
-pub fn create_border_color(color: &str) -> Color {
+pub fn create_solid_color(color: String) -> Color {
     if color == "accent" {
         let mut pcr_colorization: u32 = 0;
         let mut pf_opaqueblend: BOOL = FALSE;
@@ -406,11 +483,61 @@ pub fn create_border_color(color: &str) -> Color {
         Color::Solid(get_color_from_oklch(&color))
     } else if (color.starts_with("hsl(")) {
         Color::Solid(get_color_from_hsl(&color))
-    } else if (color.starts_with("gradient(")) {
-        Color::Gradient(get_gradient_color_from_string(&color))
+    } else if color == "rainbow" {
+        let rainbow_mutex = &*RAINBOW;
+        let rainbow = rainbow_mutex.lock().unwrap();
+        let ongoing_color = rainbow.color.lock().unwrap();
+
+        Color::Solid(*ongoing_color)
     } else {
         Color::Solid(get_color_from_hex(&color))
     }
+}
+
+pub fn create_gradient_colors(color: GradientColor) -> Color {
+    let num_colors = color.colors.len();
+    if num_colors == 0 {
+        return Color::Gradient(Gradient::default());
+    }
+
+    let gradient_stops: Vec<D2D1_GRADIENT_STOP> = color.colors 
+        .into_iter()
+        .enumerate()
+        .map(|(i, hex)| {
+            let position = i as f32 / (num_colors - 1) as f32;
+            D2D1_GRADIENT_STOP {
+                position,
+                color: get_color_from_hex(hex.as_str()),
+            }
+        })
+        .collect();
+
+    let direction = Some(color.direction);
+
+    Color::Gradient(Gradient {
+        direction: direction,
+        gradient_stops: gradient_stops,
+        animation: color.animation 
+    })
+}
+
+pub fn get_gradient_colors(colors: Vec<String>) -> Vec<D2D1_GRADIENT_STOP> {
+    let num_colors = colors.len();
+    if num_colors == 0 {
+        return Vec::new();
+    }
+
+    colors
+        .into_iter()
+        .enumerate()
+        .map(|(i, hex)| {
+            let position = i as f32 / (num_colors - 1) as f32;
+            D2D1_GRADIENT_STOP {
+                position,
+                color: get_color_from_hex(hex.as_str()),
+            }
+        })
+        .collect()
 }
 
 pub fn get_color_from_hex(hex: &str) -> D2D1_COLOR_F {
@@ -613,65 +740,6 @@ pub fn get_color_from_hsl(hsl: &str) -> D2D1_COLOR_F {
         b: 0.0,
         a: 1.0,
     }
-}
-
-// Color Functions
-pub fn get_gradient_color_from_string(gradient_str: &str) -> Gradient {
-    if !gradient_str.starts_with("gradient(") || !gradient_str.ends_with(')') {
-        Logger::log(
-            "error",
-            format!("Invalid gradient format: {}", gradient_str).as_str(),
-        );
-    }
-
-    let color_str = &gradient_str[9..gradient_str.len() - 1];
-
-    let colors: Vec<&str> = color_str.split(',').collect();
-    if colors.len() != 2 && colors.len() != 3 && colors.len() != 6 {
-        Logger::log(
-            "error",
-            format!("Gradient must have exactly two colors, x coordinates, and y coordinates")
-                .as_str(),
-        );
-    }
-
-    let color1 = colors[0].trim();
-    let color2 = colors[1].trim();
-
-    let direction = match colors.len() {
-        3 => Some(colors[2].trim().to_string()), // Use index 2 for the third element and wrap in Some
-        2 => Some("to right".to_string()),
-        _ => None,
-    };
-
-    let coordinates = match colors.len() {
-        6 => {
-            let start_x = convert_string_to_decimal(colors[2]).unwrap();
-            let start_y = convert_string_to_decimal(colors[3]).unwrap();
-            let end_x = convert_string_to_decimal(colors[4]).unwrap();
-            let end_y = convert_string_to_decimal(colors[5]).unwrap();
-
-            Some([start_x, start_y, end_x, end_y])
-        }
-        _ => None,
-    };
-
-    let gradients = Gradient {
-        direction: direction,
-        coordinates: coordinates,
-        gradient_stops: [
-            D2D1_GRADIENT_STOP {
-                position: 0.0,
-                color: get_color_from_hex(color1),
-            },
-            D2D1_GRADIENT_STOP {
-                position: 1.0,
-                color: get_color_from_hex(color2),
-            },
-        ],
-    };
-
-    gradients
 }
 
 // Converter

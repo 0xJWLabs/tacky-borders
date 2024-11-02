@@ -1,5 +1,6 @@
 use crate::logger::Logger;
 use crate::utils::*;
+use crate::*;
 use std::ffi::c_ulong;
 use std::fmt;
 use std::os::raw::c_void;
@@ -7,10 +8,9 @@ use std::ptr::{null_mut, NonNull};
 use std::sync::LazyLock;
 use std::sync::OnceLock;
 use windows::{
-    core::*, Win32::Foundation::*, Win32::Graphics::Direct2D::Common::*,
+    core::*, Foundation::Numerics::*, Win32::Foundation::*, Win32::Graphics::Direct2D::Common::*,
     Win32::Graphics::Direct2D::*, Win32::Graphics::Dwm::*, Win32::Graphics::Dxgi::Common::*,
-    Win32::Graphics::Gdi::*, Win32::UI::WindowsAndMessaging::*,
-    Foundation::Numerics::*
+    Win32::Graphics::Gdi::*, Win32::UI::HiDpi::*, Win32::UI::WindowsAndMessaging::*,
 };
 
 pub static RENDER_FACTORY: LazyLock<ID2D1Factory> = unsafe {
@@ -20,62 +20,6 @@ pub static RENDER_FACTORY: LazyLock<ID2D1Factory> = unsafe {
     })
 };
 
-struct BrushWrapper {
-    brush: ID2D1Brush,
-}
-
-impl fmt::Debug for BrushWrapper {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Ok(solid_brush) = self.brush.cast::<ID2D1SolidColorBrush>() {
-            let color = unsafe { solid_brush.GetColor() }; // Get the color
-            f.debug_struct("BrushWrapper")
-                .field("brush_type", &"Solid Color Brush")
-                .field("color", &color)
-                .finish()
-        } else if let Ok(gradient_brush) = self.brush.cast::<ID2D1LinearGradientBrush>() {
-            // Retrieve the gradient stop collection
-            let gradient_stop_collection = unsafe { gradient_brush.GetGradientStopCollection() };
-            let mut stops = Vec::new();
-
-            // Assuming you have a way to get the count of stops and to retrieve them
-            if let Ok(gradient_stops) = gradient_stop_collection {
-                let count = unsafe { gradient_stops.GetGradientStopCount() }; // Get the count of gradient stops
-
-                // Create a vector to hold the gradient stops
-                let mut gradient_stop_array: Vec<Common::D2D1_GRADIENT_STOP> =
-                    vec![Default::default(); count as usize];
-
-                // Get each gradient stop
-                unsafe {
-                    gradient_stops.GetGradientStops(&mut gradient_stop_array); // Fill the gradient stops
-
-                    // Iterate through the filled gradient stops
-                    for stop in gradient_stop_array.iter() {
-                        stops.push((stop.color, stop.position)); // Store the color and position
-                    }
-                }
-
-                f.debug_struct("BrushWrapper")
-                    .field("brush_type", &"Linear Gradient Brush")
-                    .field("gradient_stops", &stops)
-                    .finish()
-            } else {
-                f.debug_struct("BrushWrapper")
-                    .field("brush_type", &"Linear Gradient Brush")
-                    .field(
-                        "gradient_stops",
-                        &"Error retrieving gradient stop collection",
-                    )
-                    .finish()
-            }
-        } else {
-            f.debug_struct("BrushWrapper")
-                .field("brush_type", &"Unknown Brush Type")
-                .finish()
-        }
-    }
-}
-
 #[derive(Debug, Default)]
 pub struct WindowBorder {
     pub border_window: HWND,
@@ -83,16 +27,19 @@ pub struct WindowBorder {
     pub window_rect: RECT,
     pub border_size: i32,
     pub border_offset: i32,
-    pub force_border_radius: f32,
-    pub dpi: f32,
+    pub border_radius: f32,
     pub render_target_properties: D2D1_RENDER_TARGET_PROPERTIES,
     pub hwnd_render_target_properties: D2D1_HWND_RENDER_TARGET_PROPERTIES,
+    pub brush_properties: D2D1_BRUSH_PROPERTIES,
     pub render_target: OnceLock<ID2D1HwndRenderTarget>,
-    pub border_brush: D2D1_BRUSH_PROPERTIES,
     pub rounded_rect: D2D1_ROUNDED_RECT,
-    pub active_color: Color, 
+    pub active_color: Color,
     pub inactive_color: Color,
     pub current_color: Color,
+    pub pause: bool,
+    pub gradient_angle: f32,
+    pub last_render_time: Option<std::time::Instant>,
+    pub use_animation: bool,
 }
 
 impl WindowBorder {
@@ -112,11 +59,6 @@ impl WindowBorder {
                 hinstance,
                 Some(std::ptr::addr_of!(*self) as *const _),
             )?;
-
-            let dpi_aware = SetProcessDPIAware();
-            if !dpi_aware.as_bool() {
-                Logger::log("error", "Failed to make process DPI aware");
-            }
         }
 
         Ok(())
@@ -126,7 +68,7 @@ impl WindowBorder {
         unsafe {
             // Make the window border transparent
             let pos: i32 = -GetSystemMetrics(SM_CXVIRTUALSCREEN) - 8;
-            let hrgn = CreateRectRgn(pos, 0, (pos + 1), 1);
+            let hrgn = CreateRectRgn(pos, 0, pos + 1, 1);
             let mut bh: DWM_BLURBEHIND = Default::default();
             if !hrgn.is_invalid() {
                 bh = DWM_BLURBEHIND {
@@ -137,35 +79,34 @@ impl WindowBorder {
                 };
             }
 
-            DwmEnableBlurBehindWindow(self.border_window, &bh);
+            let _ = DwmEnableBlurBehindWindow(self.border_window, &bh);
             if SetLayeredWindowAttributes(self.border_window, COLORREF(0x00000000), 0, LWA_COLORKEY)
                 .is_err()
             {
-                Logger::log("error", "Error setting layered window attributes!");
+                println!("Error Setting Layered Window Attributes!");
             }
             if SetLayeredWindowAttributes(self.border_window, COLORREF(0x00000000), 255, LWA_ALPHA)
                 .is_err()
             {
-                Logger::log("error", "Error setting layered window attributes!");
+                println!("Error Setting Layered Window Attributes!");
             }
 
-            self.create_render_targets();
-            self.render();
-            ShowWindow(self.border_window, SW_SHOWNA);
+            let _ = self.create_render_targets();
+            if has_native_border(self.tracking_window) {
+                let _ = self.update_position(Some(SWP_SHOWWINDOW));
+                let _ = self.render();
 
-            // TODO Here im running all the render commands again because it sometimes doesn't
-            // render properly at first and I'm too lazy to figure out why. Definitely should be
-            // looked into in the future.
-            std::thread::sleep(std::time::Duration::from_millis(5));
-            self.update_color();
-            self.update_window_rect();
-            self.update_position();
-            self.render();
+                // Sometimes, it doesn't show the window at first, so we wait 5ms and update it.
+                // This is very hacky and needs to be looked into. It may be related to the issue
+                // detailed in update_window_rect. TODO
+                /*std::thread::sleep(std::time::Duration::from_millis(5));
+                let _ = self.update_position(Some(SWP_SHOWWINDOW));
+                let _ = self.render();*/
+            }
 
             let mut message = MSG::default();
             while GetMessageW(&mut message, HWND::default(), 0, 0).into() {
-                //println!("message received in window border thread: {:?}", message.message);
-                TranslateMessage(&message);
+                let _ = TranslateMessage(&message);
                 DispatchMessageW(&message);
                 std::thread::sleep(std::time::Duration::from_millis(1));
             }
@@ -175,39 +116,33 @@ impl WindowBorder {
     }
 
     pub fn create_render_targets(&mut self) -> Result<()> {
-        self.dpi = 96.0;
         self.render_target_properties = D2D1_RENDER_TARGET_PROPERTIES {
             r#type: D2D1_RENDER_TARGET_TYPE_DEFAULT,
             pixelFormat: D2D1_PIXEL_FORMAT {
                 format: DXGI_FORMAT_UNKNOWN,
                 alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED,
             },
-            dpiX: self.dpi,
-            dpiY: self.dpi,
+            dpiX: 96.0,
+            dpiY: 96.0,
             ..Default::default()
         };
+        self.gradient_angle = 0.0;
+        self.last_render_time = Some(std::time::Instant::now());
         self.hwnd_render_target_properties = D2D1_HWND_RENDER_TARGET_PROPERTIES {
             hwnd: self.border_window,
             pixelSize: Default::default(),
             presentOptions: D2D1_PRESENT_OPTIONS_IMMEDIATELY,
         };
-
-        self.border_brush = D2D1_BRUSH_PROPERTIES {
+        self.brush_properties = D2D1_BRUSH_PROPERTIES {
             opacity: 1.0 as f32,
-            transform: Matrix3x2 {
-                M11: 1.0,
-                M12: 0.0,
-                M21: 0.0,
-                M22: 1.0,
-                M31: 0.0,
-                M32: 0.0,
-            },
+            transform: Matrix3x2::identity(),
         };
 
         // Create a rounded_rect with radius depending on the force_border_radius variable
         let mut border_radius = 0.0;
         let mut corner_preference = DWM_WINDOW_CORNER_PREFERENCE::default();
-        if self.force_border_radius == -1.0 {
+        let dpi = unsafe { GetDpiForWindow(self.tracking_window) } as f32;
+        if self.border_radius == -1.0 {
             let result = unsafe {
                 DwmGetWindowAttribute(
                     self.tracking_window,
@@ -219,15 +154,19 @@ impl WindowBorder {
             if result.is_err() {
                 Logger::log("error", "Error getting window corner preference!");
             }
-            match corner_preference.0 {
-                0 => border_radius = 6.0 + ((self.border_size / 2) as f32),
-                1 => border_radius = 0.0,
-                2 => border_radius = 6.0 + ((self.border_size / 2) as f32),
-                3 => border_radius = 3.0 + ((self.border_size / 2) as f32),
+            match corner_preference {
+                DWMWCP_DEFAULT => {
+                    border_radius = 8.0 * dpi / 96.0 + ((self.border_size / 2) as f32)
+                }
+                DWMWCP_DONOTROUND => border_radius = 0.0,
+                DWMWCP_ROUND => border_radius = 8.0 * dpi / 96.0 + ((self.border_size / 2) as f32),
+                DWMWCP_ROUNDSMALL => {
+                    border_radius = 4.0 * dpi / 96.0 + ((self.border_size / 2) as f32)
+                }
                 _ => {}
             }
         } else {
-            border_radius = self.force_border_radius;
+            border_radius = self.border_radius * dpi / 96.0;
         }
 
         self.rounded_rect = D2D1_ROUNDED_RECT {
@@ -241,7 +180,7 @@ impl WindowBorder {
 
         unsafe {
             let factory = &*RENDER_FACTORY;
-            self.render_target.set(
+            let _ = self.render_target.set(
                 factory
                     .CreateHwndRenderTarget(
                         &self.render_target_properties,
@@ -249,11 +188,34 @@ impl WindowBorder {
                     )
                     .expect("creating self.render_target failed"),
             );
+            let render_target = self.render_target.get().unwrap();
+            render_target.SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
         }
 
-        self.update_color();
-        self.update_window_rect();
-        self.update_position();
+        let _ = self.update_color();
+        let _ = self.update_window_rect();
+        let _ = self.update_position(None);
+        let _ = self.create_animation_thread();
+
+        return Ok(());
+    }
+
+    pub fn create_animation_thread(&self) -> Result<()> {
+        if self.use_animation {
+            let window_sent: SendHWND = SendHWND(self.border_window);
+            std::thread::spawn(move || {
+                loop {
+                    let window = window_sent.clone().0;
+                    if is_window_visible(window) {
+                        unsafe {
+                            let _ = PostMessageW(window, WM_PAINT, WPARAM(0), LPARAM(0));
+                        }
+                    }
+    
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+            });
+        }
 
         return Ok(());
     }
@@ -269,8 +231,9 @@ impl WindowBorder {
         };
         if result.is_err() {
             Logger::log("error", "Error getting frame rect!");
-            // I have not tested if this actually works yet
-            unsafe { SendMessageW(self.border_window, WM_DESTROY, WPARAM(0), LPARAM(0)) };
+            unsafe {
+                let _ = ShowWindow(self.border_window, SW_HIDE);
+            }
         }
 
         self.window_rect.top -= self.border_size;
@@ -281,24 +244,27 @@ impl WindowBorder {
         return Ok(());
     }
 
-    pub fn update_position(&mut self) -> Result<()> {
+    pub fn update_position(&mut self, c_flags: Option<SET_WINDOW_POS_FLAGS>) -> Result<()> {
         unsafe {
-            // Place the window border above the tracking window so that it looks nice with window
-            // drop shadows enabled.
+            // Place the window border above the tracking window
             let mut hwnd_above_tracking = GetWindow(self.tracking_window, GW_HWNDPREV);
-            let mut u_flags = SWP_NOSENDCHANGING | SWP_NOACTIVATE | SWP_NOREDRAW;
+            let custom_flags = match c_flags {
+                Some(flags) => flags,
+                None => SET_WINDOW_POS_FLAGS::default(),
+            };
+            let mut u_flags = SWP_NOSENDCHANGING | SWP_NOACTIVATE | SWP_NOREDRAW | custom_flags;
 
             // If hwnd_above_tracking is the window border itself, we have what we want and there's
-            // no need to change the z-order. If hwnd_above_tracking returns an error, it's likely
-            // that tracking window is already the highest in z-order, so we use HWND_TOP to place
-            // the window border above.
+            //  no need to change the z-order (plus it results in an error if we try it).
+            // If hwnd_above_tracking returns an error, it's likely that tracking_window is already
+            //  the highest in z-order, so we use HWND_TOP to place the window border above.
             if hwnd_above_tracking == Ok(self.border_window) {
                 u_flags = u_flags | SWP_NOZORDER;
             } else if hwnd_above_tracking.is_err() {
                 hwnd_above_tracking = Ok(HWND_TOP);
             }
 
-            SetWindowPos(
+            let result = SetWindowPos(
                 self.border_window,
                 hwnd_above_tracking.unwrap(),
                 self.window_rect.left,
@@ -307,29 +273,52 @@ impl WindowBorder {
                 self.window_rect.bottom - self.window_rect.top,
                 u_flags,
             );
+            if result.is_err() {
+                println!("Error setting window pos!");
+                let _ = ShowWindow(self.border_window, SW_HIDE);
+            }
         }
         return Ok(());
     }
 
-    pub fn update_color(&mut self) {
+    pub fn update_color(&mut self) -> Result<()> {
         if unsafe { GetForegroundWindow() } == self.tracking_window {
             self.current_color = self.active_color.clone();
         } else {
             self.current_color = self.inactive_color.clone();
         }
+
+        return Ok(());
     }
 
-    fn create_brush(&self, render_target: &ID2D1RenderTarget) -> Result<ID2D1Brush> {
+    fn update_gradient_state(&mut self) -> Result<()> {
+        if self.use_animation == true {
+            let now = std::time::Instant::now();
+            let elapsed = now
+                .duration_since(self.last_render_time.unwrap_or(now))
+                .as_secs_f32();
+
+            self.last_render_time = Some(now);
+            self.gradient_angle += 360.0 * elapsed;
+            if self.gradient_angle > 360.0 {
+                self.gradient_angle -= 360.0;
+            }
+        }
+
+        return Ok(());
+    }
+
+    pub fn create_brush(&self, render_target: &ID2D1RenderTarget) -> Result<ID2D1Brush> {
         match &self.current_color {
             Color::Solid(color) => {
                 let solid_brush = unsafe {
-                    render_target.CreateSolidColorBrush(color, Some(&self.border_brush))?
+                    render_target.CreateSolidColorBrush(color, Some(&self.brush_properties))?
                 };
 
                 Ok(solid_brush.into())
             }
             Color::Gradient(color) => {
-                let gradient_stops = color.gradient_stops;
+                let gradient_stops = color.gradient_stops.clone();
                 let gradient_stop_collection: ID2D1GradientStopCollection = unsafe {
                     render_target.CreateGradientStopCollection(
                         &gradient_stops,
@@ -338,36 +327,60 @@ impl WindowBorder {
                     )?
                 };
 
-                let width = get_width(self.window_rect) as f32;
-                let height = get_width(self.window_rect) as f32;
+                let width = get_rect_width(self.window_rect) as f32;
+                let height = get_rect_width(self.window_rect) as f32;
 
-                let (start_x, start_y, end_x, end_y) = match color.coordinates {
-                    Some(coords) => (coords[0] * width, coords[1] * height, coords[2] * width, coords[3] * height), // Use coordinates if they exist
-                    None => match color.direction.as_deref() {
-                        Some("to top") => (0.0, height, 0.0, 0.0),
-                        Some("to right") => (0.0, 0.0, width, 0.0),
-                        Some("to bottom") => (0.0, 0.0, 0.0, height),
-                        Some("to left") => (width, 0.0, 0.0, 0.0),
-                        Some("to top right") => (0.0, height, width, 0.0),
-                        Some("to top left") => (0.0, height, 0.0, width),
-                        Some("to bottom right") => (0.0, 0.0, width, height),
-                        Some("to bottom left") => (width, height, 0.0, 0.0),
-                        _ => (0.0, 0.0, width, height), // Default case, can be adjusted
-                    },
-                };
+                let mut start_point = D2D_POINT_2F::default();
+                let mut end_point = D2D_POINT_2F::default();
+
+                if self.use_animation {
+                    let center_x = width / 2.0;
+                    let center_y = height / 2.0;
+                    let radius = (center_x.powi(2) + center_y.powi(2)).sqrt();
+
+                    let angle_rad = self.gradient_angle.to_radians();
+                    let (sin, cos) = angle_rad.sin_cos();
+                    start_point = D2D_POINT_2F {
+                        x: center_x - radius * cos,
+                        y: center_y - radius * sin,
+                    };
+                    end_point = D2D_POINT_2F {
+                        x: center_x + radius * cos,
+                        y: center_y + radius * sin,
+                    };
+                } else {
+                    let (start_x, start_y, end_x, end_y) = match color.direction.clone() {
+                        Some(coords) => (
+                            coords[0] * width,
+                            coords[1] * height,
+                            coords[2] * width,
+                            coords[3] * height,
+                        ), // Use coordinates if they exist
+                        None => (
+                            0.0 * width,
+                            0.0 * height,
+                            1.0 * width,
+                            1.0 * height
+                        ),
+                    };
+
+                    start_point = D2D_POINT_2F {
+                        x: start_x,
+                        y: start_y,
+                    };
+
+                    end_point = D2D_POINT_2F { x: end_x, y: end_y };
+                }
 
                 let gradient_properties = D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES {
-                    startPoint: D2D_POINT_2F { x: start_x, y: start_y },
-                    endPoint: D2D_POINT_2F {
-                        x: end_x,
-                        y: end_y,
-                    },
+                    startPoint: start_point,
+                    endPoint: end_point,
                 };
 
                 let gradient_brush = unsafe {
                     render_target.CreateLinearGradientBrush(
                         &gradient_properties,
-                        Some(&self.border_brush),
+                        Some(&self.brush_properties),
                         Some(&gradient_stop_collection),
                     )?
                 };
@@ -379,31 +392,42 @@ impl WindowBorder {
 
     pub fn render(&mut self) -> Result<()> {
         // Get the render target
-        let render_target_option = self.render_target.get();
-        if render_target_option.is_none() {
-            return Ok(());
-        }
-        let render_target = render_target_option.unwrap();
+        let render_target = match self.render_target.get() {
+            Some(rt) => rt,
+            None => return Ok(()), // Return early if there is no render target
+        };
 
         self.hwnd_render_target_properties.pixelSize = D2D_SIZE_U {
             width: (self.window_rect.right - self.window_rect.left) as u32,
             height: (self.window_rect.bottom - self.window_rect.top) as u32,
         };
 
+        self.rounded_rect.rect = D2D_RECT_F {
+            left: (self.border_size / 2 - self.border_offset) as f32,
+            top: (self.border_size / 2 - self.border_offset) as f32,
+            right: (self.window_rect.right - self.window_rect.left - self.border_size / 2
+                + self.border_offset) as f32,
+            bottom: (self.window_rect.bottom - self.window_rect.top - self.border_size / 2
+                + self.border_offset) as f32,
+        };
+
         unsafe {
             render_target.Resize(&self.hwnd_render_target_properties.pixelSize as *const _);
-            render_target.SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
 
-            self.rounded_rect.rect = D2D_RECT_F {
-                left: (self.border_size / 2 - self.border_offset) as f32,
-                top: (self.border_size / 2 - self.border_offset) as f32,
-                right: (self.window_rect.right - self.window_rect.left - self.border_size / 2
-                    + self.border_offset) as f32,
-                bottom: (self.window_rect.bottom - self.window_rect.top - self.border_size / 2
-                    + self.border_offset) as f32,
-            };
+            if self.use_animation {
+                let now = std::time::Instant::now();
+                let elapsed = now
+                    .duration_since(self.last_render_time.unwrap_or(now))
+                    .as_secs_f32();
+                self.last_render_time = Some(now);
+                self.gradient_angle += 360.0 * elapsed;
+                if self.gradient_angle > 360.0 {
+                    self.gradient_angle -= 360.0;
+                }
+            }
 
-            let brush = self.create_brush(&render_target).unwrap();
+            // render_target.SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+            let brush = self.create_brush(render_target)?;
 
             render_target.BeginDraw();
             render_target.Clear(None);
@@ -414,6 +438,7 @@ impl WindowBorder {
                 None,
             );
             render_target.EndDraw(None, None);
+            let _ = InvalidateRect(self.border_window, None, false);
         }
 
         Ok(())
@@ -451,62 +476,93 @@ impl WindowBorder {
         lparam: LPARAM,
     ) -> LRESULT {
         match message {
-            WM_MOVE => {
-                // TODO WM_MOVE and WM_SETFOCUS may be called after WM_CLOSE, causing the window to
-                // be visible again which is not what we want. That's why I check here to make sure
-                // whether the window is cloaked/visible or not. It doesn't take up much processing
-                // time so it's totally fine to leave as is, but it might still be worth trying to
-                // make better.
-                if is_cloaked(self.tracking_window)
-                    || !IsWindowVisible(self.tracking_window).as_bool()
+            5000 => {
+                if self.pause
+                    || is_cloaked(self.tracking_window)
+                    || !is_window_visible(self.tracking_window)
                 {
                     return LRESULT(0);
                 }
 
-                // If the tracking window does not have a window edge, don't show the window border.
-                // The reason I'm not just destroying the window border is because going into
-                // fullscreen in browsers also gets rid of the WINDOWEDGE style, but I want to keep the
-                // window border for when they exit fullscreen.
-                let ex_style = GetWindowLongW(self.tracking_window, GWL_EXSTYLE) as u32;
-                if ex_style & WS_EX_WINDOWEDGE.0 == 0 {
-                    ShowWindow(self.border_window, SW_HIDE);
+                if !has_native_border(self.tracking_window) {
+                    let _ = self.update_position(Some(SWP_HIDEWINDOW));
                     return LRESULT(0);
-                } else if !IsWindowVisible(self.border_window).as_bool() {
-                    ShowWindow(self.border_window, SW_SHOWNA);
+                } else if !is_window_visible(self.border_window) {
+                    let _ = self.update_position(Some(SWP_SHOWWINDOW));
                 }
 
                 let old_rect = self.window_rect.clone();
-                self.update_window_rect();
-                self.update_position();
+                let _ = self.update_window_rect();
+                let _ = self.update_position(None);
 
-                if get_width(self.window_rect) != get_width(old_rect)
-                    || get_height(self.window_rect) != get_height(old_rect)
+                // When a window is minimized, all four of these points go way below 0 and we end
+                // up with a weird rect that we don't want. So, we just swap out with old_rect.
+                if self.window_rect.top <= 0
+                    && self.window_rect.left <= 0
+                    && self.window_rect.right <= 0
+                    && self.window_rect.bottom <= 0
                 {
-                    self.render();
+                    self.window_rect = old_rect;
+                    return LRESULT(0);
+                }
+
+                // Only re-render the border when its size changes
+                if get_rect_width(self.window_rect) != get_rect_width(old_rect)
+                    || get_rect_height(self.window_rect) != get_rect_height(old_rect)
+                {
+                    let _ = self.render();
                 }
             }
-            WM_SETFOCUS => {
-                //println!("setting focus");
-                if is_cloaked(self.tracking_window)
-                    || !IsWindowVisible(self.tracking_window).as_bool()
+            // EVENT_OBJECT_REORDER
+            5001 => {
+                if self.pause
+                    || is_cloaked(self.tracking_window)
+                    || !is_window_visible(self.tracking_window)
                 {
                     return LRESULT(0);
                 }
 
-                self.update_color();
-                if self.tracking_window == GetForegroundWindow() {
-                    self.update_position();
-                }
-                self.render();
+                let _ = self.update_color();
+                let _ = self.update_position(None);
+                let _ = self.render();
             }
-            WM_QUERYOPEN => {
-                ShowWindow(self.border_window, SW_HIDE);
+            // EVENT_OBJECT_SHOW / EVENT_OBJECT_UNCLOAKED
+            5002 => {
+                if has_native_border(self.tracking_window) {
+                    let _ = self.update_window_rect();
+                    let _ = self.update_position(Some(SWP_SHOWWINDOW));
+                    let _ = self.render();
+                }
+                self.pause = false;
+            }
+            // EVENT_OBJECT_HIDE / EVENT_OBJECT_CLOAKED
+            5003 => {
+                let _ = self.update_position(Some(SWP_HIDEWINDOW));
+                self.pause = true;
+            }
+            // EVENT_OBJECT_MINIMIZESTART
+            5004 => {
+                let _ = self.update_position(Some(SWP_HIDEWINDOW));
+                self.pause = true;
+            }
+            // EVENT_SYSTEM_MINIMIZEEND
+            // When a window is about to be unminimized, hide the border and let the thread sleep
+            // for 200ms to wait for the window animation to finish, then show the border.
+            5005 => {
                 std::thread::sleep(std::time::Duration::from_millis(200));
-                ShowWindow(self.border_window, SW_SHOWNA);
 
-                self.update_window_rect();
-                self.update_position();
-                self.render();
+                if has_native_border(self.tracking_window) {
+                    let _ = self.update_window_rect();
+                    let _ = self.update_position(Some(SWP_SHOWWINDOW));
+                    let _ = self.render();
+                }
+                self.pause = false;
+            }
+            WM_PAINT => {
+                let _ = self.render();
+                ValidateRect(window, None);
+                // Schedule next frame
+                let _ = SetTimer(window, 1, 16, None); // ~60 FPS
             }
             WM_DESTROY => {
                 SetWindowLongPtrW(window, GWLP_USERDATA, 0);
@@ -516,9 +572,7 @@ impl WindowBorder {
             WM_WINDOWPOSCHANGING => {}
             WM_WINDOWPOSCHANGED => {}
             _ => {
-                //let before = std::time::Instant::now();
                 return DefWindowProcW(window, message, wparam, lparam);
-                //println!("other message and elapsed time: {:?}, {:?}", message, before.elapsed());
             }
         }
         LRESULT(0)

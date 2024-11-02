@@ -13,7 +13,7 @@ const DEFAULT_CONFIG: &str = include_str!("resources/config.yaml");
 
 pub static CONFIG: LazyLock<Mutex<Config>> = LazyLock::new(|| Mutex::new(Config::new()));
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[derive(Debug, Deserialize, PartialEq, Clone)]
 // Maybe support Process later.
 // Getting the process name seems annoying.
 pub enum RuleMatch {
@@ -22,13 +22,13 @@ pub enum RuleMatch {
   Class,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct WindowRule {
   #[serde(rename = "match")]
   pub rule_match: RuleMatch,
   pub contains: Option<String>,
-  pub active_color: Option<String>,
-  pub inactive_color: Option<String>,
+  pub active_color: Option<ColorConfig>,
+  pub inactive_color: Option<ColorConfig>,
   pub enabled: Option<bool>
 }
 
@@ -60,6 +60,92 @@ impl<'de> Deserialize<'de> for BorderRadius {
         }
     }
 }
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GradientColor {
+    pub colors: Vec<String>,
+    pub direction: Vec<f32>,
+    pub animation: Option<bool>
+}
+
+#[derive(Debug, Clone)]
+pub enum ColorConfig {
+    String(String),
+    Struct(GradientColor),
+}
+
+impl<'de> Deserialize<'de> for ColorConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de::{self, MapAccess, Visitor};
+        use std::fmt;
+
+        const FIELDS: &'static [&'static str] = &["colors", "direction", "animation"];
+
+        struct ColorConfigVisitor;
+
+        impl<'de> Visitor<'de> for ColorConfigVisitor {
+            type Value = ColorConfig;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a string or a map representing a gradient color")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E> {
+                Ok(ColorConfig::String(value.to_string()))
+            }
+
+            fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                let mut colors = None;
+                let mut direction = None;
+                let mut animation = None;
+
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "colors" => {
+                            if colors.is_some() {
+                                return Err(de::Error::duplicate_field("colors"));
+                            }
+                            colors = Some(map.next_value()?);
+                        }
+                        "direction" => {
+                            if direction.is_some() {
+                                return Err(de::Error::duplicate_field("direction"));
+                            }
+                            direction = Some(map.next_value()?);
+                        }
+                        "animation" => {
+                            if animation.is_some() {
+                                return Err(de::Error::duplicate_field("animation"));
+                            }
+                            animation = Some(map.next_value()?);
+                        }
+                        _ => {
+                            return Err(de::Error::unknown_field(&key, FIELDS));
+                        }
+                    }
+                }
+
+                let colors = colors.ok_or_else(|| de::Error::missing_field("colors"))?;
+                let direction = direction.ok_or_else(|| de::Error::missing_field("direction"))?;
+
+                Ok(ColorConfig::Struct(GradientColor {
+                    colors,
+                    direction,
+                    animation,
+                }))
+            }
+        }
+
+        deserializer.deserialize_any(ColorConfigVisitor)
+    }
+}
+
 
 impl Config {
     fn new() -> Self {

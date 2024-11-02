@@ -2,6 +2,7 @@ use dirs::home_dir;
 use std::{
     fs::{self, DirBuilder, File, OpenOptions}, io::Write, ops::Deref, path::{Path, PathBuf}
 };
+use regex::Regex;
 
 use windows::{
     core::Error, Win32::Foundation::*, Win32::Graphics::Direct2D::Common::*,
@@ -144,42 +145,47 @@ pub fn has_filtered_class_or_title(hwnd: HWND) -> bool {
     let config_mutex = &*CONFIG;
     let config = config_mutex.lock().unwrap();
 
-    let mut condition = false;
-
     for rule in config.window_rules.iter() {
         match rule.rule_match {
             RuleMatch::Global => {}
-            RuleMatch::Title => {
-                if let Some(contains_str) = &rule.contains {
-                    if title.to_lowercase().contains(&contains_str.to_lowercase())
-                        && rule.enabled == Some(false)
-                    {
-                        condition = true;
-                        break;
-                    }
-                } else {
-                    Logger::log("error", "Expected `contains` on `Match=\"Title\"`");
-                }
-            }
+            RuleMatch::Title | RuleMatch::Class => {
+                let name = if rule.rule_match == RuleMatch::Title { &title } else { &class_name };
 
-            RuleMatch::Class => {
                 if let Some(contains_str) = &rule.contains {
-                    if class_name
-                        .to_lowercase()
-                        .contains(&contains_str.to_lowercase())
-                        && rule.enabled == Some(false)
-                    {
-                        condition = true;
-                        break;
+                    let check_fn: Box<dyn Fn(&str) -> bool> = match rule.match_strategy {
+                        Some(MatchType::Contains) => {
+                            Box::new(move |s: &str| name.to_lowercase().contains(&s.to_lowercase()))
+                        }
+                        Some(MatchType::Equals) => {
+                            Box::new(move |s: &str| name.to_lowercase() == s.to_lowercase())
+                        }
+                        Some(MatchType::Regex) => {
+                            let regex = Regex::new(contains_str).map_err(|e| {
+                                Logger::log("error", &format!("Invalid regex pattern: {}", e));
+                            });
+                            if let Ok(regex) = regex {
+                                return regex.is_match(name);
+                            } else {
+                                Logger::log("error", "Expected valid regex on `Match`");
+                                return false;
+                            }
+                        }
+                        None => {
+                            Box::new(move |s: &str| name.to_lowercase() == s.to_lowercase())
+                        } 
+                    };
+
+                    if check_fn(&contains_str.to_lowercase()) {
+                        return true;
                     }
                 } else {
-                    Logger::log("error", "Expected `contains` on `Match=\"Class\"`");
+                    Logger::log("error", "Expected `contains` on `Match`");
                 }
             }
         }
     }
 
-    return condition;
+    false 
 }
 
 pub fn is_cloaked(hwnd: HWND) -> bool {
@@ -262,28 +268,30 @@ pub fn get_colors_for_window(_hwnd: HWND) -> (Color, Color) {
         a: 1.0,
     });
 
-    fn get_color(color_config: &Option<ColorConfig>, default: &str) -> Color {
+    let get_color = |color_config: &Option<ColorConfig>, default: &str| {
         match color_config {
-            Some(config) => match config {
-                ColorConfig::String(color) => create_solid_color(color.to_string()),
-                ColorConfig::Struct(color) => create_gradient_colors(color.clone()),
-            },
+            Some(ColorConfig::String(color)) => create_solid_color(color.to_string()),
+            Some(ColorConfig::Struct(color)) => create_gradient_colors(color.clone()),
             None => create_solid_color(default.to_string()),
         }
-    }
+    };
+
+    let mut colors = (Color::Solid(D2D1_COLOR_F { r: 1.0, g: 1.0, b: 1.0, a: 1.0 }),
+                     Color::Solid(D2D1_COLOR_F { r: 1.0, g: 1.0, b: 1.0, a: 1.0 }));
+
 
     for rule in config.window_rules.iter() {
         match rule.rule_match {
             RuleMatch::Global => {
-                color_active = get_color(&rule.active_color, "accent");
-                color_inactive = get_color(&rule.inactive_color, "accent");
+                colors.0 = get_color(&rule.active_color, "accent");
+                colors.1 = get_color(&rule.inactive_color, "accent");
             }
     
             RuleMatch::Title => {
                 if let Some(contains_str) = &rule.contains {
                     if title.to_lowercase().contains(&contains_str.to_lowercase()) {
-                        color_active = get_color(&rule.active_color, "accent");
-                        color_inactive = get_color(&rule.inactive_color, "accent");
+                        colors.0 = get_color(&rule.active_color, "accent");
+                        colors.1 = get_color(&rule.inactive_color, "accent");
                         break;
                     }
                 } else {
@@ -294,8 +302,8 @@ pub fn get_colors_for_window(_hwnd: HWND) -> (Color, Color) {
             RuleMatch::Class => {
                 if let Some(contains_str) = &rule.contains {
                     if class_name.to_lowercase().contains(&contains_str.to_lowercase()) {
-                        color_active = get_color(&rule.active_color, "accent");
-                        color_inactive = get_color(&rule.inactive_color, "accent");
+                        colors.0 = get_color(&rule.active_color, "accent");
+                        colors.1 = get_color(&rule.inactive_color, "accent");
                         break;
                     }
                 } else {
@@ -305,7 +313,7 @@ pub fn get_colors_for_window(_hwnd: HWND) -> (Color, Color) {
         }
     }
 
-    (color_active, color_inactive)
+    colors 
 }
 
 pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()> {

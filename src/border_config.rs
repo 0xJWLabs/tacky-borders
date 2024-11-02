@@ -22,6 +22,26 @@ pub enum RuleMatch {
   Class,
 }
 
+#[derive(Debug, Deserialize, PartialEq, Clone)]
+pub enum MatchType {
+    Equals,
+    Regex,
+    Contains,
+}
+
+impl std::str::FromStr for MatchType {
+    type Err = String; // Or a more specific error type
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Equals" => Ok(MatchType::Equals),
+            "Regex" => Ok(MatchType::Regex),
+            "Contains" => Ok(MatchType::Contains),
+            _ => Err(format!("Invalid match type: {}", s)),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct WindowRule {
   #[serde(rename = "match")]
@@ -29,6 +49,7 @@ pub struct WindowRule {
   pub contains: Option<String>,
   pub active_color: Option<ColorConfig>,
   pub inactive_color: Option<ColorConfig>,
+  pub match_strategy: Option<MatchType>,
   pub enabled: Option<bool>
 }
 

@@ -4,86 +4,120 @@
     "type": "object",
     "properties": {
         "border_size": {
+            "description": "Thickness of the window borders in pixels. (default: 2)",
             "type": "integer",
-            "description": "Adjusts the thickness of the borders in pixels.",
-            "default": 2,
-            "examples": [
-                2,
-                5
-            ]
+            "format": "int32"
         },
         "border_offset": {
+            "description": "Adjusts border size relative to the window in pixels. (default: -1)",
             "type": "integer",
-            "description": "Shrinks or expands the border to better fit the size of the window.",
-            "default": -1,
-            "examples": [
-                -1,
-                -2,
-                1
-            ]
+            "format": "int32"
         },
         "border_radius": {
+            "description": "Corner radius for borders in pixels; -1 for auto. (default: -1)",
             "type": "integer",
-            "description": "Sets a custom radius for the border in pixels; -1 lets the program handle it automatically.",
-            "default": -1,
-            "examples": [
-                -1,
-                10
-            ]
+            "format": "int32"
         },
         "window_rules": {
+            "description": "Rules for border settings on specific windows.",
             "type": "array",
-            "description": "Defines conditions for applying border settings to specific windows.",
             "items": {
                 "type": "object",
+                "required": [
+                    "match"
+                ],
                 "properties": {
                     "match": {
-                        "type": "string",
-                        "description": "Defines the match type for the rule. Possible values: 'Global', 'Class', 'Title'.",
-                        "examples": [
-                            "Global",
-                            "Class",
-                            "Title"
-                        ]
+                        "description": "Type of match: 'Global', 'Class', or 'Title'.",
+                        "type": "string"
                     },
                     "contains": {
-                        "type": "string",
-                        "description": "Specifies the value to match against window class or title.",
-                        "examples": [
-                            "Windows.UI.Core.CoreWindow",
-                            "Flow.Launcher",
-                            "Zebar"
-                        ]
+                        "description": "Value to match in window class or title.",
+                        "type": "string"
                     },
                     "active_color": {
-                        "type": "string",
-                        "description": "Color or gradient applied to active window borders.",
-                        "examples": [
-                            "gradient(#89b4fa, #CBA6F7, 0%, 0%, 100%, 0%)",
-                            "#FF5733"
+                        "description": "Color or gradient for active borders.",
+                        "oneOf": [
+                            {
+                                "type": "string",
+                                "examples": [
+                                    "#F5C2E7",
+                                    "#F5E0DCFF",
+                                    "rgb(137, 180, 250)",
+                                    "rgba(243, 139, 168, 1)",
+                                    "gradient(#89B4FA, #CBA6F7, 0%, 0%, 100%, 0%)",
+                                    "gradient(#A6E3A1, #FAB387, to right)"
+                                ]
+                            },
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "colors": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "minItems": 2
+                                    },
+                                    "direction": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "number"
+                                        },
+                                        "minItems": 4,
+                                        "maxItems": 4
+                                    }
+                                },
+                                "required": ["colors", "direction"]
+                            }
                         ]
                     },
                     "inactive_color": {
-                        "type": "string",
-                        "description": "Color applied to inactive window borders.",
-                        "examples": [
-                            "#1E1E2E",
-                            "#282C34"
+                        "description": "Color or gradient for inactive borders.",
+                        "oneOf": [
+                            {
+                                "type": "string",
+                                "examples": [
+                                    "#F5C2E7",
+                                    "#F5E0DCFF",
+                                    "rgb(137, 180, 250)",
+                                    "rgba(243, 139, 168, 1)",
+                                    "gradient(#89B4FA, #CBA6F7, 0%, 0%, 100%, 0%)",
+                                    "gradient(#A6E3A1, #FAB387, to right)"
+                                ]
+                            },
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "colors": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "minItems": 2
+                                    },
+                                    "direction": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "number"
+                                        },
+                                        "minItems": 4,
+                                        "maxItems": 4
+                                    },
+                                    "animation": {
+                                        "type": "boolean",
+                                        "description": "Use animation on gradient"
+                                    }
+                                },
+                                "required": ["colors", "direction"]
+                            }
                         ]
                     },
                     "enabled": {
-                        "type": "boolean",
-                        "description": "Indicates if the rule is enabled.",
-                        "default": true,
-                        "examples": [
-                            true,
-                            false
-                        ]
+                        "description": "Enables or disables this rule. (default: true)",
+                        "type": "boolean"
                     }
-                },
-                "required": [
-                    "match"
-                ]
+                }
             }
         }
     },

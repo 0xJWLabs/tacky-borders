@@ -92,9 +92,27 @@ impl<'de> Deserialize<'de> for BorderRadius {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct GradientDirectionPoint {
+    pub x: f32,
+    pub y: f32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GradientDirection {
+    pub start: GradientDirectionPoint,
+    pub end: GradientDirectionPoint,
+}
+
+impl GradientDirection {
+    pub fn to_vec(&self) -> Vec<f32> {
+        vec![self.start.x, self.start.y, self.end.x, self.end.y]
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct GradientColor {
     pub colors: Vec<String>,
-    pub direction: Vec<f32>,
+    pub direction: GradientDirection,
     pub animation: Option<bool>,
 }
 

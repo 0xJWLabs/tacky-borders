@@ -15,19 +15,20 @@ border_offset: -1
 # Example: 5 would apply a 5-pixel corner radius.
 border_radius: -1
 
-# window_rules
+# window_rules 
 # Defines how the borders behave based on specific properties of the windows.
-# match:
+# Matcg Strategies
+# type:
 # - Global: Applies globally unless overridden by more specific rules.
 # - Class: Applies based on the window's class name.
 # - Title: Applies based on the window title.
 
-# match_strategies (default: Equals):
+# strategy (default: Equals):
 # - "Equals": The match value must be exactly equal to the specified value.
 # - "Regex": The match value must match the specified regular expression.
 # - "Contains": The match value must be a substring of the specified string.
 
-# match_value:
+# value:
 # - Specifies the value against which the window's properties are matched.
 # - Can be a string that must either match exactly, be a substring, or conform to a regex pattern
 #   depending on the specified match strategy.
@@ -43,38 +44,48 @@ border_radius: -1
 #   - If using a map, provide colors in various formats: #RRGGBB, #RRGGBBAA, rgb(...), or rgba(...).
 #     - colors: A list of color values to define the active border colors.
 #     - direction: Specifies the start and end points of a linear gradient for the border.
-#       - direction:
-#         - 0.0 # Starting point of the gradient x-axis.
-#         - 0.0 # Starting point of the gradient y-axis.
-#         - 1.0 # Endpoint of the gradient x-axis.
-#         - 1.0 # Endpoint of the gradient y-axis.
+#       - Format:
+#         start:
+#           x: 0.0  # Starting point of the gradient on the x-axis (0.0 to 1.0).
+#           y: 0.0  # Starting point of the gradient on the y-axis (0.0 to 1.0).
+#         end:
+#           x: 1.0  # Endpoint of the gradient on the x-axis (0.0 to 1.0).
+#           y: 0.0  # Endpoint of the gradient on the y-axis (0.0 to 1.0).
 #     - animation: Boolean value indicating whether to animate the color transition.
 # - inactive_color: The color used for inactive window borders.
 #   - Can also be specified as a string or a map format with similar color options.
+
 window_rules:
-  - match: "Global"
-    active_color:
-      colors:
-        - "#000000"
-        - "#FFFFFF"
-      direction:
-        - 0.0
-        - 0.0
-        - 1.0
-        - 1.0
-    inactive_color: "accent"
-  
-  - match: "Class"
-    match_value: "Windows.UI.Core.CoreWindow"
-    match_strategy: "Contains"
-    border_enabled: false
+  - match:
+      type: "Global"
+      active_color:
+        colors:
+          - "#000000"
+          - "#ffffff"
+        direction:
+          start:
+            x: 0.0
+            y: 0.0
+          end:
+            x: 1.0
+            y: 1.0
+        animation: true
+      inactive_color: "#1E1E2E"
 
-  - match: "Title"
-    match_value: "(?i)^Flow.*"
-    match_strategy: "Regex" 
-    border_enabled: false
+  - match:
+      type: "Class"
+      value: "Windows.UI.Core.CoreWindow"
+      strategy: "Contains"
+      border_enabled: false
 
-  - match: "Title"
-    match_value: "Zebar"
-    match_strategy: "Equals"
-    border_enabled: false
+  - match:
+      type: "Title"
+      value: "(?i)^Flow.*"
+      strategy: "Regex"
+      border_enabled: false
+
+  - match:
+      type: "Title"
+      value: "Zebar"
+      strategy: "Equals"
+      border_enabled: false

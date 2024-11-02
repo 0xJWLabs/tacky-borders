@@ -557,8 +557,8 @@ pub fn create_gradient_colors(color: GradientColor) -> Color {
     let direction = Some(color.direction);
 
     Color::Gradient(Gradient {
-        direction: direction,
-        gradient_stops: gradient_stops,
+        direction: direction.map(|g| g.to_vec()),
+        gradient_stops,
         animation: color.animation,
     })
 }

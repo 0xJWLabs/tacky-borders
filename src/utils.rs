@@ -148,24 +148,24 @@ pub fn has_filtered_class_or_title(hwnd: HWND) -> bool {
     let config = config_mutex.lock().unwrap();
 
     for rule in config.window_rules.iter() {
-        match rule.rule_match {
+        match rule.rule_match.match_type {
             RuleMatch::Global => {}
             RuleMatch::Title | RuleMatch::Class => {
-                let name = if rule.rule_match == RuleMatch::Title {
+                let name = if rule.rule_match.match_type == RuleMatch::Title {
                     &title
                 } else {
                     &class_name
                 };
 
-                if let Some(contains_str) = &rule.match_value {
-                    let check_fn: Box<dyn Fn(&str) -> bool> = match rule.match_strategy {
+                if let Some(contains_str) = &rule.rule_match.match_value {
+                    let check_fn: Box<dyn Fn(&str) -> bool> = match rule.rule_match.match_strategy {
                         Some(MatchType::Contains) => Box::new(move |s: &str| {
                             name.to_lowercase().contains(&s.to_lowercase())
-                                && rule.border_enabled == Some(false)
+                                && rule.rule_match.border_enabled == Some(false)
                         }),
                         Some(MatchType::Equals) => Box::new(move |s: &str| {
                             name.to_lowercase() == s.to_lowercase()
-                                && rule.border_enabled == Some(false)
+                                && rule.rule_match.border_enabled == Some(false)
                         }),
                         Some(MatchType::Regex) => {
                             let regex = Regex::new(contains_str).map_err(|e| {
@@ -173,7 +173,8 @@ pub fn has_filtered_class_or_title(hwnd: HWND) -> bool {
                             });
 
                             if let Ok(regex) = regex {
-                                return regex.is_match(name) && rule.border_enabled == Some(false);
+                                return regex.is_match(name)
+                                    && rule.rule_match.border_enabled == Some(false);
                             } else {
                                 Logger::log("error", "Expected valid regex on `Match`");
                                 return false;
@@ -181,7 +182,7 @@ pub fn has_filtered_class_or_title(hwnd: HWND) -> bool {
                         }
                         None => Box::new(move |s: &str| {
                             name.to_lowercase() == s.to_lowercase()
-                                && rule.border_enabled == Some(false)
+                                && rule.rule_match.border_enabled == Some(false)
                         }),
                     };
 
@@ -300,28 +301,28 @@ pub fn get_colors_for_window(_hwnd: HWND) -> (Color, Color) {
     );
 
     for rule in config.window_rules.iter() {
-        match rule.rule_match {
+        match rule.rule_match.match_type {
             RuleMatch::Global => {
-                colors.0 = get_color(&rule.active_color, "accent");
-                colors.1 = get_color(&rule.inactive_color, "accent");
+                colors.0 = get_color(&rule.rule_match.active_color, "accent");
+                colors.1 = get_color(&rule.rule_match.inactive_color, "accent");
             }
 
             RuleMatch::Title | RuleMatch::Class => {
-                let name = if rule.rule_match == RuleMatch::Title {
+                let name = if rule.rule_match.match_type == RuleMatch::Title {
                     &title
                 } else {
                     &class_name
                 };
 
-                if let Some(contains_str) = &rule.match_value {
-                    let matches = match rule.match_strategy {
+                if let Some(contains_str) = &rule.rule_match.match_value {
+                    let matches = match rule.rule_match.match_strategy {
                         Some(MatchType::Contains) => {
                             name.to_lowercase().contains(&contains_str.to_lowercase())
-                                && rule.border_enabled == Some(false)
+                                && rule.rule_match.border_enabled == Some(false)
                         }
                         Some(MatchType::Equals) => {
                             name.to_lowercase() == contains_str.to_lowercase()
-                                && rule.border_enabled == Some(false)
+                                && rule.rule_match.border_enabled == Some(false)
                         }
                         Some(MatchType::Regex) => match Regex::new(contains_str) {
                             Ok(regex) => regex.is_match(name),
@@ -332,13 +333,13 @@ pub fn get_colors_for_window(_hwnd: HWND) -> (Color, Color) {
                         },
                         None => {
                             name.to_lowercase() == contains_str.to_lowercase()
-                                && rule.border_enabled == Some(false)
+                                && rule.rule_match.border_enabled == Some(false)
                         }
                     };
 
                     if matches {
-                        colors.0 = get_color(&rule.active_color, "accent");
-                        colors.1 = get_color(&rule.inactive_color, "accent");
+                        colors.0 = get_color(&rule.rule_match.active_color, "accent");
+                        colors.1 = get_color(&rule.rule_match.inactive_color, "accent");
                         break;
                     }
                 } else {

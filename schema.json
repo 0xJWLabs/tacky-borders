@@ -29,172 +29,181 @@
         ],
         "properties": {
           "match": {
-            "description": "Specifies the rule type: 'Global' (applies to all windows), 'Class' (by window class), or 'Title' (by window title).",
-            "enum": [
-              "Global",
-              "Class",
-              "Title"
+            "description": "Defines the criteria for matching a window to apply specific border settings. This includes the type of match (Global, Class, or Title) and the corresponding value to be matched. The match type specifies whether the criteria applies to all windows, specific window classes, or specific window titles.",
+            "type": "object",
+            "required": [
+              "type"
             ],
-            "type": "string"
-          },
-          "match_value": {
-            "description": "String value to search for within the specified class or title when using 'Class' or 'Title' match types.",
-            "type": "string"
-          },
-          "match_strategy": {
-            "description": "Specifies the matching method: 'Equals' (exact match), 'Regex' (regular expression), or 'Contains' (substring match).",
-            "type": "string",
-            "enum": [
-              "Equals",
-              "Regex",
-              "Contains"
-            ]
-          },
-          "active_color": {
-            "description": "Color or gradient for active (focused) window borders. Can be a single color string or a gradient object.",
-            "oneOf": [
-              {
+            "properties": {
+              "type": {
+                "description": "Specifies the rule type: 'Global' (applies to all windows), 'Class' (by window class), or 'Title' (by window title).",
                 "type": "string",
-                "examples": [
-                  "#F5C2E7",
-                  "#F5E0DCFF",
-                  "rgb(137, 180, 250)",
-                  "rgba(243, 139, 168, 1)"
+                "enum": [
+                  "Global",
+                  "Class",
+                  "Title"
                 ]
               },
-              {
-                "type": "object",
-                "properties": {
-                  "colors": {
-                    "type": "array",
-                    "description": "Array of color stops for gradient. Minimum of 2 colors required.",
-                    "items": {
-                      "type": "string"
-                    },
-                    "minItems": 2
-                  },
-                  "direction": {
-                    "type": "array",
-                    "description": "Gradient direction vector in [x0, y0, x1, y1] format. Values between 0 and 1.",
-                    "items": {
-                      "type": "number"
-                    },
-                    "minItems": 4,
-                    "maxItems": 4
-                  },
-                  "animation": {
-                    "type": "boolean",
-                    "description": "If true, enables animation for the gradient. (Default: false)"
-                  }
-                },
-                "examples": [
-                  {
-                    "colors": [
-                      "#F5C2E7",
-                      "#F5E0DCFF"
-                    ],
-                    "direction": [
-                      0,
-                      0,
-                      1,
-                      0
-                    ]
-                  },
-                  {
-                    "colors": [
-                      "rgba(137, 180, 250, 1)",
-                      "rgba(243, 139, 168, 1)",
-                      "rgba(255, 255, 255, 1)"
-                    ],
-                    "direction": [
-                      0,
-                      0,
-                      1,
-                      0
-                    ]
-                  }
-                ],
-                "required": [
-                  "colors",
-                  "direction"
-                ]
-              }
-            ]
-          },
-          "inactive_color": {
-            "description": "Color or gradient for inactive (unfocused) window borders. Similar to 'active_color' format.",
-            "oneOf": [
-              {
+              "value": {
+                "description": "String value to search for within the specified class or title when using 'Class' or 'Title' match types.",
+                "type": "string"
+              },
+              "strategy": {
+                "description": "Specifies the matching method: 'Equals' (exact match), 'Regex' (regular expression), or 'Contains' (substring match).",
                 "type": "string",
-                "examples": [
-                  "#F5C2E7",
-                  "#F5E0DCFF",
-                  "rgb(137, 180, 250)",
-                  "rgba(243, 139, 168, 1)"
+                "enum": [
+                  "Equals",
+                  "Regex",
+                  "Contains"
                 ]
               },
-              {
-                "type": "object",
-                "properties": {
-                  "colors": {
-                    "type": "array",
-                    "description": "Array of color stops for gradient. Minimum of 2 colors required.",
-                    "items": {
-                      "type": "string"
-                    },
-                    "minItems": 2
-                  },
-                  "direction": {
-                    "type": "array",
-                    "description": "Gradient direction vector in [x0, y0, x1, y1] format. Values between 0 and 1.",
-                    "items": {
-                      "type": "number"
-                    },
-                    "minItems": 4,
-                    "maxItems": 4
-                  },
-                  "animation": {
-                    "type": "boolean",
-                    "description": "If true, enables animation for the gradient. (Default: false)"
-                  }
-                },
-                "examples": [
+              "active_color": {
+                "description": "Color or gradient for active (focused) window borders. Can be a single color string or a gradient object.",
+                "oneOf": [
                   {
-                    "colors": [
+                    "type": "string",
+                    "examples": [
                       "#F5C2E7",
-                      "#F5E0DCFF"
-                    ],
-                    "direction": [
-                      0,
-                      0,
-                      1,
-                      0
+                      "#F5E0DCFF",
+                      "rgb(137, 180, 250)",
+                      "rgba(243, 139, 168, 1)"
                     ]
                   },
                   {
-                    "colors": [
-                      "rgba(137, 180, 250, 1)",
-                      "rgba(243, 139, 168, 1)",
-                      "rgba(255, 255, 255, 1)"
+                    "type": "object",
+                    "properties": {
+                      "colors": {
+                        "type": "array",
+                        "description": "Array of color stops for gradient. Minimum of 2 colors required.",
+                        "items": {
+                          "type": "string"
+                        },
+                        "minItems": 2
+                      },
+                      "direction": {
+                        "type": "array",
+                        "description": "Gradient direction vector in [x0, y0, x1, y1] format. Values between 0 and 1.",
+                        "items": {
+                          "type": "number"
+                        },
+                        "minItems": 4,
+                        "maxItems": 4
+                      },
+                      "animation": {
+                        "type": "boolean",
+                        "description": "If true, enables animation for the gradient. (Default: false)"
+                      }
+                    },
+                    "examples": [
+                      {
+                        "colors": [
+                          "#F5C2E7",
+                          "#F5E0DCFF"
+                        ],
+                        "direction": [
+                          0,
+                          0,
+                          1,
+                          0
+                        ]
+                      },
+                      {
+                        "colors": [
+                          "rgba(137, 180, 250, 1)",
+                          "rgba(243, 139, 168, 1)",
+                          "rgba(255, 255, 255, 1)"
+                        ],
+                        "direction": [
+                          0,
+                          0,
+                          1,
+                          0
+                        ]
+                      }
                     ],
-                    "direction": [
-                      0,
-                      0,
-                      1,
-                      0
+                    "required": [
+                      "colors",
+                      "direction"
                     ]
                   }
-                ],
-                "required": [
-                  "colors",
-                  "direction"
                 ]
+              },
+              "inactive_color": {
+                "description": "Color or gradient for inactive (unfocused) window borders. Similar to 'active_color' format.",
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "examples": [
+                      "#F5C2E7",
+                      "#F5E0DCFF",
+                      "rgb(137, 180, 250)",
+                      "rgba(243, 139, 168, 1)"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "colors": {
+                        "type": "array",
+                        "description": "Array of color stops for gradient. Minimum of 2 colors required.",
+                        "items": {
+                          "type": "string"
+                        },
+                        "minItems": 2
+                      },
+                      "direction": {
+                        "type": "array",
+                        "description": "Gradient direction vector in [x0, y0, x1, y1] format. Values between 0 and 1.",
+                        "items": {
+                          "type": "number"
+                        },
+                        "minItems": 4,
+                        "maxItems": 4
+                      },
+                      "animation": {
+                        "type": "boolean",
+                        "description": "If true, enables animation for the gradient. (Default: false)"
+                      }
+                    },
+                    "examples": [
+                      {
+                        "colors": [
+                          "#F5C2E7",
+                          "#F5E0DCFF"
+                        ],
+                        "direction": [
+                          0,
+                          0,
+                          1,
+                          0
+                        ]
+                      },
+                      {
+                        "colors": [
+                          "rgba(137, 180, 250, 1)",
+                          "rgba(243, 139, 168, 1)",
+                          "rgba(255, 255, 255, 1)"
+                        ],
+                        "direction": [
+                          0,
+                          0,
+                          1,
+                          0
+                        ]
+                      }
+                    ],
+                    "required": [
+                      "colors",
+                      "direction"
+                    ]
+                  }
+                ]
+              },
+              "border_enabled": {
+                "description": "Enables or disables border for this rule. (default: true)",
+                "type": "boolean"
               }
-            ]
-          },
-          "border_enabled": {
-            "description": "Enables or disables border for this rule. (default: true)",
-            "type": "boolean"
+            }
           }
         }
       }

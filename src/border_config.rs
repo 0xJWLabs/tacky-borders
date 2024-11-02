@@ -48,7 +48,7 @@ impl std::str::FromStr for MatchType {
 pub struct WindowRule {
   #[serde(rename = "match")]
   pub rule_match: RuleMatch,
-  pub contains: Option<String>,
+  pub match_value: Option<String>,
   pub active_color: Option<ColorConfig>,
   pub inactive_color: Option<ColorConfig>,
   pub match_strategy: Option<MatchType>,

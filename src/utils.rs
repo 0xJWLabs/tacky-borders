@@ -151,7 +151,7 @@ pub fn has_filtered_class_or_title(hwnd: HWND) -> bool {
             RuleMatch::Title | RuleMatch::Class => {
                 let name = if rule.rule_match == RuleMatch::Title { &title } else { &class_name };
 
-                if let Some(contains_str) = &rule.contains {
+                if let Some(contains_str) = &rule.match_value {
                     let check_fn: Box<dyn Fn(&str) -> bool> = match rule.match_strategy {
                         Some(MatchType::Contains) => {
                             Box::new(move |s: &str| name.to_lowercase().contains(&s.to_lowercase()) && rule.border_enabled == Some(false))
@@ -292,7 +292,7 @@ pub fn get_colors_for_window(_hwnd: HWND) -> (Color, Color) {
             RuleMatch::Title | RuleMatch::Class => {
                 let name = if rule.rule_match == RuleMatch::Title { &title } else { &class_name };
 
-                if let Some(contains_str) = &rule.contains {
+                if let Some(contains_str) = &rule.match_value {
                     let matches = match rule.match_strategy {
                         Some(MatchType::Contains) => {
                             name.to_lowercase().contains(&contains_str.to_lowercase()) && rule.border_enabled == Some(false)

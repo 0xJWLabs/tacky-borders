@@ -1,11 +1,13 @@
 use serde::Deserializer;
 use serde::Deserialize;
 use serde::Serialize;
+use serde::de::{self, Visitor};
 use dirs::home_dir;
 use std::fs;
 use std::fs::DirBuilder;
 use std::str::FromStr;
 use std::sync::{LazyLock, Mutex};
+use std::fmt;
 
 use crate::utils::*;
 
@@ -86,7 +88,7 @@ impl<'de> Deserialize<'de> for BorderRadius {
 pub struct GradientColor {
     pub colors: Vec<String>,
     pub direction: Vec<f32>,
-    pub animation: Option<bool>
+    pub animation: Option<bool>,
 }
 
 #[derive(Debug, Clone)]

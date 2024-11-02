@@ -154,24 +154,26 @@ pub fn has_filtered_class_or_title(hwnd: HWND) -> bool {
                 if let Some(contains_str) = &rule.contains {
                     let check_fn: Box<dyn Fn(&str) -> bool> = match rule.match_strategy {
                         Some(MatchType::Contains) => {
-                            Box::new(move |s: &str| name.to_lowercase().contains(&s.to_lowercase()))
+                            Box::new(move |s: &str| name.to_lowercase().contains(&s.to_lowercase()) && rule.enabled == Some(false))
                         }
                         Some(MatchType::Equals) => {
-                            Box::new(move |s: &str| name.to_lowercase() == s.to_lowercase())
+                            Box::new(move |s: &str| name.to_lowercase() == s.to_lowercase() && rule.enabled == Some(false))
                         }
                         Some(MatchType::Regex) => {
-                            let regex = Regex::new(contains_str).map_err(|e| {
+                            let regex_pattern = format!(r"{}", regex::escape(&contains_str)); // Using regex::escape to escape any special regex characters
+                            let regex = Regex::new(&regex_pattern).map_err(|e| {
                                 Logger::log("error", &format!("Invalid regex pattern: {}", e));
                             });
+                            
                             if let Ok(regex) = regex {
-                                return regex.is_match(name);
+                                return regex.is_match(name) && rule.enabled == Some(false);
                             } else {
                                 Logger::log("error", "Expected valid regex on `Match`");
                                 return false;
                             }
                         }
                         None => {
-                            Box::new(move |s: &str| name.to_lowercase() == s.to_lowercase())
+                            Box::new(move |s: &str| name.to_lowercase() == s.to_lowercase() && rule.enabled == Some(false))
                         } 
                     };
 
@@ -286,28 +288,39 @@ pub fn get_colors_for_window(_hwnd: HWND) -> (Color, Color) {
                 colors.0 = get_color(&rule.active_color, "accent");
                 colors.1 = get_color(&rule.inactive_color, "accent");
             }
-    
-            RuleMatch::Title => {
+
+            RuleMatch::Title | RuleMatch::Class => {
+                let name = if rule.rule_match == RuleMatch::Title { &title } else { &class_name };
+
                 if let Some(contains_str) = &rule.contains {
-                    if title.to_lowercase().contains(&contains_str.to_lowercase()) {
+                    let matches = match rule.match_strategy {
+                        Some(MatchType::Contains) => {
+                            name.to_lowercase().contains(&contains_str.to_lowercase()) && rule.enabled == Some(false)
+                        }
+                        Some(MatchType::Equals) => {
+                            name.to_lowercase() == contains_str.to_lowercase() && rule.enabled == Some(false)
+                        }
+                        Some(MatchType::Regex) => {
+                            match Regex::new(&contains_str) {
+                                Ok(regex) => regex.is_match(name),
+                                Err(e) => {
+                                    Logger::log("error", &format!("Invalid regex pattern: {}", e));
+                                    false
+                                }
+                            }
+                        }
+                        None => {
+                            name.to_lowercase() == contains_str.to_lowercase() && rule.enabled == Some(false)
+                        }
+                    };
+            
+                    if matches {
                         colors.0 = get_color(&rule.active_color, "accent");
                         colors.1 = get_color(&rule.inactive_color, "accent");
                         break;
                     }
                 } else {
-                    Logger::log("error", "Expected `contains` on `Match=\"Title\"`");
-                }
-            }
-    
-            RuleMatch::Class => {
-                if let Some(contains_str) = &rule.contains {
-                    if class_name.to_lowercase().contains(&contains_str.to_lowercase()) {
-                        colors.0 = get_color(&rule.active_color, "accent");
-                        colors.1 = get_color(&rule.inactive_color, "accent");
-                        break;
-                    }
-                } else {
-                    Logger::log("error", "Expected `contains` on `Match=\"Class\"`");
+                    Logger::log("error", "Expected `contains` on `Match`");
                 }
             }
         }
@@ -335,13 +348,16 @@ pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()>
 
         let config = config_mutex.lock().unwrap();
 
-        let use_animation = match active_color {
-            Color::Gradient(ref color) => color.animation == Some(true),
-            _ => false,
-        } || match inactive_color {
-            Color::Gradient(ref color) => color.animation== Some(true),
+        let use_active_animation = match active_color {
+            Color::Gradient(ref color) => color.animation.unwrap_or(false),
             _ => false,
         };
+
+        let use_inactive_animation = match inactive_color {
+            Color::Gradient(ref color) => color.animation.unwrap_or(false),
+            _ => false,
+        };
+
         //println!("time it takes to get colors: {:?}", before.elapsed());
 
         let mut border = window_border::WindowBorder {
@@ -351,7 +367,8 @@ pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()>
             border_radius: config.get_border_radius(),
             active_color: active_color,
             inactive_color: inactive_color,
-            use_animation: use_animation, 
+            use_active_animation,
+            use_inactive_animation,
             ..Default::default()
         };
         drop(config);

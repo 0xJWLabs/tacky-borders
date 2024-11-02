@@ -37,9 +37,12 @@ pub struct WindowBorder {
     pub inactive_color: Color,
     pub current_color: Color,
     pub pause: bool,
-    pub gradient_angle: f32,
-    pub last_render_time: Option<std::time::Instant>,
-    pub use_animation: bool,
+    pub active_gradient_angle: f32,
+    pub inactive_gradient_angle: f32,
+    pub last_render_time_active: Option<std::time::Instant>,
+    pub last_render_time_inactive: Option<std::time::Instant>,
+    pub use_active_animation: bool,
+    pub use_inactive_animation: bool,
 }
 
 impl WindowBorder {
@@ -126,8 +129,10 @@ impl WindowBorder {
             dpiY: 96.0,
             ..Default::default()
         };
-        self.gradient_angle = 0.0;
-        self.last_render_time = Some(std::time::Instant::now());
+        self.active_gradient_angle = 0.0;
+        self.inactive_gradient_angle = 0.0;
+        self.last_render_time_active = Some(std::time::Instant::now());
+        self.last_render_time_inactive = Some(std::time::Instant::now());
         self.hwnd_render_target_properties = D2D1_HWND_RENDER_TARGET_PROPERTIES {
             hwnd: self.border_window,
             pixelSize: Default::default(),
@@ -201,19 +206,19 @@ impl WindowBorder {
     }
 
     pub fn create_animation_thread(&self) -> Result<()> {
-        if self.use_animation {
+        let active = unsafe { GetForegroundWindow() } == self.tracking_window;
+
+        if self.use_active_animation || self.use_inactive_animation {
             let window_sent: SendHWND = SendHWND(self.border_window);
-            std::thread::spawn(move || {
-                loop {
-                    let window = window_sent.clone().0;
-                    if is_window_visible(window) {
-                        unsafe {
-                            let _ = PostMessageW(window, WM_PAINT, WPARAM(0), LPARAM(0));
-                        }
+            std::thread::spawn(move || loop {
+                let window = window_sent.clone().0;
+                if is_window_visible(window) {
+                    unsafe {
+                        let _ = PostMessageW(window, WM_PAINT, WPARAM(0), LPARAM(0));
                     }
-    
-                    std::thread::sleep(std::time::Duration::from_millis(100));
                 }
+
+                std::thread::sleep(std::time::Duration::from_millis(100));
             });
         }
 
@@ -291,23 +296,6 @@ impl WindowBorder {
         return Ok(());
     }
 
-    fn update_gradient_state(&mut self) -> Result<()> {
-        if self.use_animation == true {
-            let now = std::time::Instant::now();
-            let elapsed = now
-                .duration_since(self.last_render_time.unwrap_or(now))
-                .as_secs_f32();
-
-            self.last_render_time = Some(now);
-            self.gradient_angle += 360.0 * elapsed;
-            if self.gradient_angle > 360.0 {
-                self.gradient_angle -= 360.0;
-            }
-        }
-
-        return Ok(());
-    }
-
     pub fn create_brush(&self, render_target: &ID2D1RenderTarget) -> Result<ID2D1Brush> {
         match &self.current_color {
             Color::Solid(color) => {
@@ -333,12 +321,25 @@ impl WindowBorder {
                 let mut start_point = D2D_POINT_2F::default();
                 let mut end_point = D2D_POINT_2F::default();
 
-                if self.use_animation {
+                let active = unsafe { GetForegroundWindow() } == self.tracking_window;
+
+                let condition = if active {
+                    self.use_active_animation
+                } else {
+                    self.use_inactive_animation
+                };
+
+                if condition {
+                    let gradient_angle = if active {
+                        self.active_gradient_angle
+                    } else {
+                        self.inactive_gradient_angle
+                    };
                     let center_x = width / 2.0;
                     let center_y = height / 2.0;
                     let radius = (center_x.powi(2) + center_y.powi(2)).sqrt();
 
-                    let angle_rad = self.gradient_angle.to_radians();
+                    let angle_rad = gradient_angle.to_radians();
                     let (sin, cos) = angle_rad.sin_cos();
                     start_point = D2D_POINT_2F {
                         x: center_x - radius * cos,
@@ -356,12 +357,7 @@ impl WindowBorder {
                             coords[2] * width,
                             coords[3] * height,
                         ), // Use coordinates if they exist
-                        None => (
-                            0.0 * width,
-                            0.0 * height,
-                            1.0 * width,
-                            1.0 * height
-                        ),
+                        None => (0.0 * width, 0.0 * height, 1.0 * width, 1.0 * height),
                     };
 
                     start_point = D2D_POINT_2F {
@@ -414,15 +410,23 @@ impl WindowBorder {
         unsafe {
             render_target.Resize(&self.hwnd_render_target_properties.pixelSize as *const _);
 
-            if self.use_animation {
-                let now = std::time::Instant::now();
-                let elapsed = now
-                    .duration_since(self.last_render_time.unwrap_or(now))
-                    .as_secs_f32();
-                self.last_render_time = Some(now);
-                self.gradient_angle += 360.0 * elapsed;
-                if self.gradient_angle > 360.0 {
-                    self.gradient_angle -= 360.0;
+            let now = std::time::Instant::now();
+            let active = unsafe { GetForegroundWindow() } == self.tracking_window;
+            let last_render_time = if active { self.last_render_time_active } else { self.last_render_time_inactive };
+            let elapsed = now
+                .duration_since(last_render_time.unwrap_or(now))
+                .as_secs_f32();
+            if self.use_active_animation && active {
+                self.last_render_time_active = Some(now);
+                self.active_gradient_angle += 360.0 * elapsed;
+                if self.active_gradient_angle > 360.0 {
+                    self.active_gradient_angle -= 360.0;
+                }
+            } else if self.use_inactive_animation && !active {
+                self.last_render_time_inactive = Some(now);
+                self.inactive_gradient_angle += 360.0 * elapsed;
+                if self.inactive_gradient_angle > 360.0 {
+                    self.inactive_gradient_angle -= 360.0;
                 }
             }
 

@@ -1,8 +1,11 @@
 use dirs::home_dir;
-use std::{
-    fs::{self, DirBuilder, File, OpenOptions}, io::Write, ops::Deref, path::{Path, PathBuf}
-};
 use regex::Regex;
+use std::{
+    fs::{self, DirBuilder, File, OpenOptions},
+    io::Write,
+    ops::Deref,
+    path::{Path, PathBuf},
+};
 
 use windows::{
     core::Error, Win32::Foundation::*, Win32::Graphics::Direct2D::Common::*,
@@ -39,7 +42,6 @@ pub struct Gradient {
     pub animation: Option<bool>,
 }
 
-
 impl Default for Gradient {
     fn default() -> Self {
         Gradient {
@@ -52,7 +54,7 @@ impl Default for Gradient {
                         g: 0.0,
                         b: 0.0,
                         a: 1.0,
-                    }
+                    },
                 },
                 D2D1_GRADIENT_STOP {
                     position: 1.0,
@@ -62,9 +64,9 @@ impl Default for Gradient {
                         b: 1.0,
                         a: 1.0,
                     },
-                }
+                },
             ],
-            animation: Some(false), 
+            animation: Some(false),
         }
     }
 }
@@ -149,22 +151,27 @@ pub fn has_filtered_class_or_title(hwnd: HWND) -> bool {
         match rule.rule_match {
             RuleMatch::Global => {}
             RuleMatch::Title | RuleMatch::Class => {
-                let name = if rule.rule_match == RuleMatch::Title { &title } else { &class_name };
+                let name = if rule.rule_match == RuleMatch::Title {
+                    &title
+                } else {
+                    &class_name
+                };
 
                 if let Some(contains_str) = &rule.match_value {
                     let check_fn: Box<dyn Fn(&str) -> bool> = match rule.match_strategy {
-                        Some(MatchType::Contains) => {
-                            Box::new(move |s: &str| name.to_lowercase().contains(&s.to_lowercase()) && rule.border_enabled == Some(false))
-                        }
-                        Some(MatchType::Equals) => {
-                            Box::new(move |s: &str| name.to_lowercase() == s.to_lowercase() && rule.border_enabled == Some(false))
-                        }
+                        Some(MatchType::Contains) => Box::new(move |s: &str| {
+                            name.to_lowercase().contains(&s.to_lowercase())
+                                && rule.border_enabled == Some(false)
+                        }),
+                        Some(MatchType::Equals) => Box::new(move |s: &str| {
+                            name.to_lowercase() == s.to_lowercase()
+                                && rule.border_enabled == Some(false)
+                        }),
                         Some(MatchType::Regex) => {
-                            let regex_pattern = format!(r"{}", regex::escape(&contains_str)); // Using regex::escape to escape any special regex characters
-                            let regex = Regex::new(&regex_pattern).map_err(|e| {
+                            let regex = Regex::new(contains_str).map_err(|e| {
                                 Logger::log("error", &format!("Invalid regex pattern: {}", e));
                             });
-                            
+
                             if let Ok(regex) = regex {
                                 return regex.is_match(name) && rule.border_enabled == Some(false);
                             } else {
@@ -172,9 +179,10 @@ pub fn has_filtered_class_or_title(hwnd: HWND) -> bool {
                                 return false;
                             }
                         }
-                        None => {
-                            Box::new(move |s: &str| name.to_lowercase() == s.to_lowercase() && rule.border_enabled == Some(false))
-                        } 
+                        None => Box::new(move |s: &str| {
+                            name.to_lowercase() == s.to_lowercase()
+                                && rule.border_enabled == Some(false)
+                        }),
                     };
 
                     if check_fn(&contains_str.to_lowercase()) {
@@ -187,7 +195,7 @@ pub fn has_filtered_class_or_title(hwnd: HWND) -> bool {
         }
     }
 
-    false 
+    false
 }
 
 pub fn is_cloaked(hwnd: HWND) -> bool {
@@ -233,7 +241,7 @@ pub fn get_show_cmd(hwnd: HWND) -> u32 {
     let result = unsafe { GetWindowPlacement(hwnd, std::ptr::addr_of_mut!(wp)) };
     if result.is_err() {
         println!("error getting window_placement!");
-        return 0; 
+        return 0;
     }
     return wp.showCmd;
 }
@@ -270,17 +278,26 @@ pub fn get_colors_for_window(_hwnd: HWND) -> (Color, Color) {
         a: 1.0,
     });
 
-    let get_color = |color_config: &Option<ColorConfig>, default: &str| {
-        match color_config {
-            Some(ColorConfig::String(color)) => create_solid_color(color.to_string()),
-            Some(ColorConfig::Struct(color)) => create_gradient_colors(color.clone()),
-            None => create_solid_color(default.to_string()),
-        }
+    let get_color = |color_config: &Option<ColorConfig>, default: &str| match color_config {
+        Some(ColorConfig::String(color)) => create_solid_color(color.to_string()),
+        Some(ColorConfig::Struct(color)) => create_gradient_colors(color.clone()),
+        None => create_solid_color(default.to_string()),
     };
 
-    let mut colors = (Color::Solid(D2D1_COLOR_F { r: 1.0, g: 1.0, b: 1.0, a: 1.0 }),
-                     Color::Solid(D2D1_COLOR_F { r: 1.0, g: 1.0, b: 1.0, a: 1.0 }));
-
+    let mut colors = (
+        Color::Solid(D2D1_COLOR_F {
+            r: 1.0,
+            g: 1.0,
+            b: 1.0,
+            a: 1.0,
+        }),
+        Color::Solid(D2D1_COLOR_F {
+            r: 1.0,
+            g: 1.0,
+            b: 1.0,
+            a: 1.0,
+        }),
+    );
 
     for rule in config.window_rules.iter() {
         match rule.rule_match {
@@ -290,30 +307,35 @@ pub fn get_colors_for_window(_hwnd: HWND) -> (Color, Color) {
             }
 
             RuleMatch::Title | RuleMatch::Class => {
-                let name = if rule.rule_match == RuleMatch::Title { &title } else { &class_name };
+                let name = if rule.rule_match == RuleMatch::Title {
+                    &title
+                } else {
+                    &class_name
+                };
 
                 if let Some(contains_str) = &rule.match_value {
                     let matches = match rule.match_strategy {
                         Some(MatchType::Contains) => {
-                            name.to_lowercase().contains(&contains_str.to_lowercase()) && rule.border_enabled == Some(false)
+                            name.to_lowercase().contains(&contains_str.to_lowercase())
+                                && rule.border_enabled == Some(false)
                         }
                         Some(MatchType::Equals) => {
-                            name.to_lowercase() == contains_str.to_lowercase() && rule.border_enabled == Some(false)
+                            name.to_lowercase() == contains_str.to_lowercase()
+                                && rule.border_enabled == Some(false)
                         }
-                        Some(MatchType::Regex) => {
-                            match Regex::new(&contains_str) {
-                                Ok(regex) => regex.is_match(name),
-                                Err(e) => {
-                                    Logger::log("error", &format!("Invalid regex pattern: {}", e));
-                                    false
-                                }
+                        Some(MatchType::Regex) => match Regex::new(contains_str) {
+                            Ok(regex) => regex.is_match(name),
+                            Err(e) => {
+                                Logger::log("error", &format!("Invalid regex pattern: {}", e));
+                                false
                             }
-                        }
+                        },
                         None => {
-                            name.to_lowercase() == contains_str.to_lowercase() && rule.border_enabled == Some(false)
+                            name.to_lowercase() == contains_str.to_lowercase()
+                                && rule.border_enabled == Some(false)
                         }
                     };
-            
+
                     if matches {
                         colors.0 = get_color(&rule.active_color, "accent");
                         colors.1 = get_color(&rule.inactive_color, "accent");
@@ -326,7 +348,7 @@ pub fn get_colors_for_window(_hwnd: HWND) -> (Color, Color) {
         }
     }
 
-    colors 
+    colors
 }
 
 pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()> {
@@ -518,7 +540,8 @@ pub fn create_gradient_colors(color: GradientColor) -> Color {
         return Color::Gradient(Gradient::default());
     }
 
-    let gradient_stops: Vec<D2D1_GRADIENT_STOP> = color.colors 
+    let gradient_stops: Vec<D2D1_GRADIENT_STOP> = color
+        .colors
         .into_iter()
         .enumerate()
         .map(|(i, hex)| {
@@ -535,7 +558,7 @@ pub fn create_gradient_colors(color: GradientColor) -> Color {
     Color::Gradient(Gradient {
         direction: direction,
         gradient_stops: gradient_stops,
-        animation: color.animation 
+        animation: color.animation,
     })
 }
 

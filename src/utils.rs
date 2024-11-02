@@ -1,5 +1,4 @@
 use dirs::home_dir;
-use rainbow::{Rainbow, RAINBOW};
 use std::{
     fs::{self, DirBuilder, File, OpenOptions}, io::Write, ops::Deref, path::{Path, PathBuf}
 };
@@ -483,12 +482,6 @@ pub fn create_solid_color(color: String) -> Color {
         Color::Solid(get_color_from_oklch(&color))
     } else if (color.starts_with("hsl(")) {
         Color::Solid(get_color_from_hsl(&color))
-    } else if color == "rainbow" {
-        let rainbow_mutex = &*RAINBOW;
-        let rainbow = rainbow_mutex.lock().unwrap();
-        let ongoing_color = rainbow.color.lock().unwrap();
-
-        Color::Solid(*ongoing_color)
     } else {
         Color::Solid(get_color_from_hex(&color))
     }

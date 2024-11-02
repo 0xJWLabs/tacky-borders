@@ -16,7 +16,6 @@ use windows::{
     Win32::System::SystemServices::IMAGE_DOS_HEADER, Win32::System::Threading::*,
     Win32::UI::Accessibility::*, Win32::UI::WindowsAndMessaging::*, Win32::UI::HiDpi::*,
 };
-use animation_manager::*;
 
 extern "C" {
     pub static __ImageBase: IMAGE_DOS_HEADER;
@@ -28,7 +27,6 @@ mod logger;
 mod sys_tray_icon;
 mod utils;
 mod window_border;
-mod animation_manager;
 
 pub static BORDERS: LazyLock<Mutex<HashMap<isize, isize>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
@@ -53,8 +51,6 @@ fn main() {
     if tray_icon_option.is_err() {
         Logger::log("error", "Error creating tray icon!");
     }
-
-    // animation_manager();
 
     let win_event_hook = set_event_hook();
     unsafe {

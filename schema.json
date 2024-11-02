@@ -9,17 +9,18 @@
       "format": "int32"
     },
     "border_offset": {
-      "description": "Adjusts border size relative to the window in pixels. (default: -1)",
+      "description": "Adjusts border size relative to the window in pixels. Positive values expand; negative values shrink. (default: -1)",
       "type": "integer",
       "format": "int32"
     },
     "border_radius": {
-      "description": "Corner radius for borders in pixels; -1 for auto. (default: -1)",
+      "description": "Corner radius for borders in pixels; -1 to let the program decide automatically. (default: -1)",
       "type": "integer",
-      "format": "int32"
+      "format": "int32",
+      "minimum": -1
     },
     "window_rules": {
-      "description": "Rules for border settings on specific windows.",
+      "description": "Array of rules for customizing border settings based on specific windows.",
       "type": "array",
       "items": {
         "type": "object",
@@ -28,7 +29,7 @@
         ],
         "properties": {
           "match": {
-            "description": "Type of match: 'Global', 'Class', or 'Title'.",
+            "description": "Specifies the rule type: 'Global' (applies to all windows), 'Class' (by window class), or 'Title' (by window title).",
             "enum": [
               "Global",
               "Class",
@@ -36,12 +37,12 @@
             ],
             "type": "string"
           },
-          "contains": {
-            "description": "Value to match in window class or title.",
+          "match_value": {
+            "description": "String value to search for within the specified class or title when using 'Class' or 'Title' match types.",
             "type": "string"
           },
           "match_strategy": {
-            "description": "Matching strategy",
+            "description": "Specifies the matching method: 'Equals' (exact match), 'Regex' (regular expression), or 'Contains' (substring match).",
             "type": "string",
             "enum": [
               "Equals",
@@ -50,7 +51,7 @@
             ]
           },
           "active_color": {
-            "description": "Color or gradient for active borders.",
+            "description": "Color or gradient for active (focused) window borders. Can be a single color string or a gradient object.",
             "oneOf": [
               {
                 "type": "string",
@@ -66,6 +67,7 @@
                 "properties": {
                   "colors": {
                     "type": "array",
+                    "description": "Array of color stops for gradient. Minimum of 2 colors required.",
                     "items": {
                       "type": "string"
                     },
@@ -73,6 +75,7 @@
                   },
                   "direction": {
                     "type": "array",
+                    "description": "Gradient direction vector in [x0, y0, x1, y1] format. Values between 0 and 1.",
                     "items": {
                       "type": "number"
                     },
@@ -81,7 +84,7 @@
                   },
                   "animation": {
                     "type": "boolean",
-                    "description": "Use animation on gradient."
+                    "description": "If true, enables animation for the gradient. (Default: false)"
                   }
                 },
                 "examples": [
@@ -119,7 +122,7 @@
             ]
           },
           "inactive_color": {
-            "description": "Color or gradient for inactive borders.",
+            "description": "Color or gradient for inactive (unfocused) window borders. Similar to 'active_color' format.",
             "oneOf": [
               {
                 "type": "string",
@@ -135,6 +138,7 @@
                 "properties": {
                   "colors": {
                     "type": "array",
+                    "description": "Array of color stops for gradient. Minimum of 2 colors required.",
                     "items": {
                       "type": "string"
                     },
@@ -142,6 +146,7 @@
                   },
                   "direction": {
                     "type": "array",
+                    "description": "Gradient direction vector in [x0, y0, x1, y1] format. Values between 0 and 1.",
                     "items": {
                       "type": "number"
                     },
@@ -150,7 +155,7 @@
                   },
                   "animation": {
                     "type": "boolean",
-                    "description": "Use animation on gradient"
+                    "description": "If true, enables animation for the gradient. (Default: false)"
                   }
                 },
                 "examples": [
@@ -187,8 +192,8 @@
               }
             ]
           },
-          "enabled": {
-            "description": "Enables or disables this rule. (default: true)",
+          "border_enabled": {
+            "description": "Enables or disables border for this rule. (default: true)",
             "type": "boolean"
           }
         }

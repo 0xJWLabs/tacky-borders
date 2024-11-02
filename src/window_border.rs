@@ -200,18 +200,36 @@ impl WindowBorder {
         Ok(())
     }
 
+    // pub fn create_animation_thread(&self) -> Result<()> {
+    //     if self.use_active_animation || self.use_inactive_animation {
+    //         let window_sent: SendHWND = SendHWND(self.border_window);
+    //         std::thread::spawn(move || loop {
+    //             let window = window_sent.clone().0;
+    //             if is_window_visible(window) {
+    //                 unsafe {
+    //                     let _ = PostMessageW(window, WM_PAINT, WPARAM(0), LPARAM(0));
+    //                 }
+    //             }
+    //
+    //             std::thread::sleep(std::time::Duration::from_millis(200));
+    //         });
+    //     }
+    //
+    //     Ok(())
+    // }
+
     pub fn create_animation_thread(&self) -> Result<()> {
         if self.use_active_animation || self.use_inactive_animation {
             let window_sent: SendHWND = SendHWND(self.border_window);
-            std::thread::spawn(move || loop {
+            std::thread::spawn(move || {
                 let window = window_sent.clone().0;
                 if is_window_visible(window) {
                     unsafe {
+                        // Post initial WM_PAINT to start the rendering process
+                        let _ = SetTimer(window, 1, 16, None); // ~60 FPS
                         let _ = PostMessageW(window, WM_PAINT, WPARAM(0), LPARAM(0));
                     }
                 }
-
-                std::thread::sleep(std::time::Duration::from_millis(100));
             });
         }
 
@@ -551,7 +569,10 @@ impl WindowBorder {
                 let _ = self.render();
                 let _ = ValidateRect(window, None);
                 // Schedule next frame
-                let _ = SetTimer(window, 1, 16, None); // ~60 FPS
+                // let _ = SetTimer(window, 1, 16, None); // ~60 FPS
+            }
+            WM_TIMER => {
+                let _ = InvalidateRect(window, None, false);
             }
             WM_DESTROY => {
                 SetWindowLongPtrW(window, GWLP_USERDATA, 0);

@@ -15,6 +15,7 @@ pub static CONFIG: LazyLock<Mutex<Config>> = LazyLock::new(|| Mutex::new(Config:
 pub enum MatchKind {
     Title,
     Class,
+    Process,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
@@ -70,7 +71,7 @@ pub struct GlobalRule {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
-    #[serde(rename = "match")]
+    #[serde(rename = "global")]
     pub global_rule: GlobalRule,
     pub window_rules: Vec<WindowRule>,
 }
@@ -212,13 +213,13 @@ impl WindowRule {
         WindowRule {
             rule_match: MatchDetails {
                 match_type: MatchKind::Title,
-                match_value: None,
-                match_strategy: Some(MatchStrategy::Equals),
                 border_size: None,
-                border_offset: None,
                 border_radius: None,
+                border_offset: None,
                 active_color: None,
                 inactive_color: None,
+                match_value: None,
+                match_strategy: None,
                 border_enabled: None,
             },
         }

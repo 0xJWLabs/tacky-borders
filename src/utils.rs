@@ -10,10 +10,9 @@ use windows::{
     Win32::UI::WindowsAndMessaging::*,
 };
 
-use crate::*;
-
 use crate::border_config::*;
 use crate::logger::Logger;
+use crate::*;
 
 pub const WM_APP_0: u32 = WM_APP;
 pub const WM_APP_1: u32 = WM_APP + 1;
@@ -82,7 +81,7 @@ impl AsRef<GradientColor> for GradientColor {
     }
 }
 
-// Files
+// Configuration
 pub fn get_config() -> PathBuf {
     let home_dir = home_dir().expect("can't find home path");
     let config_dir = home_dir.join(".config").join("tacky-borders");
@@ -104,7 +103,7 @@ pub fn get_config() -> PathBuf {
     dir_path
 }
 
-// Windows
+// Windows Utility Functions
 pub fn get_rect_width(rect: RECT) -> i32 {
     rect.right - rect.left
 }
@@ -136,65 +135,30 @@ pub fn has_filtered_style(hwnd: HWND) -> bool {
 }
 
 pub fn get_window_rule(hwnd: HWND) -> WindowRule {
-    let mut title_arr: [u16; 256] = [0; 256];
-    let mut class_arr: [u16; 256] = [0; 256];
-
-    if unsafe { GetWindowTextW(hwnd, &mut title_arr) } == 0 {
-        println!("error getting window title!");
-    }
-    if unsafe { GetClassNameW(hwnd, &mut class_arr) } == 0 {
-        println!("error getting class name!");
-    }
-
-    let title = String::from_utf16_lossy(&title_arr)
-        .trim_end_matches('\0')
-        .to_string();
-    let class = String::from_utf16_lossy(&class_arr)
-        .trim_end_matches('\0')
-        .to_string();
+    let title = get_window_title(hwnd);
+    let class = get_window_class(hwnd);
+    let process = get_process_name(hwnd);
 
     // Lock the config mutex
     let config_mutex = &*CONFIG;
     let config = config_mutex.lock().unwrap();
 
     for rule in config.window_rules.iter() {
-        let name = match rule.rule_match.match_type {
-            MatchKind::Title => &title,
-            MatchKind::Class => &class,
-        };
-
-        if let Some(contains_str) = &rule.rule_match.match_value {
-            match rule.rule_match.match_strategy {
-                Some(MatchStrategy::Contains) => {
-                    if name.to_lowercase().contains(&contains_str.to_lowercase()) {
-                        return rule.clone();
-                    }
+        if let Some(name) = match rule.rule_match.match_type {
+            MatchKind::Title => Some(&title),
+            MatchKind::Process => Some(&process),
+            MatchKind::Class => Some(&class),
+        } {
+            if let Some(contains_str) = &rule.rule_match.match_value {
+                if match_rule(name, contains_str, &rule.rule_match.match_strategy) {
+                    return rule.clone();
                 }
-                Some(MatchStrategy::Equals) => {
-                    if name.to_lowercase() == contains_str.to_lowercase() {
-                        return rule.clone();
-                    }
-                }
-                Some(MatchStrategy::Regex) => {
-                    match Regex::new(contains_str) {
-                        Ok(regex) => {
-                            if regex.is_match(name) {
-                                return rule.clone();
-                            }
-                        }
-                        Err(e) => {
-                            println!("Invalid regex pattern: {}", e); // Use your logger here
-                        }
-                    }
-                }
-                None => {}
             }
         }
     }
 
     drop(config);
 
-    // Return the global rule if no specific rule matches
     WindowRule::default()
 }
 
@@ -218,16 +182,9 @@ pub fn is_cloaked(hwnd: HWND) -> bool {
 // If the tracking window does not have a window edge or is maximized, then there should be no
 // border.
 pub fn has_native_border(hwnd: HWND) -> bool {
-    unsafe {
-        let style = GetWindowLongW(hwnd, GWL_STYLE) as u32;
-        let ex_style = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
-
-        if ex_style & WS_EX_WINDOWEDGE.0 == 0 || style & WS_MAXIMIZE.0 != 0 {
-            return false;
-        }
-
-        true
-    }
+    let style = unsafe { GetWindowLongW(hwnd, GWL_STYLE) as u32 };
+    let ex_style = unsafe { GetWindowLongW(hwnd, GWL_EXSTYLE) as u32 };
+    ex_style & WS_EX_WINDOWEDGE.0 != 0 && style & WS_MAXIMIZE.0 == 0
 }
 
 pub fn _get_show_cmd(hwnd: HWND) -> u32 {
@@ -240,61 +197,10 @@ pub fn _get_show_cmd(hwnd: HWND) -> u32 {
     wp.showCmd
 }
 
-pub fn get_colors_for_window(_hwnd: HWND) -> (Color, Color) {
-    let config_mutex = &*CONFIG;
-    let config = config_mutex.lock().unwrap();
-    let window_rule = get_window_rule(_hwnd);
-
-    let get_color = |color_config: Option<ColorConfig>, default: &str| -> Color {
-        match color_config {
-            Some(ColorConfig::String(color)) => create_solid_color(color.to_string()),
-            Some(ColorConfig::Struct(color)) => create_gradient_colors(color),
-            None => create_solid_color(default.to_string()),
-        }
-    };
-
-    let mut colors = (
-        Color::Solid(D2D1_COLOR_F {
-            r: 1.0,
-            g: 1.0,
-            b: 1.0,
-            a: 1.0,
-        }),
-        Color::Solid(D2D1_COLOR_F {
-            r: 1.0,
-            g: 1.0,
-            b: 1.0,
-            a: 1.0,
-        }),
-    );
-
-    colors.0 = get_color(
-        window_rule
-            .rule_match
-            .active_color
-            .clone()
-            .or_else(|| config.global_rule.active_color.clone()),
-        "accent",
-    );
-
-    colors.1 = get_color(
-        window_rule
-            .rule_match
-            .inactive_color
-            .clone()
-            .or_else(|| config.global_rule.inactive_color.clone()),
-        "accent",
-    );
-
-    colors
-}
-
 pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()> {
     let borders_mutex = &*BORDERS;
     let config_mutex = &*CONFIG;
     let window = SendHWND(tracking_window);
-
-    let (active_color, inactive_color) = get_colors_for_window(tracking_window);
 
     let _ = std::thread::spawn(move || {
         let window_sent = window;
@@ -316,6 +222,33 @@ pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()>
 
         let config = config_mutex.lock().unwrap();
 
+        let border_size = window_rule
+            .rule_match
+            .border_size
+            .unwrap_or(config.global_rule.border_size);
+        let border_offset = window_rule
+            .rule_match
+            .border_offset
+            .unwrap_or(config.global_rule.border_offset);
+        let border_radius = window_rule
+            .rule_match
+            .border_radius
+            .unwrap_or(config.global_rule.border_radius) as f32;
+
+        let active_color = generate_color(
+            &window_rule
+                .rule_match
+                .active_color
+                .or(config.global_rule.active_color.clone()),
+        );
+
+        let inactive_color = generate_color(
+            &window_rule
+                .rule_match
+                .inactive_color
+                .or(config.global_rule.inactive_color.clone()),
+        );
+
         let use_active_animation = match active_color {
             Color::Gradient(ref color) => color.animation.unwrap_or(false),
             _ => false,
@@ -325,21 +258,6 @@ pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()>
             Color::Gradient(ref color) => color.animation.unwrap_or(false),
             _ => false,
         };
-
-        let border_size = window_rule
-            .rule_match
-            .border_size
-            .unwrap_or(config.global_rule.border_size);
-
-        let border_offset = window_rule
-            .rule_match
-            .border_offset
-            .unwrap_or(config.global_rule.border_offset);
-
-        let border_radius = window_rule
-            .rule_match
-            .border_radius
-            .unwrap_or(config.global_rule.border_radius) as f32;
 
         //println!("time it takes to get colors: {:?}", before.elapsed());
 
@@ -451,6 +369,96 @@ pub fn hide_border_for_window(hwnd: HWND) -> bool {
         }
     });
     true
+}
+
+// Helpers Functions
+fn generate_color(color_config: &Option<ColorConfig>) -> Color {
+    match color_config {
+        Some(ColorConfig::String(color)) => create_solid_color(color.to_string()),
+        Some(ColorConfig::Struct(color)) => create_gradient_colors(color.clone()),
+        None => create_solid_color("accent".to_string()),
+    }
+}
+
+fn match_rule(name: &str, pattern: &str, strategy: &Option<MatchStrategy>) -> bool {
+    match strategy {
+        Some(MatchStrategy::Contains) => name.to_lowercase().contains(&pattern.to_lowercase()),
+        Some(MatchStrategy::Equals) => name.to_lowercase() == pattern.to_lowercase(),
+        Some(MatchStrategy::Regex) => Regex::new(pattern)
+            .map(|re| re.is_match(name))
+            .unwrap_or(false),
+        None => false,
+    }
+}
+
+fn get_window_title(hwnd: HWND) -> String {
+    let mut buffer: [u16; 256] = [0; 256];
+
+    if unsafe { GetWindowTextW(hwnd, &mut buffer) } == 0 {
+        println!("error getting window title!");
+    }
+
+    unsafe { GetWindowTextW(hwnd, &mut buffer) };
+    String::from_utf16_lossy(&buffer)
+        .trim_end_matches('\0')
+        .to_string()
+}
+
+fn get_window_class(hwnd: HWND) -> String {
+    let mut buffer: [u16; 256] = [0; 256];
+
+    if unsafe { GetClassNameW(hwnd, &mut buffer) } == 0 {
+        println!("error getting class name!");
+    }
+
+    String::from_utf16_lossy(&buffer)
+        .trim_end_matches('\0')
+        .to_string()
+}
+
+fn get_process_name(hwnd: HWND) -> String {
+    let mut process_id = 0u32;
+    unsafe {
+        GetWindowThreadProcessId(hwnd, Some(&mut process_id));
+    }
+
+    let process_handle =
+        unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, process_id) };
+
+    let process_handle = match process_handle {
+        Ok(handle) => handle,
+        Err(_) => return String::new(), // Return empty string on error
+    };
+
+    let mut buffer = [0u16; 256];
+    let mut length = buffer.len() as u32;
+
+    unsafe {
+        // Query the process image name
+        if QueryFullProcessImageNameW(
+            process_handle,
+            PROCESS_NAME_WIN32, // Use 0 to indicate no special flags
+            PWSTR(buffer.as_mut_ptr()),
+            &mut length,
+        )
+        .is_err()
+        {
+            CloseHandle(process_handle).ok();
+            return String::new(); // Return empty string on error
+        }
+
+        CloseHandle(process_handle).ok(); // Ignore the result of CloseHandle
+    }
+
+    let exe_path = String::from_utf16_lossy(&buffer[..length as usize]);
+
+    exe_path
+        .split('\\')
+        .last()
+        .and_then(|file_name| file_name.split('.').next()) // Using `and_then`
+        .unwrap_or("") // Return empty string if parsing fails
+        .trim_end_matches('\0')
+        .to_string()
 }
 
 pub fn create_solid_color(color: String) -> Color {

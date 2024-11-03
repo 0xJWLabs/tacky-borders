@@ -272,7 +272,7 @@
         ],
         "properties": {
           "match": {
-            "description": "Defines the criteria for matching a window to apply specific border settings. This includes the type of match (Class, or Title) and the corresponding value to be matched. The match type specifies whether the criteria applies to all windows, specific window classes, or specific window titles.",
+            "description": "Defines the criteria for matching a window to apply specific border settings. This includes the type of match (Class, Process or Title) and the corresponding value to be matched. The match type specifies whether the criteria applies to all windows, specific window classes, or specific window titles.",
             "type": "object",
             "required": [
               "kind"
@@ -283,7 +283,8 @@
                 "type": "string",
                 "enum": [
                   "Class",
-                  "Title"
+                  "Title",
+                  "Process"
                 ]
               },
               "value": {

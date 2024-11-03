@@ -25,6 +25,7 @@ mod logger;
 mod sys_tray_icon;
 mod utils;
 mod window_border;
+mod colors;
 
 pub static BORDERS: LazyLock<Mutex<HashMap<isize, isize>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));

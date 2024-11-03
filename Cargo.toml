@@ -8,13 +8,13 @@ debug = true
 
 [dependencies]
 serde = "1.0.213"
-serde_yaml = "0.9.34"
 lazy_static = "1.5.0"
 tray-icon = "0.19.1"
 open = "5.1.4"
 chrono = "0.4.38"
 dirs = "5.0.1"
 regex = "1.11.1"
+serde_yml = "0.0.12"
 
 [dependencies.windows]
 version = "0.58.0"

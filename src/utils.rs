@@ -6,12 +6,12 @@ use std::{
 };
 
 use windows::{
-    Win32::Foundation::*, Win32::Graphics::Direct2D::Common::*, Win32::Graphics::Dwm::*,
+    Win32::Foundation::*, Win32::Graphics::Dwm::*,
     Win32::UI::WindowsAndMessaging::*,
 };
 
 use crate::border_config::*;
-use crate::logger::Logger;
+use crate::colors::*;
 use crate::*;
 
 pub const WM_APP_0: u32 = WM_APP;
@@ -20,66 +20,6 @@ pub const WM_APP_2: u32 = WM_APP + 2;
 pub const WM_APP_3: u32 = WM_APP + 3;
 pub const WM_APP_4: u32 = WM_APP + 4;
 pub const WM_APP_5: u32 = WM_APP + 5;
-
-#[derive(Debug, Clone)]
-pub enum Color {
-    Solid(D2D1_COLOR_F),
-    Gradient(Gradient),
-}
-
-// Implement Default for your own MyBrush enum
-impl Default for Color {
-    fn default() -> Self {
-        Color::Solid(D2D1_COLOR_F {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 1.0,
-        })
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Gradient {
-    pub direction: Option<Vec<f32>>,
-    pub gradient_stops: Vec<D2D1_GRADIENT_STOP>, // Array of gradient stops
-    pub animation: Option<bool>,
-}
-
-impl Default for Gradient {
-    fn default() -> Self {
-        Gradient {
-            direction: None,
-            gradient_stops: vec![
-                D2D1_GRADIENT_STOP {
-                    position: 0.0,
-                    color: D2D1_COLOR_F {
-                        r: 0.0,
-                        g: 0.0,
-                        b: 0.0,
-                        a: 1.0,
-                    },
-                },
-                D2D1_GRADIENT_STOP {
-                    position: 1.0,
-                    color: D2D1_COLOR_F {
-                        r: 1.0,
-                        g: 1.0,
-                        b: 1.0,
-                        a: 1.0,
-                    },
-                },
-            ],
-            animation: Some(false),
-        }
-    }
-}
-
-impl AsRef<GradientColor> for GradientColor {
-    fn as_ref(&self) -> &GradientColor {
-        self
-    }
-}
 
 // Configuration
 pub fn get_config() -> PathBuf {
@@ -372,14 +312,6 @@ pub fn hide_border_for_window(hwnd: HWND) -> bool {
 }
 
 // Helpers Functions
-fn generate_color(color_config: &Option<ColorConfig>) -> Color {
-    match color_config {
-        Some(ColorConfig::String(color)) => create_solid_color(color.to_string()),
-        Some(ColorConfig::Struct(color)) => create_gradient_colors(color.clone()),
-        None => create_solid_color("accent".to_string()),
-    }
-}
-
 fn match_rule(name: &str, pattern: &str, strategy: &Option<MatchStrategy>) -> bool {
     match strategy {
         Some(MatchStrategy::Contains) => name.to_lowercase().contains(&pattern.to_lowercase()),
@@ -459,160 +391,4 @@ fn get_process_name(hwnd: HWND) -> String {
         .unwrap_or("") // Return empty string if parsing fails
         .trim_end_matches('\0')
         .to_string()
-}
-
-pub fn create_solid_color(color: String) -> Color {
-    if color == "accent" {
-        let mut pcr_colorization: u32 = 0;
-        let mut pf_opaqueblend: BOOL = FALSE;
-        let result = unsafe { DwmGetColorizationColor(&mut pcr_colorization, &mut pf_opaqueblend) };
-        if result.is_err() {
-            Logger::log("error", "Error getting windows accent color!");
-            return Color::Solid(D2D1_COLOR_F {
-                r: 1.0,
-                g: 1.0,
-                b: 1.0,
-                a: 1.0,
-            });
-        }
-        let red = ((pcr_colorization & 0x00FF0000) >> 16) as f32 / 255.0;
-        let green = ((pcr_colorization & 0x0000FF00) >> 8) as f32 / 255.0;
-        let blue = (pcr_colorization & 0x000000FF) as f32 / 255.0;
-        Color::Solid(D2D1_COLOR_F {
-            r: red,
-            g: green,
-            b: blue,
-            a: 1.0,
-        })
-    } else if (color.starts_with("rgb(")) || (color.starts_with("rgba(")) {
-        Color::Solid(get_color_from_rgba(&color))
-    } else {
-        Color::Solid(get_color_from_hex(&color))
-    }
-}
-
-pub fn create_gradient_colors(color: GradientColor) -> Color {
-    let num_colors = color.colors.len();
-    if num_colors == 0 {
-        return Color::Gradient(Gradient::default());
-    }
-
-    let gradient_stops: Vec<D2D1_GRADIENT_STOP> = color
-        .colors
-        .into_iter()
-        .enumerate()
-        .map(|(i, hex)| {
-            let position = i as f32 / (num_colors - 1) as f32;
-            D2D1_GRADIENT_STOP {
-                position,
-                color: get_color_from_hex(hex.as_str()),
-            }
-        })
-        .collect();
-
-    let direction = Some(color.direction);
-
-    Color::Gradient(Gradient {
-        direction: direction.map(|g| g.to_vec()),
-        gradient_stops,
-        animation: color.animation,
-    })
-}
-
-pub fn get_color_from_hex(hex: &str) -> D2D1_COLOR_F {
-    // Ensure the hex string starts with '#' and is of the correct length
-    if hex.len() != 7 && hex.len() != 9 && hex.len() != 4 && hex.len() != 5 || !hex.starts_with('#')
-    {
-        Logger::log(
-            "error",
-            format!("Invalid hex color format: {}", hex).as_str(),
-        );
-    }
-
-    // Expand shorthand hex formats (#RGB or #RGBA to #RRGGBB or #RRGGBBAA)
-    let expanded_hex = match hex.len() {
-        4 => format!(
-            "#{}{}{}{}{}{}",
-            &hex[1..2],
-            &hex[1..2],
-            &hex[2..3],
-            &hex[2..3],
-            &hex[3..4],
-            &hex[3..4]
-        ),
-        5 => format!(
-            "#{}{}{}{}{}{}{}{}",
-            &hex[1..2],
-            &hex[1..2],
-            &hex[2..3],
-            &hex[2..3],
-            &hex[3..4],
-            &hex[3..4],
-            &hex[4..5],
-            &hex[4..5]
-        ),
-        _ => hex.to_string(),
-    };
-
-    // Convert each color component to f32 between 0.0 and 1.0, handling errors
-    let parse_component = |s: &str| -> f32 {
-        match u8::from_str_radix(s, 16) {
-            Ok(val) => f32::from(val) / 255.0,
-            Err(_) => {
-                println!("Error: Invalid component '{}' in hex: {}", s, expanded_hex);
-                0.0
-            }
-        }
-    };
-
-    // Parse RGB values
-    let r = parse_component(&expanded_hex[1..3]);
-    let g = parse_component(&expanded_hex[3..5]);
-    let b = parse_component(&expanded_hex[5..7]);
-
-    // Parse alpha value if present
-    let a = if expanded_hex.len() == 9 {
-        parse_component(&expanded_hex[7..9])
-    } else {
-        1.0
-    };
-
-    D2D1_COLOR_F { r, g, b, a }
-}
-
-pub fn get_color_from_rgba(rgba: &str) -> D2D1_COLOR_F {
-    let rgba = rgba
-        .trim_start_matches("rgb(")
-        .trim_start_matches("rgba(")
-        .trim_end_matches(')');
-    let components: Vec<&str> = rgba.split(',').map(|s| s.trim()).collect();
-
-    // Check for correct number of components
-    if components.len() == 3 || components.len() == 4 {
-        // Parse red, green, and blue values
-        let red: f32 = f32::from_bits(components[0].parse::<u32>().unwrap_or(0)) / 255.0;
-        let green: f32 = f32::from_bits(components[1].parse::<u32>().unwrap_or(0)) / 255.0;
-        let blue: f32 = f32::from_bits(components[2].parse::<u32>().unwrap_or(0)) / 255.0;
-
-        let alpha: f32 = if components.len() == 4 {
-            components[3].parse::<f32>().unwrap_or(1.0).clamp(0.0, 1.0)
-        } else {
-            1.0
-        };
-
-        return D2D1_COLOR_F {
-            r: red,
-            g: green,
-            b: blue,
-            a: alpha, // Default alpha value for rgb()
-        };
-    }
-
-    // Return a default color if parsing fails
-    D2D1_COLOR_F {
-        r: 0.0,
-        g: 0.0,
-        b: 0.0,
-        a: 1.0,
-    }
 }

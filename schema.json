@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "StaticConfig",
+  "title": "TackyConfig",
   "type": "object",
   "properties": {
     "global": {
@@ -29,7 +29,7 @@
           "minimum": -1
         },
         "active_color": {
-          "description": "Color or gradient for active (focused) window borders. Can be a single color string or a gradient object.",
+          "description": "Color or gradient for active (focused) window borders. Can be a single color string, gradient string or a gradient object.",
           "oneOf": [
             {
               "type": "string",
@@ -37,7 +37,9 @@
                 "#F5C2E7",
                 "#F5E0DCFF",
                 "rgb(137, 180, 250)",
-                "rgba(243, 139, 168, 1)"
+                "rgba(243, 139, 168, 1)",
+                "#89B4FA, #F5C2E7, to right",
+                "gradient(#89B4FA, #F5C2E7, to right, false)"
               ]
             },
             {
@@ -52,54 +54,120 @@
                   "minItems": 2
                 },
                 "direction": {
-                  "type": "object",
-                  "description": "Represents the direction in which the gradient is applied. It is defined as a vector with start and end points, where the direction is indicated by coordinates ranging from (0,0) to (1,1), representing the normalized space of the gradient.",
-                  "required": [
-                    "start",
-                    "end"
-                  ],
-                  "properties": {
-                    "start": {
+                  "oneOf": [
+                    {
                       "type": "object",
-                      "description": "The starting point of the gradient, specified as coordinates. It determines where the gradient begins.",
+                      "description": "Represents the direction in which the gradient is applied. It is defined as a vector with start and end points, where the direction is indicated by coordinates ranging from (0,0) to (1,1), representing the normalized space of the gradient.",
                       "required": [
-                        "x",
-                        "y"
+                        "start",
+                        "end"
+                      ],
+                      "examples": [
+                        {
+                          "start": {
+                            "x": 0.0,
+                            "y": 0.0
+                          },
+                          "end": {
+                            "x": 1.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "start": [
+                            0.0,
+                            0.0
+                          ],
+                          "end": [
+                            1.0,
+                            0.0
+                          ]
+                        }
                       ],
                       "properties": {
-                        "x": {
-                          "type": "number",
-                          "description": "The x-coordinate of the starting point of the gradient, represented as a float value between 0 and 1.",
-                          "format": "float"
+                        "start": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "description": "The starting point of the gradient, specified as coordinates. It determines where the gradient begins.",
+                              "required": [
+                                "x",
+                                "y"
+                              ],
+                              "properties": {
+                                "x": {
+                                  "type": "number",
+                                  "description": "The x-coordinate of the starting point of the gradient, represented as a float value between 0 and 1.",
+                                  "format": "float"
+                                },
+                                "y": {
+                                  "type": "number",
+                                  "description": "The y-coordinate of the starting point of the gradient, represented as a float value between 0 and 1.",
+                                  "format": "float"
+                                }
+                              }
+                            },
+                            {
+                              "type": "array",
+                              "maxItems": 2,
+                              "minItems": 2,
+                              "description": "The starting point of the gradient, specified as sequence [x, y]. It determines where the gradient begins.",
+                              "items": {
+                                "type": "number",
+                                "format": "float",
+                                "description": "The coordinate of the starting point of the gradient, represented as a float value between 0 and 1."
+                              }
+                            }
+                          ]
                         },
-                        "y": {
-                          "type": "number",
-                          "description": "The y-coordinate of the starting point of the gradient, represented as a float value between 0 and 1.",
-                          "format": "float"
+                        "end": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "description": "The ending point of the gradient, specified as coordinates. It determines where the gradient finishes.",
+                              "required": [
+                                "x",
+                                "y"
+                              ],
+                              "properties": {
+                                "x": {
+                                  "type": "number",
+                                  "description": "The x-coordinate of the ending point of the gradient, represented as a float value between 0 and 1.",
+                                  "format": "float"
+                                },
+                                "y": {
+                                  "type": "number",
+                                  "description": "The y-coordinate of the ending point of the gradient, represented as a float value between 0 and 1.",
+                                  "format": "float"
+                                }
+                              }
+                            },
+                            {
+                              "type": "array",
+                              "maxItems": 2,
+                              "minItems": 2,
+                              "description": "The ending point of the gradient, specified as sequence [x, y]. It determines where the gradient begins.",
+                              "items": {
+                                "type": "number",
+                                "format": "float",
+                                "description": "The coordinate of the ending point of the gradient, represented as a float value between 0 and 1."
+                              }
+                            }
+                          ]
                         }
                       }
                     },
-                    "end": {
-                      "type": "object",
-                      "description": "The ending point of the gradient, specified as coordinates. It determines where the gradient finishes.",
-                      "required": [
-                        "x",
-                        "y"
-                      ],
-                      "properties": {
-                        "x": {
-                          "type": "number",
-                          "description": "The x-coordinate of the ending point of the gradient, represented as a float value between 0 and 1.",
-                          "format": "float"
-                        },
-                        "y": {
-                          "type": "number",
-                          "description": "The y-coordinate of the ending point of the gradient, represented as a float value between 0 and 1.",
-                          "format": "float"
-                        }
-                      }
+                    {
+                      "type": "string",
+                      "description": "Represents the direction in which the gradient is applied. It is defined as direction string",
+                      "examples": [
+                        "to right",
+                        "to left",
+                        "45deg",
+                        "90deg"
+                      ]
                     }
-                  }
+                  ]
                 },
                 "animation": {
                   "type": "boolean",
@@ -125,20 +193,26 @@
                 },
                 {
                   "colors": [
-                    "rgba(137, 180, 250, 1)",
-                    "rgba(243, 139, 168, 1)",
-                    "rgba(255, 255, 255, 1)"
+                    "#F5C2E7",
+                    "#F5E0DCFF"
                   ],
                   "direction": {
-                    "start": {
-                      "x": 0.0,
-                      "y": 0.0
-                    },
-                    "end": {
-                      "x": 1.0,
-                      "y": 1.0
-                    }
+                    "start": [
+                      0.0,
+                      0.0
+                    ],
+                    "end": [
+                      1.0,
+                      1.0
+                    ]
                   }
+                },
+                {
+                  "colors": [
+                    "#F5C2E7",
+                    "#F5E0DCFF"
+                  ],
+                  "direction": "to right"
                 }
               ],
               "required": [
@@ -157,7 +231,9 @@
                 "#F5C2E7",
                 "#F5E0DCFF",
                 "rgb(137, 180, 250)",
-                "rgba(243, 139, 168, 1)"
+                "rgba(243, 139, 168, 1)",
+                "#89B4FA, #F5C2E7, to right",
+                "gradient(#89B4FA, #F5C2E7, to right, false)"
               ]
             },
             {
@@ -172,54 +248,120 @@
                   "minItems": 2
                 },
                 "direction": {
-                  "type": "object",
-                  "description": "Represents the direction in which the gradient is applied. It is defined as a vector with start and end points, where the direction is indicated by coordinates ranging from (0,0) to (1,1), representing the normalized space of the gradient.",
-                  "required": [
-                    "start",
-                    "end"
-                  ],
-                  "properties": {
-                    "start": {
+                  "oneOf": [
+                    {
                       "type": "object",
-                      "description": "The starting point of the gradient, specified as coordinates. It determines where the gradient begins.",
+                      "description": "Represents the direction in which the gradient is applied. It is defined as a vector with start and end points, where the direction is indicated by coordinates ranging from (0,0) to (1,1), representing the normalized space of the gradient.",
                       "required": [
-                        "x",
-                        "y"
+                        "start",
+                        "end"
+                      ],
+                      "examples": [
+                        {
+                          "start": {
+                            "x": 0.0,
+                            "y": 0.0
+                          },
+                          "end": {
+                            "x": 1.0,
+                            "y": 0.0
+                          }
+                        },
+                        {
+                          "start": [
+                            0.0,
+                            0.0
+                          ],
+                          "end": [
+                            1.0,
+                            0.0
+                          ]
+                        }
                       ],
                       "properties": {
-                        "x": {
-                          "type": "number",
-                          "description": "The x-coordinate of the starting point of the gradient, represented as a float value between 0 and 1.",
-                          "format": "float"
+                        "start": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "description": "The starting point of the gradient, specified as coordinates. It determines where the gradient begins.",
+                              "required": [
+                                "x",
+                                "y"
+                              ],
+                              "properties": {
+                                "x": {
+                                  "type": "number",
+                                  "description": "The x-coordinate of the starting point of the gradient, represented as a float value between 0 and 1.",
+                                  "format": "float"
+                                },
+                                "y": {
+                                  "type": "number",
+                                  "description": "The y-coordinate of the starting point of the gradient, represented as a float value between 0 and 1.",
+                                  "format": "float"
+                                }
+                              }
+                            },
+                            {
+                              "type": "array",
+                              "maxItems": 2,
+                              "minItems": 2,
+                              "description": "The starting point of the gradient, specified as sequence [x, y]. It determines where the gradient begins.",
+                              "items": {
+                                "type": "number",
+                                "format": "float",
+                                "description": "The coordinate of the starting point of the gradient, represented as a float value between 0 and 1."
+                              }
+                            }
+                          ]
                         },
-                        "y": {
-                          "type": "number",
-                          "description": "The y-coordinate of the starting point of the gradient, represented as a float value between 0 and 1.",
-                          "format": "float"
+                        "end": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "description": "The ending point of the gradient, specified as coordinates. It determines where the gradient finishes.",
+                              "required": [
+                                "x",
+                                "y"
+                              ],
+                              "properties": {
+                                "x": {
+                                  "type": "number",
+                                  "description": "The x-coordinate of the ending point of the gradient, represented as a float value between 0 and 1.",
+                                  "format": "float"
+                                },
+                                "y": {
+                                  "type": "number",
+                                  "description": "The y-coordinate of the ending point of the gradient, represented as a float value between 0 and 1.",
+                                  "format": "float"
+                                }
+                              }
+                            },
+                            {
+                              "type": "array",
+                              "maxItems": 2,
+                              "minItems": 2,
+                              "description": "The ending point of the gradient, specified as sequence [x, y]. It determines where the gradient begins.",
+                              "items": {
+                                "type": "number",
+                                "format": "float",
+                                "description": "The coordinate of the ending point of the gradient, represented as a float value between 0 and 1."
+                              }
+                            }
+                          ]
                         }
                       }
                     },
-                    "end": {
-                      "type": "object",
-                      "description": "The ending point of the gradient, specified as coordinates. It determines where the gradient finishes.",
-                      "required": [
-                        "x",
-                        "y"
-                      ],
-                      "properties": {
-                        "x": {
-                          "type": "number",
-                          "description": "The x-coordinate of the ending point of the gradient, represented as a float value between 0 and 1.",
-                          "format": "float"
-                        },
-                        "y": {
-                          "type": "number",
-                          "description": "The y-coordinate of the ending point of the gradient, represented as a float value between 0 and 1.",
-                          "format": "float"
-                        }
-                      }
+                    {
+                      "type": "string",
+                      "description": "Represents the direction in which the gradient is applied. It is defined as direction string",
+                      "examples": [
+                        "to right",
+                        "to left",
+                        "45deg",
+                        "90deg"
+                      ]
                     }
-                  }
+                  ]
                 },
                 "animation": {
                   "type": "boolean",
@@ -232,25 +374,39 @@
                     "#F5C2E7",
                     "#F5E0DCFF"
                   ],
-                  "direction": [
-                    0,
-                    0,
-                    1,
-                    0
-                  ]
+                  "direction": {
+                    "start": {
+                      "x": 0.0,
+                      "y": 0.0
+                    },
+                    "end": {
+                      "x": 1.0,
+                      "y": 1.0
+                    }
+                  }
                 },
                 {
                   "colors": [
-                    "rgba(137, 180, 250, 1)",
-                    "rgba(243, 139, 168, 1)",
-                    "rgba(255, 255, 255, 1)"
+                    "#F5C2E7",
+                    "#F5E0DCFF"
                   ],
-                  "direction": [
-                    0,
-                    0,
-                    1,
-                    0
-                  ]
+                  "direction": {
+                    "start": [
+                      0.0,
+                      0.0
+                    ],
+                    "end": [
+                      1.0,
+                      1.0
+                    ]
+                  }
+                },
+                {
+                  "colors": [
+                    "#F5C2E7",
+                    "#F5E0DCFF"
+                  ],
+                  "direction": "to right"
                 }
               ],
               "required": [
@@ -301,7 +457,7 @@
                 ]
               },
               "active_color": {
-                "description": "Color or gradient for active (focused) window borders. Can be a single color string or a gradient object.",
+                "description": "Color or gradient for active (focused) window borders. Can be a single color string, gradient string or a gradient object.",
                 "oneOf": [
                   {
                     "type": "string",
@@ -309,7 +465,9 @@
                       "#F5C2E7",
                       "#F5E0DCFF",
                       "rgb(137, 180, 250)",
-                      "rgba(243, 139, 168, 1)"
+                      "rgba(243, 139, 168, 1)",
+                      "#89B4FA, #F5C2E7, to right",
+                      "gradient(#89B4FA, #F5C2E7, to right, false)"
                     ]
                   },
                   {
@@ -324,54 +482,120 @@
                         "minItems": 2
                       },
                       "direction": {
-                        "type": "object",
-                        "description": "Represents the direction in which the gradient is applied. It is defined as a vector with start and end points, where the direction is indicated by coordinates ranging from (0,0) to (1,1), representing the normalized space of the gradient.",
-                        "required": [
-                          "start",
-                          "end"
-                        ],
-                        "properties": {
-                          "start": {
+                        "oneOf": [
+                          {
                             "type": "object",
-                            "description": "The starting point of the gradient, specified as coordinates. It determines where the gradient begins.",
+                            "description": "Represents the direction in which the gradient is applied. It is defined as a vector with start and end points, where the direction is indicated by coordinates ranging from (0,0) to (1,1), representing the normalized space of the gradient.",
                             "required": [
-                              "x",
-                              "y"
+                              "start",
+                              "end"
+                            ],
+                            "examples": [
+                              {
+                                "start": {
+                                  "x": 0.0,
+                                  "y": 0.0
+                                },
+                                "end": {
+                                  "x": 1.0,
+                                  "y": 0.0
+                                }
+                              },
+                              {
+                                "start": [
+                                  0.0,
+                                  0.0
+                                ],
+                                "end": [
+                                  1.0,
+                                  0.0
+                                ]
+                              }
                             ],
                             "properties": {
-                              "x": {
-                                "type": "number",
-                                "description": "The x-coordinate of the starting point of the gradient, represented as a float value between 0 and 1.",
-                                "format": "float"
+                              "start": {
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "description": "The starting point of the gradient, specified as coordinates. It determines where the gradient begins.",
+                                    "required": [
+                                      "x",
+                                      "y"
+                                    ],
+                                    "properties": {
+                                      "x": {
+                                        "type": "number",
+                                        "description": "The x-coordinate of the starting point of the gradient, represented as a float value between 0 and 1.",
+                                        "format": "float"
+                                      },
+                                      "y": {
+                                        "type": "number",
+                                        "description": "The y-coordinate of the starting point of the gradient, represented as a float value between 0 and 1.",
+                                        "format": "float"
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "type": "array",
+                                    "maxItems": 2,
+                                    "minItems": 2,
+                                    "description": "The starting point of the gradient, specified as sequence [x, y]. It determines where the gradient begins.",
+                                    "items": {
+                                      "type": "number",
+                                      "format": "float",
+                                      "description": "The coordinate of the starting point of the gradient, represented as a float value between 0 and 1."
+                                    }
+                                  }
+                                ]
                               },
-                              "y": {
-                                "type": "number",
-                                "description": "The y-coordinate of the starting point of the gradient, represented as a float value between 0 and 1.",
-                                "format": "float"
+                              "end": {
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "description": "The ending point of the gradient, specified as coordinates. It determines where the gradient finishes.",
+                                    "required": [
+                                      "x",
+                                      "y"
+                                    ],
+                                    "properties": {
+                                      "x": {
+                                        "type": "number",
+                                        "description": "The x-coordinate of the ending point of the gradient, represented as a float value between 0 and 1.",
+                                        "format": "float"
+                                      },
+                                      "y": {
+                                        "type": "number",
+                                        "description": "The y-coordinate of the ending point of the gradient, represented as a float value between 0 and 1.",
+                                        "format": "float"
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "type": "array",
+                                    "maxItems": 2,
+                                    "minItems": 2,
+                                    "description": "The ending point of the gradient, specified as sequence [x, y]. It determines where the gradient begins.",
+                                    "items": {
+                                      "type": "number",
+                                      "format": "float",
+                                      "description": "The coordinate of the ending point of the gradient, represented as a float value between 0 and 1."
+                                    }
+                                  }
+                                ]
                               }
                             }
                           },
-                          "end": {
-                            "type": "object",
-                            "description": "The ending point of the gradient, specified as coordinates. It determines where the gradient finishes.",
-                            "required": [
-                              "x",
-                              "y"
-                            ],
-                            "properties": {
-                              "x": {
-                                "type": "number",
-                                "description": "The x-coordinate of the ending point of the gradient, represented as a float value between 0 and 1.",
-                                "format": "float"
-                              },
-                              "y": {
-                                "type": "number",
-                                "description": "The y-coordinate of the ending point of the gradient, represented as a float value between 0 and 1.",
-                                "format": "float"
-                              }
-                            }
+                          {
+                            "type": "string",
+                            "description": "Represents the direction in which the gradient is applied. It is defined as direction string",
+                            "examples": [
+                              "to right",
+                              "to left",
+                              "45deg",
+                              "90deg"
+                            ]
                           }
-                        }
+                        ]
                       },
                       "animation": {
                         "type": "boolean",
@@ -397,20 +621,26 @@
                       },
                       {
                         "colors": [
-                          "rgba(137, 180, 250, 1)",
-                          "rgba(243, 139, 168, 1)",
-                          "rgba(255, 255, 255, 1)"
+                          "#F5C2E7",
+                          "#F5E0DCFF"
                         ],
                         "direction": {
-                          "start": {
-                            "x": 0.0,
-                            "y": 0.0
-                          },
-                          "end": {
-                            "x": 1.0,
-                            "y": 1.0
-                          }
+                          "start": [
+                            0.0,
+                            0.0
+                          ],
+                          "end": [
+                            1.0,
+                            1.0
+                          ]
                         }
+                      },
+                      {
+                        "colors": [
+                          "#F5C2E7",
+                          "#F5E0DCFF"
+                        ],
+                        "direction": "to right"
                       }
                     ],
                     "required": [
@@ -429,7 +659,9 @@
                       "#F5C2E7",
                       "#F5E0DCFF",
                       "rgb(137, 180, 250)",
-                      "rgba(243, 139, 168, 1)"
+                      "rgba(243, 139, 168, 1)",
+                      "#89B4FA, #F5C2E7, to right",
+                      "gradient(#89B4FA, #F5C2E7, to right, false)"
                     ]
                   },
                   {
@@ -444,54 +676,120 @@
                         "minItems": 2
                       },
                       "direction": {
-                        "type": "object",
-                        "description": "Represents the direction in which the gradient is applied. It is defined as a vector with start and end points, where the direction is indicated by coordinates ranging from (0,0) to (1,1), representing the normalized space of the gradient.",
-                        "required": [
-                          "start",
-                          "end"
-                        ],
-                        "properties": {
-                          "start": {
+                        "oneOf": [
+                          {
                             "type": "object",
-                            "description": "The starting point of the gradient, specified as coordinates. It determines where the gradient begins.",
+                            "description": "Represents the direction in which the gradient is applied. It is defined as a vector with start and end points, where the direction is indicated by coordinates ranging from (0,0) to (1,1), representing the normalized space of the gradient.",
                             "required": [
-                              "x",
-                              "y"
+                              "start",
+                              "end"
+                            ],
+                            "examples": [
+                              {
+                                "start": {
+                                  "x": 0.0,
+                                  "y": 0.0
+                                },
+                                "end": {
+                                  "x": 1.0,
+                                  "y": 0.0
+                                }
+                              },
+                              {
+                                "start": [
+                                  0.0,
+                                  0.0
+                                ],
+                                "end": [
+                                  1.0,
+                                  0.0
+                                ]
+                              }
                             ],
                             "properties": {
-                              "x": {
-                                "type": "number",
-                                "description": "The x-coordinate of the starting point of the gradient, represented as a float value between 0 and 1.",
-                                "format": "float"
+                              "start": {
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "description": "The starting point of the gradient, specified as coordinates. It determines where the gradient begins.",
+                                    "required": [
+                                      "x",
+                                      "y"
+                                    ],
+                                    "properties": {
+                                      "x": {
+                                        "type": "number",
+                                        "description": "The x-coordinate of the starting point of the gradient, represented as a float value between 0 and 1.",
+                                        "format": "float"
+                                      },
+                                      "y": {
+                                        "type": "number",
+                                        "description": "The y-coordinate of the starting point of the gradient, represented as a float value between 0 and 1.",
+                                        "format": "float"
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "type": "array",
+                                    "maxItems": 2,
+                                    "minItems": 2,
+                                    "description": "The starting point of the gradient, specified as sequence [x, y]. It determines where the gradient begins.",
+                                    "items": {
+                                      "type": "number",
+                                      "format": "float",
+                                      "description": "The coordinate of the starting point of the gradient, represented as a float value between 0 and 1."
+                                    }
+                                  }
+                                ]
                               },
-                              "y": {
-                                "type": "number",
-                                "description": "The y-coordinate of the starting point of the gradient, represented as a float value between 0 and 1.",
-                                "format": "float"
+                              "end": {
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "description": "The ending point of the gradient, specified as coordinates. It determines where the gradient finishes.",
+                                    "required": [
+                                      "x",
+                                      "y"
+                                    ],
+                                    "properties": {
+                                      "x": {
+                                        "type": "number",
+                                        "description": "The x-coordinate of the ending point of the gradient, represented as a float value between 0 and 1.",
+                                        "format": "float"
+                                      },
+                                      "y": {
+                                        "type": "number",
+                                        "description": "The y-coordinate of the ending point of the gradient, represented as a float value between 0 and 1.",
+                                        "format": "float"
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "type": "array",
+                                    "maxItems": 2,
+                                    "minItems": 2,
+                                    "description": "The ending point of the gradient, specified as sequence [x, y]. It determines where the gradient begins.",
+                                    "items": {
+                                      "type": "number",
+                                      "format": "float",
+                                      "description": "The coordinate of the ending point of the gradient, represented as a float value between 0 and 1."
+                                    }
+                                  }
+                                ]
                               }
                             }
                           },
-                          "end": {
-                            "type": "object",
-                            "description": "The ending point of the gradient, specified as coordinates. It determines where the gradient finishes.",
-                            "required": [
-                              "x",
-                              "y"
-                            ],
-                            "properties": {
-                              "x": {
-                                "type": "number",
-                                "description": "The x-coordinate of the ending point of the gradient, represented as a float value between 0 and 1.",
-                                "format": "float"
-                              },
-                              "y": {
-                                "type": "number",
-                                "description": "The y-coordinate of the ending point of the gradient, represented as a float value between 0 and 1.",
-                                "format": "float"
-                              }
-                            }
+                          {
+                            "type": "string",
+                            "description": "Represents the direction in which the gradient is applied. It is defined as direction string",
+                            "examples": [
+                              "to right",
+                              "to left",
+                              "45deg",
+                              "90deg"
+                            ]
                           }
-                        }
+                        ]
                       },
                       "animation": {
                         "type": "boolean",
@@ -504,25 +802,39 @@
                           "#F5C2E7",
                           "#F5E0DCFF"
                         ],
-                        "direction": [
-                          0,
-                          0,
-                          1,
-                          0
-                        ]
+                        "direction": {
+                          "start": {
+                            "x": 0.0,
+                            "y": 0.0
+                          },
+                          "end": {
+                            "x": 1.0,
+                            "y": 1.0
+                          }
+                        }
                       },
                       {
                         "colors": [
-                          "rgba(137, 180, 250, 1)",
-                          "rgba(243, 139, 168, 1)",
-                          "rgba(255, 255, 255, 1)"
+                          "#F5C2E7",
+                          "#F5E0DCFF"
                         ],
-                        "direction": [
-                          0,
-                          0,
-                          1,
-                          0
-                        ]
+                        "direction": {
+                          "start": [
+                            0.0,
+                            0.0
+                          ],
+                          "end": [
+                            1.0,
+                            1.0
+                          ]
+                        }
+                      },
+                      {
+                        "colors": [
+                          "#F5C2E7",
+                          "#F5E0DCFF"
+                        ],
+                        "direction": "to right"
                       }
                     ],
                     "required": [

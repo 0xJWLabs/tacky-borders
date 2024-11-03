@@ -3,21 +3,259 @@
   "title": "StaticConfig",
   "type": "object",
   "properties": {
-    "border_size": {
-      "description": "Thickness of the window borders in pixels. (default: 2)",
-      "type": "integer",
-      "format": "int32"
-    },
-    "border_offset": {
-      "description": "Adjusts border size relative to the window in pixels. Positive values expand; negative values shrink. (default: -1)",
-      "type": "integer",
-      "format": "int32"
-    },
-    "border_radius": {
-      "description": "Corner radius for borders in pixels; -1 to let the program decide automatically. (default: -1)",
-      "type": "integer",
-      "format": "int32",
-      "minimum": -1
+    "global": {
+      "description": "Global rule for customizing border settings.",
+      "type": "object",
+      "properties": {
+        "border_size": {
+          "description": "Thickness of the window borders in pixels. (default: 2)",
+          "type": "integer",
+          "format": "int32"
+        },
+        "border_offset": {
+          "description": "Adjusts border size relative to the window in pixels. Positive values expand; negative values shrink. (default: -1)",
+          "type": "integer",
+          "format": "int32"
+        },
+        "border_radius": {
+          "description": "Corner radius for borders in pixels; -1 to let the program decide automatically. (default: -1)",
+          "type": "integer",
+          "format": "int32",
+          "minimum": -1
+        },
+        "active_color": {
+          "description": "Color or gradient for active (focused) window borders. Can be a single color string or a gradient object.",
+          "oneOf": [
+            {
+              "type": "string",
+              "examples": [
+                "#F5C2E7",
+                "#F5E0DCFF",
+                "rgb(137, 180, 250)",
+                "rgba(243, 139, 168, 1)"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "colors": {
+                  "type": "array",
+                  "description": "Array of color stops for gradient. Minimum of 2 colors required.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "minItems": 2
+                },
+                "direction": {
+                  "type": "object",
+                  "description": "Represents the direction in which the gradient is applied. It is defined as a vector with start and end points, where the direction is indicated by coordinates ranging from (0,0) to (1,1), representing the normalized space of the gradient.",
+                  "required": [
+                    "start",
+                    "end"
+                  ],
+                  "properties": {
+                    "start": {
+                      "type": "object",
+                      "description": "The starting point of the gradient, specified as coordinates. It determines where the gradient begins.",
+                      "required": [
+                        "x",
+                        "y"
+                      ],
+                      "properties": {
+                        "x": {
+                          "type": "number",
+                          "description": "The x-coordinate of the starting point of the gradient, represented as a float value between 0 and 1.",
+                          "format": "float"
+                        },
+                        "y": {
+                          "type": "number",
+                          "description": "The y-coordinate of the starting point of the gradient, represented as a float value between 0 and 1.",
+                          "format": "float"
+                        }
+                      }
+                    },
+                    "end": {
+                      "type": "object",
+                      "description": "The ending point of the gradient, specified as coordinates. It determines where the gradient finishes.",
+                      "required": [
+                        "x",
+                        "y"
+                      ],
+                      "properties": {
+                        "x": {
+                          "type": "number",
+                          "description": "The x-coordinate of the ending point of the gradient, represented as a float value between 0 and 1.",
+                          "format": "float"
+                        },
+                        "y": {
+                          "type": "number",
+                          "description": "The y-coordinate of the ending point of the gradient, represented as a float value between 0 and 1.",
+                          "format": "float"
+                        }
+                      }
+                    }
+                  }
+                },
+                "animation": {
+                  "type": "boolean",
+                  "description": "If true, enables animation for the gradient. (Default: false)"
+                }
+              },
+              "examples": [
+                {
+                  "colors": [
+                    "#F5C2E7",
+                    "#F5E0DCFF"
+                  ],
+                  "direction": {
+                    "start": {
+                      "x": 0.0,
+                      "y": 0.0
+                    },
+                    "end": {
+                      "x": 1.0,
+                      "y": 1.0
+                    }
+                  }
+                },
+                {
+                  "colors": [
+                    "rgba(137, 180, 250, 1)",
+                    "rgba(243, 139, 168, 1)",
+                    "rgba(255, 255, 255, 1)"
+                  ],
+                  "direction": {
+                    "start": {
+                      "x": 0.0,
+                      "y": 0.0
+                    },
+                    "end": {
+                      "x": 1.0,
+                      "y": 1.0
+                    }
+                  }
+                }
+              ],
+              "required": [
+                "colors",
+                "direction"
+              ]
+            }
+          ]
+        },
+        "inactive_color": {
+          "description": "Color or gradient for inactive (unfocused) window borders. Similar to 'active_color' format.",
+          "oneOf": [
+            {
+              "type": "string",
+              "examples": [
+                "#F5C2E7",
+                "#F5E0DCFF",
+                "rgb(137, 180, 250)",
+                "rgba(243, 139, 168, 1)"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "colors": {
+                  "type": "array",
+                  "description": "Array of color stops for gradient. Minimum of 2 colors required.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "minItems": 2
+                },
+                "direction": {
+                  "type": "object",
+                  "description": "Represents the direction in which the gradient is applied. It is defined as a vector with start and end points, where the direction is indicated by coordinates ranging from (0,0) to (1,1), representing the normalized space of the gradient.",
+                  "required": [
+                    "start",
+                    "end"
+                  ],
+                  "properties": {
+                    "start": {
+                      "type": "object",
+                      "description": "The starting point of the gradient, specified as coordinates. It determines where the gradient begins.",
+                      "required": [
+                        "x",
+                        "y"
+                      ],
+                      "properties": {
+                        "x": {
+                          "type": "number",
+                          "description": "The x-coordinate of the starting point of the gradient, represented as a float value between 0 and 1.",
+                          "format": "float"
+                        },
+                        "y": {
+                          "type": "number",
+                          "description": "The y-coordinate of the starting point of the gradient, represented as a float value between 0 and 1.",
+                          "format": "float"
+                        }
+                      }
+                    },
+                    "end": {
+                      "type": "object",
+                      "description": "The ending point of the gradient, specified as coordinates. It determines where the gradient finishes.",
+                      "required": [
+                        "x",
+                        "y"
+                      ],
+                      "properties": {
+                        "x": {
+                          "type": "number",
+                          "description": "The x-coordinate of the ending point of the gradient, represented as a float value between 0 and 1.",
+                          "format": "float"
+                        },
+                        "y": {
+                          "type": "number",
+                          "description": "The y-coordinate of the ending point of the gradient, represented as a float value between 0 and 1.",
+                          "format": "float"
+                        }
+                      }
+                    }
+                  }
+                },
+                "animation": {
+                  "type": "boolean",
+                  "description": "If true, enables animation for the gradient. (Default: false)"
+                }
+              },
+              "examples": [
+                {
+                  "colors": [
+                    "#F5C2E7",
+                    "#F5E0DCFF"
+                  ],
+                  "direction": [
+                    0,
+                    0,
+                    1,
+                    0
+                  ]
+                },
+                {
+                  "colors": [
+                    "rgba(137, 180, 250, 1)",
+                    "rgba(243, 139, 168, 1)",
+                    "rgba(255, 255, 255, 1)"
+                  ],
+                  "direction": [
+                    0,
+                    0,
+                    1,
+                    0
+                  ]
+                }
+              ],
+              "required": [
+                "colors",
+                "direction"
+              ]
+            }
+          ]
+        }
+      }
     },
     "window_rules": {
       "description": "Array of rules for customizing border settings based on specific windows.",
@@ -39,7 +277,6 @@
                 "description": "Specifies the rule type: 'Global' (applies to all windows), 'Class' (by window class), or 'Title' (by window title).",
                 "type": "string",
                 "enum": [
-                  "Global",
                   "Class",
                   "Title"
                 ]
@@ -292,6 +529,22 @@
               "border_enabled": {
                 "description": "Enables or disables border for this rule. (default: true)",
                 "type": "boolean"
+              },
+              "border_size": {
+                "description": "Thickness of the window borders in pixels. (default: 2)",
+                "type": "integer",
+                "format": "int32"
+              },
+              "border_offset": {
+                "description": "Adjusts border size relative to the window in pixels. Positive values expand; negative values shrink. (default: -1)",
+                "type": "integer",
+                "format": "int32"
+              },
+              "border_radius": {
+                "description": "Corner radius for borders in pixels; -1 to let the program decide automatically. (default: -1)",
+                "type": "integer",
+                "format": "int32",
+                "minimum": -1
               }
             }
           }

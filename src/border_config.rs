@@ -1,7 +1,6 @@
 use serde::Deserialize;
 use serde::Deserializer;
 use std::fs;
-use std::str::FromStr;
 use std::sync::{LazyLock, Mutex};
 
 use crate::utils::*;
@@ -13,27 +12,26 @@ pub static CONFIG: LazyLock<Mutex<Config>> = LazyLock::new(|| Mutex::new(Config:
 #[derive(Debug, Deserialize, PartialEq, Clone)]
 // Maybe support Process later.
 // Getting the process name seems annoying.
-pub enum RuleMatch {
-    Global,
+pub enum MatchKind {
     Title,
     Class,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
-pub enum MatchType {
+pub enum MatchStrategy {
     Equals,
     Regex,
     Contains,
 }
 
-impl std::str::FromStr for MatchType {
+impl std::str::FromStr for MatchStrategy {
     type Err = String; // Or a more specific error type
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "Equals" => Ok(MatchType::Equals),
-            "Regex" => Ok(MatchType::Regex),
-            "Contains" => Ok(MatchType::Contains),
+            "Equals" => Ok(MatchStrategy::Equals),
+            "Regex" => Ok(MatchStrategy::Regex),
+            "Contains" => Ok(MatchStrategy::Contains),
             _ => Err(format!("Invalid match type: {}", s)),
         }
     }
@@ -41,14 +39,17 @@ impl std::str::FromStr for MatchType {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct MatchDetails {
-    #[serde(rename = "type")]
-    pub match_type: RuleMatch,
+    #[serde(rename = "kind")]
+    pub match_type: MatchKind,
     #[serde(rename = "value")]
     pub match_value: Option<String>,
     #[serde(rename = "strategy")]
-    pub match_strategy: Option<MatchType>,
+    pub match_strategy: Option<MatchStrategy>,
     pub active_color: Option<ColorConfig>,
     pub inactive_color: Option<ColorConfig>,
+    pub border_radius: Option<i32>,
+    pub border_size: Option<i32>,
+    pub border_offset: Option<i32>,
     pub border_enabled: Option<bool>,
 }
 
@@ -59,31 +60,19 @@ pub struct WindowRule {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct Config {
+pub struct GlobalRule {
     pub border_size: i32,
     pub border_offset: i32,
-    pub border_radius: BorderRadius,
+    pub border_radius: i32,
+    pub active_color: Option<ColorConfig>,
+    pub inactive_color: Option<ColorConfig>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Config {
+    #[serde(rename = "match")]
+    pub global_rule: GlobalRule,
     pub window_rules: Vec<WindowRule>,
-}
-
-#[derive(Debug, Clone)]
-pub enum BorderRadius {
-    Value(f32),
-    CssString(String),
-}
-
-impl<'de> Deserialize<'de> for BorderRadius {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        if let Ok(value) = f32::from_str(&s) {
-            Ok(BorderRadius::Value(value))
-        } else {
-            Ok(BorderRadius::CssString(s))
-        }
-    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -216,13 +205,22 @@ impl Config {
     pub fn _get() -> Self {
         CONFIG.lock().unwrap().clone()
     }
+}
 
-    pub fn get_border_radius(&self) -> f32 {
-        match &self.border_radius {
-            BorderRadius::Value(radius) => *radius,
-            BorderRadius::CssString(css) => {
-                css.trim_end_matches("px").parse::<f32>().unwrap_or(0.0)
-            }
+impl WindowRule {
+    pub fn default() -> Self {
+        WindowRule {
+            rule_match: MatchDetails {
+                match_type: MatchKind::Title,
+                match_value: None,
+                match_strategy: Some(MatchStrategy::Equals),
+                border_size: None,
+                border_offset: None,
+                border_radius: None,
+                active_color: None,
+                inactive_color: None,
+                border_enabled: None,
+            },
         }
     }
 }

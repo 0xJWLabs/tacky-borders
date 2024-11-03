@@ -157,40 +157,25 @@ pub fn get_window_rule(hwnd: HWND) -> WindowRule {
     let config_mutex = &*CONFIG;
     let config = config_mutex.lock().unwrap();
 
-    let mut global_rule: WindowRule = WindowRule {
-        rule_match: MatchDetails {
-            match_type: RuleMatch::Global,
-            match_value: None,
-            match_strategy: None,
-            active_color: None,
-            inactive_color: None,
-            border_enabled: None,
-        },
-    };
-
     for rule in config.window_rules.iter() {
         let name = match rule.rule_match.match_type {
-            RuleMatch::Title => &title,
-            RuleMatch::Class => &class,
-            RuleMatch::Global => {
-                global_rule = rule.clone();
-                continue;
-            }
+            MatchKind::Title => &title,
+            MatchKind::Class => &class,
         };
 
         if let Some(contains_str) = &rule.rule_match.match_value {
             match rule.rule_match.match_strategy {
-                Some(MatchType::Contains) => {
+                Some(MatchStrategy::Contains) => {
                     if name.to_lowercase().contains(&contains_str.to_lowercase()) {
                         return rule.clone();
                     }
                 }
-                Some(MatchType::Equals) => {
+                Some(MatchStrategy::Equals) => {
                     if name.to_lowercase() == contains_str.to_lowercase() {
                         return rule.clone();
                     }
                 }
-                Some(MatchType::Regex) => {
+                Some(MatchStrategy::Regex) => {
                     match Regex::new(contains_str) {
                         Ok(regex) => {
                             if regex.is_match(name) {
@@ -207,8 +192,10 @@ pub fn get_window_rule(hwnd: HWND) -> WindowRule {
         }
     }
 
+    drop(config);
+
     // Return the global rule if no specific rule matches
-    global_rule
+    WindowRule::default()
 }
 
 pub fn is_cloaked(hwnd: HWND) -> bool {
@@ -254,12 +241,16 @@ pub fn _get_show_cmd(hwnd: HWND) -> u32 {
 }
 
 pub fn get_colors_for_window(_hwnd: HWND) -> (Color, Color) {
+    let config_mutex = &*CONFIG;
+    let config = config_mutex.lock().unwrap();
     let window_rule = get_window_rule(_hwnd);
 
-    let get_color = |color_config: &Option<ColorConfig>, default: &str| match color_config {
-        Some(ColorConfig::String(color)) => create_solid_color(color.to_string()),
-        Some(ColorConfig::Struct(color)) => create_gradient_colors(color.clone()),
-        None => create_solid_color(default.to_string()),
+    let get_color = |color_config: Option<ColorConfig>, default: &str| -> Color {
+        match color_config {
+            Some(ColorConfig::String(color)) => create_solid_color(color.to_string()),
+            Some(ColorConfig::Struct(color)) => create_gradient_colors(color),
+            None => create_solid_color(default.to_string()),
+        }
     };
 
     let mut colors = (
@@ -277,8 +268,23 @@ pub fn get_colors_for_window(_hwnd: HWND) -> (Color, Color) {
         }),
     );
 
-    colors.0 = get_color(&window_rule.rule_match.active_color, "accent");
-    colors.1 = get_color(&window_rule.rule_match.inactive_color, "accent");
+    colors.0 = get_color(
+        window_rule
+            .rule_match
+            .active_color
+            .clone()
+            .or_else(|| config.global_rule.active_color.clone()),
+        "accent",
+    );
+
+    colors.1 = get_color(
+        window_rule
+            .rule_match
+            .inactive_color
+            .clone()
+            .or_else(|| config.global_rule.inactive_color.clone()),
+        "accent",
+    );
 
     colors
 }
@@ -320,13 +326,28 @@ pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()>
             _ => false,
         };
 
+        let border_size = window_rule
+            .rule_match
+            .border_size
+            .unwrap_or(config.global_rule.border_size);
+
+        let border_offset = window_rule
+            .rule_match
+            .border_offset
+            .unwrap_or(config.global_rule.border_offset);
+
+        let border_radius = window_rule
+            .rule_match
+            .border_radius
+            .unwrap_or(config.global_rule.border_radius) as f32;
+
         //println!("time it takes to get colors: {:?}", before.elapsed());
 
         let mut border = window_border::WindowBorder {
             tracking_window: window_sent.0,
-            border_size: config.border_size,
-            border_offset: config.border_offset,
-            border_radius: config.get_border_radius(),
+            border_size,
+            border_offset,
+            border_radius,
             active_color,
             inactive_color,
             use_active_animation,

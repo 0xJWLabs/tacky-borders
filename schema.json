@@ -6,6 +6,11 @@
     "global": {
       "description": "Global rule for customizing border settings.",
       "type": "object",
+      "required": [
+        "border_size",
+        "border_offset",
+        "border_radius"
+      ],
       "properties": {
         "border_size": {
           "description": "Thickness of the window borders in pixels. (default: 2)",
@@ -553,9 +558,7 @@
     }
   },
   "required": [
-    "border_size",
-    "border_offset",
-    "border_radius",
+    "global",
     "window_rules"
   ]
 }

@@ -80,15 +80,15 @@ impl GradientDirection {
         }
 
         match direction {
-            "to right" => vec![0.0, 0.5, 1.0, 0.5],
-            "to left" => vec![1.0, 0.5, 0.0, 0.5],
-            "to top" => vec![0.5, 1.0, 0.5, 0.0],
-            "to bottom" => vec![0.5, 0.0, 0.5, 1.0],
-            "to top right" => vec![0.5, 1.0, 1.0, 0.0],
-            "to top left" => vec![0.0, 1.0, 0.5, 0.0],
-            "to bottom right" => vec![0.5, 0.0, 1.0, 1.0],
-            "to bottom left" => vec![0.0, 0.0, 0.5, 1.0],
-            _ => vec![], // Handle any other unspecified directions
+            "to right" => vec![0.0, 0.5, 1.0, 0.5],           // Left to right
+            "to left" => vec![1.0, 0.5, 0.0, 0.5],            // Right to left
+            "to top" => vec![0.5, 1.0, 0.5, 0.0],             // Bottom to top
+            "to bottom" => vec![0.5, 0.0, 0.5, 1.0],          // Top to bottom
+            "to top right" => vec![0.0, 1.0, 1.0, 0.0],       // Bottom-left to top-right
+            "to top left" => vec![1.0, 1.0, 0.0, 0.0],        // Bottom-right to top-left
+            "to bottom right" => vec![0.0, 0.0, 1.0, 1.0],    // Top-left to bottom-right
+            "to bottom left" => vec![1.0, 0.0, 0.0, 1.0],     // Top-right to bottom-left
+            _ => vec![0.5, 1.0, 0.5, 0.0],                    // Default to "to top"
         }
     }
 }
@@ -328,88 +328,6 @@ fn is_direction(direction: &str) -> bool {
             .map_or(false, |angle| angle.parse::<i32>().is_ok())
 }
 
-pub fn parse_color_string(color: String) -> Color {
-    if color.starts_with("gradient(") && color.ends_with(")") {
-        return parse_color_string(
-            color
-                .strip_prefix("gradient(")
-                .unwrap_or(&color)
-                .strip_suffix(")")
-                .unwrap_or(&color)
-                .to_string(),
-        );
-    }
-
-    let color_re = Regex::new(
-        r"(?i)(#(?:[0-9A-F]{3,8})|rgba?\(\d{1,3},\s*\d{1,3},\s*\d{1,3}(?:,\s*\d*(?:\.\d+)?)?\)|accent|transparent)",
-    ).unwrap();
-
-    // Collect valid colors using regex
-    let colors_vec: Vec<&str> = color_re
-        .captures_iter(&color)
-        .filter_map(|cap| cap.get(0).map(|m| m.as_str()))
-        .collect();
-
-    if colors_vec.len() == 1 {
-        return Color::Solid(create_color(colors_vec[0]));
-    }
-
-    let rest_of_input = color
-        .rsplitn(2, colors_vec.last().unwrap())
-        .next()
-        .unwrap_or("")
-        .trim_start();
-    let rest_of_input_array: Vec<&str> = rest_of_input
-        .split(',')
-        .filter_map(|s| {
-            if !s.trim().is_empty() {
-                Some(s.trim())
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    let (mut animation, mut direction) = (false, None);
-    let colors: Vec<D2D1_COLOR_F> = colors_vec.iter().map(|&part| create_color(part)).collect();
-
-    for part in rest_of_input_array {
-        match part.to_lowercase().as_str() {
-            "true" => animation = true,
-            "false" => animation = false,
-            _ if is_direction(part) && direction.is_none() => direction = Some(part.to_string()),
-            _ => {}
-        }
-    }
-
-    if direction.is_none() {
-        direction = Some("to right".to_string());
-    }
-
-    // Handle no colors case
-    if colors.is_empty() {
-        return Color::Gradient(Gradient::default());
-    }
-
-    // Create gradient stops
-    let num_colors = colors.len();
-    let gradient_stops: Vec<D2D1_GRADIENT_STOP> = colors
-        .into_iter()
-        .enumerate()
-        .map(|(i, color)| D2D1_GRADIENT_STOP {
-            position: i as f32 / (num_colors - 1) as f32,
-            color,
-        })
-        .collect();
-
-    // Return the GradientColor
-    Color::Gradient(Gradient {
-        gradient_stops,
-        direction: Some(GradientDirection::String(direction.unwrap()).to_vec()),
-        animation: Some(animation),
-    })
-}
-
 fn get_color_from_hex(hex: &str) -> D2D1_COLOR_F {
     // Ensure the hex string starts with '#' and is of the correct length
     if hex.len() != 7 && hex.len() != 9 && hex.len() != 4 && hex.len() != 5 || !hex.starts_with('#')
@@ -492,6 +410,88 @@ fn get_color_from_rgba(rgba: &str) -> D2D1_COLOR_F {
         b: 0.0,
         a: 1.0,
     }
+}
+
+pub fn parse_color_string(color: String) -> Color {
+    if color.starts_with("gradient(") && color.ends_with(")") {
+        return parse_color_string(
+            color
+                .strip_prefix("gradient(")
+                .unwrap_or(&color)
+                .strip_suffix(")")
+                .unwrap_or(&color)
+                .to_string(),
+        );
+    }
+
+    let color_re = Regex::new(
+        r"(?i)(#(?:[0-9A-F]{3,8})|rgba?\(\d{1,3},\s*\d{1,3},\s*\d{1,3}(?:,\s*\d*(?:\.\d+)?)?\)|accent|transparent)",
+    ).unwrap();
+
+    // Collect valid colors using regex
+    let colors_vec: Vec<&str> = color_re
+        .captures_iter(&color)
+        .filter_map(|cap| cap.get(0).map(|m| m.as_str()))
+        .collect();
+
+    if colors_vec.len() == 1 {
+        return Color::Solid(create_color(colors_vec[0]));
+    }
+
+    let rest_of_input = color
+        .rsplitn(2, colors_vec.last().unwrap())
+        .next()
+        .unwrap_or("")
+        .trim_start();
+    let rest_of_input_array: Vec<&str> = rest_of_input
+        .split(',')
+        .filter_map(|s| {
+            if !s.trim().is_empty() {
+                Some(s.trim())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let (mut animation, mut direction) = (false, None);
+    let colors: Vec<D2D1_COLOR_F> = colors_vec.iter().map(|&part| create_color(part)).collect();
+
+    for part in rest_of_input_array {
+        match part.to_lowercase().as_str() {
+            "true" => animation = true,
+            "false" => animation = false,
+            _ if is_direction(part) && direction.is_none() => direction = Some(part.to_string()),
+            _ => {}
+        }
+    }
+
+    if direction.is_none() {
+        direction = Some("to right".to_string());
+    }
+
+    // Handle no colors case
+    if colors.is_empty() {
+        return Color::Gradient(Gradient::default());
+    }
+
+    // Create gradient stops
+    let num_colors = colors.len();
+    let gradient_stops: Vec<D2D1_GRADIENT_STOP> = colors
+        .into_iter()
+        .enumerate()
+        .map(|(i, color)| D2D1_GRADIENT_STOP {
+            position: i as f32 / (num_colors - 1) as f32,
+            color,
+        })
+        .collect();
+
+    // Return the GradientColor
+    Color::Gradient(Gradient {
+        gradient_stops,
+        direction: Some(GradientDirection::String(direction.unwrap()).to_vec()),
+        animation: Some(animation),
+    })
 }
 
 fn parse_color_struct(color: RawGradient) -> Color {

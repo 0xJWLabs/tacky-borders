@@ -1,56 +1,81 @@
 use regex::Regex;
 use serde::Deserialize;
 use serde::Deserializer;
-use std::f32::consts::PI;
+use std::fmt;
 use windows::{
     Win32::Foundation::*, Win32::Graphics::Direct2D::Common::*, Win32::Graphics::Dwm::*,
 };
 
 use crate::logger::Logger;
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct GradientDirectionCoordinate {
-    pub x: f32,
-    pub y: f32,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub enum GradientDirectionPoint {
-    Sequence([f32; 2]),
-    Coordinate(GradientDirectionCoordinate)
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct GradientDirectionStruct {
-    pub start: GradientDirectionPoint,
-    pub end: GradientDirectionPoint,
-}
-
-#[derive(Debug, Clone, Deserialize)]
+// Enums
+#[derive(Debug, Clone)]
 pub enum GradientDirection {
     String(String),
     Struct(GradientDirectionStruct),
+}
+
+#[derive(Debug, Clone)]
+pub enum RawColor {
+    String(String),
+    Struct(RawGradient),
+}
+
+#[derive(Debug, Clone)]
+pub enum Color {
+    Solid(D2D1_COLOR_F),
+    Gradient(Gradient),
+}
+// Structs
+#[derive(Debug, Clone, Deserialize)]
+pub struct GradientDirectionStruct {
+    pub start: [f32; 2],
+    pub end: [f32; 2],
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RawGradient {
+    pub colors: Vec<String>,
+    pub direction: GradientDirection,
+    pub animation: Option<bool>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Gradient {
+    pub direction: Option<Vec<f32>>,
+    pub gradient_stops: Vec<D2D1_GRADIENT_STOP>, // Array of gradient stops
+    pub animation: Option<bool>,
 }
 
 impl GradientDirection {
     pub fn to_vec(&self) -> Vec<f32> {
         match self {
             GradientDirection::String(direction) => Self::parse_direction(direction),
-            GradientDirection::Struct(gradient_struct) => [
-                Self::extract_point(&gradient_struct.start),
-                Self::extract_point(&gradient_struct.end),
-            ]
-            .concat(),
+            GradientDirection::Struct(gradient_struct) => {
+                let start_slice: &[f32] = &gradient_struct.start;
+                let end_slice: &[f32] = &gradient_struct.end;
+
+                // Combine the slices into a single Vec<f32>
+                [start_slice, end_slice].concat()
+            }
         }
     }
 
     fn parse_direction(direction: &str) -> Vec<f32> {
-        if let Some(degree) = direction.strip_suffix("deg").and_then(|d| d.trim().parse::<f32>().ok()) {
-            let rad = degree * PI / 180.0;
+        if let Some(degree) = direction
+            .strip_suffix("deg")
+            .and_then(|d| d.trim().parse::<f32>().ok())
+        {
+            let rad = (degree - 90.0) * std::f32::consts::PI / 180.0;
+            // let rad = degree * PI / 180.0;
             let (cos, sin) = (rad.cos(), rad.sin());
+
+            // Adjusting calculations based on the origin being (0.5, 0.5)
             return vec![
-                0.5 + 0.5 * cos, 0.5 + 0.5 * sin, // Start point (x1, y1)
-                0.5 - 0.5 * cos, 0.5 - 0.5 * sin, // End point (x2, y2)
+                0.5 - 0.5 * cos,
+                0.5 - 0.5 * sin, // Start point (x1, y1) adjusted
+                0.5 + 0.5 * cos,
+                0.5 + 0.5 * sin, // End point (x2, y2) adjusted
             ];
         }
 
@@ -66,22 +91,6 @@ impl GradientDirection {
             _ => vec![], // Handle any other unspecified directions
         }
     }
-
-    fn extract_point(point: &GradientDirectionPoint) -> Vec<f32> {
-        match point {
-            GradientDirectionPoint::Coordinate(coordinate) => vec![coordinate.x, coordinate.y],
-            GradientDirectionPoint::Sequence(sequence) => {
-                vec![*sequence.get(0).unwrap_or(&0.0), *sequence.get(1).unwrap_or(&0.0)]
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct RawGradient {
-    pub colors: Vec<String>,
-    pub direction: Option<GradientDirection>,
-    pub animation: Option<bool>,
 }
 
 impl AsRef<RawGradient> for RawGradient {
@@ -90,10 +99,64 @@ impl AsRef<RawGradient> for RawGradient {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum RawColor {
-    String(String),
-    Struct(RawGradient),
+impl<'de> Deserialize<'de> for GradientDirection {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de::{self, MapAccess, Visitor};
+
+        struct GradientDirectionVisitor;
+
+        impl<'de> Visitor<'de> for GradientDirectionVisitor {
+            type Value = GradientDirection;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a string or a struct with start and end arrays")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E> {
+                Ok(GradientDirection::String(value.to_string()))
+            }
+
+            fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                let mut start = None;
+                let mut end = None;
+
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "start" => {
+                            if start.is_some() {
+                                return Err(de::Error::duplicate_field("start"));
+                            }
+                            start = Some(map.next_value()?);
+                        }
+                        "end" => {
+                            if end.is_some() {
+                                return Err(de::Error::duplicate_field("end"));
+                            }
+                            end = Some(map.next_value()?);
+                        }
+                        _ => return Err(de::Error::unknown_field(&key, &["start", "end"])),
+                    }
+                }
+
+                let start = start.ok_or_else(|| de::Error::missing_field("start"))?;
+                let end = end.ok_or_else(|| de::Error::missing_field("end"))?;
+
+                Ok(GradientDirection::Struct(GradientDirectionStruct {
+                    start,
+                    end,
+                }))
+            }
+        }
+
+        // Attempt to deserialize as either a string or a map
+        deserializer.deserialize_any(GradientDirectionVisitor)
+    }
 }
 
 impl<'de> Deserialize<'de> for RawColor {
@@ -168,12 +231,6 @@ impl<'de> Deserialize<'de> for RawColor {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum Color {
-    Solid(D2D1_COLOR_F),
-    Gradient(Gradient),
-}
-
 // Implement Default for your own MyBrush enum
 impl Default for Color {
     fn default() -> Self {
@@ -184,13 +241,6 @@ impl Default for Color {
             a: 1.0,
         })
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct Gradient {
-    pub direction: Option<Vec<f32>>,
-    pub gradient_stops: Vec<D2D1_GRADIENT_STOP>, // Array of gradient stops
-    pub animation: Option<bool>,
 }
 
 impl Default for Gradient {
@@ -278,91 +328,62 @@ fn is_direction(direction: &str) -> bool {
             .map_or(false, |angle| angle.parse::<i32>().is_ok())
 }
 
-fn parse_component(s: &str) -> f32 {
-    match u8::from_str_radix(s, 16) {
-        Ok(val) => f32::from(val) / 255.0,
-        Err(_) => {
-            Logger::log(
-                "error",
-                format!("Invalid component '{}' in hex.", s).as_str(),
-            );
-            0.0
-        }
-    }
-}
-
 pub fn parse_color_string(color: String) -> Color {
     if color.starts_with("gradient(") && color.ends_with(")") {
-        let stripped_color = color.strip_prefix("gradient(")
-            .and_then(|s| s.strip_suffix(")"))
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| color.to_string());
-
-        return parse_color_string(stripped_color);
+        return parse_color_string(
+            color
+                .strip_prefix("gradient(")
+                .unwrap_or(&color)
+                .strip_suffix(")")
+                .unwrap_or(&color)
+                .to_string(),
+        );
     }
+
     let color_re = Regex::new(
-        r"(?i)(#(?:[0-9A-F]{3,8})|rgba?\(\d{1,3},\s*\d{1,3},\s*\d{1,3}(?:,\s*\d*(?:\.\d+)?)?\))",
-    )
-    .unwrap();
+        r"(?i)(#(?:[0-9A-F]{3,8})|rgba?\(\d{1,3},\s*\d{1,3},\s*\d{1,3}(?:,\s*\d*(?:\.\d+)?)?\)|accent|transparent)",
+    ).unwrap();
 
     // Collect valid colors using regex
-    let colors_vec_1: Vec<&str> = color_re
+    let colors_vec: Vec<&str> = color_re
         .captures_iter(&color)
         .filter_map(|cap| cap.get(0).map(|m| m.as_str()))
         .collect();
 
-    // Extract the rest of the input after the last color
-    let rest_of_input = if let Some(last_color) = colors_vec_1.last() {
-        // Find the last occurrence index of the last color in the original input
-        let last_color_end = color.rfind(last_color).unwrap() + last_color.len();
-        // Trim leading whitespace and return the rest
-        color[last_color_end..].trim_start()
-    } else {
-        // If no colors were found, return the full input trimmed
-        color.trim_start()
-    };
-
-    // Split the remaining input into parts
-    let rest_of_input_array: Vec<&str> = rest_of_input
-        .split(',')
-        .map(str::trim)
-        .filter(|s| !s.is_empty()) // Filter out any empty strings
-        .collect();
-
-    // Handle the case with a single color
-    if colors_vec_1.len() == 1 {
-        return Color::Solid(create_color(colors_vec_1[0]));
+    if colors_vec.len() == 1 {
+        return Color::Solid(create_color(colors_vec[0]));
     }
 
-    let mut direction = "to right".to_string(); // Default direction
-    let mut animation = false; // Default animation to false
-    let mut colors: Vec<D2D1_COLOR_F> = Vec::new();
+    let rest_of_input = color
+        .rsplitn(2, colors_vec.last().unwrap())
+        .next()
+        .unwrap_or("")
+        .trim_start();
+    let rest_of_input_array: Vec<&str> = rest_of_input
+        .split(',')
+        .filter_map(|s| {
+            if !s.trim().is_empty() {
+                Some(s.trim())
+            } else {
+                None
+            }
+        })
+        .collect();
 
-    // Parse color inputs
-    for color_part in &colors_vec_1 {
-        match *color_part {
-            _ if color_part.starts_with("rgb(") || color_part.starts_with("rgba(") => {
-                colors.push(get_color_from_rgba(color_part));
-            }
-            _ if color_part.starts_with("#") => {
-                colors.push(get_color_from_hex(color_part));
-            }
-            "accent" => {
-                colors.push(get_accent_color());
-            }
+    let (mut animation, mut direction) = (false, None);
+    let colors: Vec<D2D1_COLOR_F> = colors_vec.iter().map(|&part| create_color(part)).collect();
+
+    for part in rest_of_input_array {
+        match part.to_lowercase().as_str() {
+            "true" => animation = true,
+            "false" => animation = false,
+            _ if is_direction(part) && direction.is_none() => direction = Some(part.to_string()),
             _ => {}
         }
     }
 
-    // Parse the rest of the input array for direction and animation
-    for part in &rest_of_input_array {
-        if part.eq_ignore_ascii_case("true") {
-            animation = true;
-        } else if part.eq_ignore_ascii_case("false") {
-            animation = false;
-        } else if is_direction(part) {
-            direction = part.to_string();
-        }
+    if direction.is_none() {
+        direction = Some("to right".to_string());
     }
 
     // Handle no colors case
@@ -370,19 +391,22 @@ pub fn parse_color_string(color: String) -> Color {
         return Color::Gradient(Gradient::default());
     }
 
+    // Create gradient stops
     let num_colors = colors.len();
-    let gradient_stops: Vec<D2D1_GRADIENT_STOP> = (0..num_colors)
-        .map(|i| D2D1_GRADIENT_STOP {
+    let gradient_stops: Vec<D2D1_GRADIENT_STOP> = colors
+        .into_iter()
+        .enumerate()
+        .map(|(i, color)| D2D1_GRADIENT_STOP {
             position: i as f32 / (num_colors - 1) as f32,
-            color: colors[i].clone(),
+            color,
         })
         .collect();
 
-    // Create a GradientColor if we have colors
+    // Return the GradientColor
     Color::Gradient(Gradient {
         gradient_stops,
-        direction: Some(GradientDirection::String(direction).to_vec()),
-        animation: Some(animation), // Wrap in Some to indicate optional
+        direction: Some(GradientDirection::String(direction.unwrap()).to_vec()),
+        animation: Some(animation),
     })
 }
 
@@ -422,13 +446,13 @@ fn get_color_from_hex(hex: &str) -> D2D1_COLOR_F {
     };
 
     // Parse RGB values
-    let r = parse_component(&expanded_hex[1..3]);
-    let g = parse_component(&expanded_hex[3..5]);
-    let b = parse_component(&expanded_hex[5..7]);
+    let r = f32::from(u8::from_str_radix(&expanded_hex[1..3], 16).unwrap_or(0)) / 255.0;
+    let g = f32::from(u8::from_str_radix(&expanded_hex[3..5], 16).unwrap_or(0)) / 255.0;
+    let b = f32::from(u8::from_str_radix(&expanded_hex[5..7], 16).unwrap_or(0)) / 255.0;
 
     // Parse alpha value if present
     let a = if expanded_hex.len() == 9 {
-        parse_component(&expanded_hex[7..9])
+        f32::from(u8::from_str_radix(&expanded_hex[7..9], 16).unwrap_or(0)) / 255.0
     } else {
         1.0
     };
@@ -442,24 +466,22 @@ fn get_color_from_rgba(rgba: &str) -> D2D1_COLOR_F {
         .trim_start_matches("rgba(")
         .trim_end_matches(')');
     let components: Vec<&str> = rgba.split(',').map(|s| s.trim()).collect();
-    println!("{:?}", components);
     if components.len() == 3 || components.len() == 4 {
-        // Parse red, green, and blue values
-        let red: f32 = components[0].parse::<u32>().unwrap_or(0) as f32 / 255.0;
-        let green: f32 = components[1].parse::<u32>().unwrap_or(0) as f32 / 255.0;
-        let blue: f32 = components[2].parse::<u32>().unwrap_or(0) as f32 / 255.0;
+        let r: f32 = components[0].parse::<u32>().unwrap_or(0) as f32 / 255.0;
+        let g: f32 = components[1].parse::<u32>().unwrap_or(0) as f32 / 255.0;
+        let b: f32 = components[2].parse::<u32>().unwrap_or(0) as f32 / 255.0;
 
-        let alpha: f32 = if components.len() == 4 {
-            components[3].parse::<f32>().unwrap_or(1.0).clamp(0.0, 1.0)
+        let a: f32 = if components.len() == 4 {
+            (components[3].parse::<u32>().unwrap_or(0) as f32).clamp(0.0, 1.0)
         } else {
             1.0 // Default alpha value for rgb()
         };
 
         return D2D1_COLOR_F {
-            r: red,
-            g: green,
-            b: blue,
-            a: alpha,
+            r,
+            g,
+            b,
+            a
         };
     }
 
@@ -494,9 +516,7 @@ fn parse_color_struct(color: RawGradient) -> Color {
         })
         .collect();
 
-    let direction = color
-        .direction
-        .unwrap_or_else(|| GradientDirection::String("to right".to_string()));
+    let direction = color.direction;
 
     Color::Gradient(Gradient {
         direction: Some(direction.to_vec()),

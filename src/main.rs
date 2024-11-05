@@ -4,10 +4,11 @@
     windows_subsystem = "windows"
 )]
 
-use logger::Logger;
+use logger::*;
 use std::collections::HashMap;
 use std::ffi::*;
 use std::sync::{LazyLock, Mutex};
+use std::thread;
 use utils::*;
 use windows::{
     core::*, Win32::Foundation::*, Win32::Graphics::Dwm::*,
@@ -20,12 +21,12 @@ extern "C" {
 }
 
 mod border_config;
+mod colors;
 mod event_hook;
 mod logger;
 mod sys_tray_icon;
 mod utils;
 mod window_border;
-mod colors;
 
 pub static BORDERS: LazyLock<Mutex<HashMap<isize, isize>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -44,18 +45,18 @@ fn main() {
     }
 
     let _ = register_window_class();
-    Logger::log("debug", "Window class in registered!");
+    log!("debug", "Window class in registered!");
     let _ = enum_windows();
 
     let main_thread = unsafe { GetCurrentThreadId() };
     let tray_icon_option = sys_tray_icon::create_tray_icon(main_thread);
     if tray_icon_option.is_err() {
-        Logger::log("error", "Error creating tray icon!");
+        log!("error", "Error creating tray icon!");
     }
 
     let win_event_hook = set_event_hook();
     unsafe {
-        Logger::log("debug", "Entering message loop!");
+        log!("debug", "Entering message loop!");
         let mut message = MSG::default();
         while GetMessageW(&mut message, HWND::default(), 0, 0).into() {
             if message.message == WM_CLOSE {
@@ -63,17 +64,17 @@ fn main() {
                 if result.as_bool() {
                     ExitProcess(0);
                 } else {
-                    Logger::log("error", "Could not unhook win even hook");
+                    log!("error", "Could not unhook win even hook");
                 }
             }
 
             let _ = TranslateMessage(&message);
             DispatchMessageW(&message);
-            std::thread::sleep(std::time::Duration::from_millis(16))
+            thread::sleep(std::time::Duration::from_millis(16))
         }
-        Logger::log(
+        log!(
             "debug",
-            "MESSSAGE LOOP IN MAIN.RS EXITED. THIS SHOULD NOT HAPPEN",
+            "MESSSAGE LOOP IN MAIN.RS EXITED. THIS SHOULD NOT HAPPEN"
         );
     }
 }
@@ -125,7 +126,7 @@ pub fn enum_windows() -> Result<()> {
             // LPARAM::default(),
         );
     }
-    Logger::log("debug", "Windows have been enumerated");
+    log!("debug", "Windows have been enumerated");
 
     Ok(())
 }
@@ -134,7 +135,7 @@ pub fn restart_borders() {
     let mutex = &*BORDERS;
     let mut borders = mutex.lock().unwrap();
     for value in borders.values() {
-        let border_window = HWND(*value as *mut _);
+        let border_window = HWND(*value as _);
         unsafe { SendMessageW(border_window, WM_DESTROY, WPARAM(0), LPARAM(0)) };
     }
     let _ = borders.drain();
@@ -168,7 +169,7 @@ unsafe extern "system" fn enum_windows_callback(_hwnd: HWND, _lparam: LPARAM) ->
     if !is_window_visible(_hwnd) || is_cloaked(_hwnd) || has_filtered_style(_hwnd) {
         return TRUE;
     }
-    let _ = create_border_for_window(_hwnd, 0);
+    let _ = create_border_for_window(_hwnd, Some(0));
 
     let visible_windows: &mut Vec<HWND> = std::mem::transmute(_lparam.0);
     visible_windows.push(_hwnd);

@@ -1,6 +1,5 @@
-use crate::logger::Logger;
-use crate::utils::*;
 use crate::colors::*;
+use crate::utils::*;
 use crate::*;
 use std::sync::LazyLock;
 use std::sync::OnceLock;
@@ -32,6 +31,7 @@ pub struct WindowBorder {
     pub active_color: Color,
     pub inactive_color: Color,
     pub current_color: Color,
+    pub unminimize_delay: u64,
     pub pause: bool,
     pub active_gradient_angle: f32,
     pub inactive_gradient_angle: f32,
@@ -64,7 +64,9 @@ impl WindowBorder {
         Ok(())
     }
 
-    pub fn init(&mut self) -> Result<()> {
+    pub fn init(&mut self, init_delay: u64) -> Result<()> {
+        thread::sleep(std::time::Duration::from_millis(init_delay));
+
         unsafe {
             // Make the window border transparent
             let pos: i32 = -GetSystemMetrics(SM_CXVIRTUALSCREEN) - 8;
@@ -83,12 +85,12 @@ impl WindowBorder {
             if SetLayeredWindowAttributes(self.border_window, COLORREF(0x00000000), 0, LWA_COLORKEY)
                 .is_err()
             {
-                println!("Error Setting Layered Window Attributes!");
+                log!("error", "Error setting layered window attributes!");
             }
             if SetLayeredWindowAttributes(self.border_window, COLORREF(0x00000000), 255, LWA_ALPHA)
                 .is_err()
             {
-                println!("Error Setting Layered Window Attributes!");
+                log!("error", "Error setting layered window attributes!");
             }
 
             let _ = self.create_render_targets();
@@ -99,9 +101,9 @@ impl WindowBorder {
                 // Sometimes, it doesn't show the window at first, so we wait 5ms and update it.
                 // This is very hacky and needs to be looked into. It may be related to the issue
                 // detailed in update_window_rect. TODO
-                /*std::thread::sleep(std::time::Duration::from_millis(5));
+                thread::sleep(std::time::Duration::from_millis(5));
                 let _ = self.update_position(Some(SWP_SHOWWINDOW));
-                let _ = self.render();*/
+                let _ = self.render();
             }
 
             let mut message = MSG::default();
@@ -140,41 +142,10 @@ impl WindowBorder {
             transform: Matrix3x2::identity(),
         };
 
-        // Create a rounded_rect with radius depending on the force_border_radius variable
-        let mut border_radius = 0.0;
-        let mut corner_preference = DWM_WINDOW_CORNER_PREFERENCE::default();
-        let dpi = unsafe { GetDpiForWindow(self.tracking_window) } as f32;
-        if self.border_radius == -1.0 {
-            let result = unsafe {
-                DwmGetWindowAttribute(
-                    self.tracking_window,
-                    DWMWA_WINDOW_CORNER_PREFERENCE,
-                    std::ptr::addr_of_mut!(corner_preference) as *mut _,
-                    size_of::<DWM_WINDOW_CORNER_PREFERENCE>() as u32,
-                )
-            };
-            if result.is_err() {
-                Logger::log("error", "Error getting window corner preference!");
-            }
-            match corner_preference {
-                DWMWCP_DEFAULT => {
-                    border_radius = 8.0 * dpi / 96.0 + ((self.border_size / 2) as f32)
-                }
-                DWMWCP_DONOTROUND => border_radius = 0.0,
-                DWMWCP_ROUND => border_radius = 8.0 * dpi / 96.0 + ((self.border_size / 2) as f32),
-                DWMWCP_ROUNDSMALL => {
-                    border_radius = 4.0 * dpi / 96.0 + ((self.border_size / 2) as f32)
-                }
-                _ => {}
-            }
-        } else {
-            border_radius = self.border_radius * dpi / 96.0;
-        }
-
         self.rounded_rect = D2D1_ROUNDED_RECT {
             rect: Default::default(),
-            radiusX: border_radius,
-            radiusY: border_radius,
+            radiusX: self.border_radius,
+            radiusY: self.border_radius,
         };
 
         // Initialize the actual border color assuming it is in focus
@@ -229,7 +200,7 @@ impl WindowBorder {
             )
         };
         if result.is_err() {
-            Logger::log("error", "Error getting frame rect!");
+            log!("error", "Error getting frame rect!");
             unsafe {
                 let _ = ShowWindow(self.border_window, SW_HIDE);
             }
@@ -270,7 +241,7 @@ impl WindowBorder {
                 u_flags,
             );
             if result.is_err() {
-                println!("Error setting window pos!");
+                log!("error", "Error setting window pos!");
                 let _ = ShowWindow(self.border_window, SW_HIDE);
             }
         }
@@ -539,7 +510,7 @@ impl WindowBorder {
             // When a window is about to be unminimized, hide the border and let the thread sleep
             // for 200ms to wait for the window animation to finish, then show the border.
             WM_APP_5 => {
-                std::thread::sleep(std::time::Duration::from_millis(200));
+                std::thread::sleep(std::time::Duration::from_millis(self.unminimize_delay));
 
                 if has_native_border(self.tracking_window) {
                     let _ = self.update_window_rect();
@@ -551,6 +522,7 @@ impl WindowBorder {
             WM_PAINT => {
                 let _ = self.render();
                 let _ = ValidateRect(window, None);
+
                 if self.timer_id.is_none() {
                     let _ = SetTimer(window, 1, 16, None);
                     self.timer_id = Some(1);

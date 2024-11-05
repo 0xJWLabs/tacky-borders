@@ -1,14 +1,9 @@
+use windows::{Win32::Foundation::*, Win32::Graphics::Dwm::*, Win32::UI::WindowsAndMessaging::*};
+
 use dirs::home_dir;
 use regex::Regex;
-use std::{
-    fs::{self, DirBuilder},
-    path::PathBuf,
-};
-
-use windows::{
-    Win32::Foundation::*, Win32::Graphics::Dwm::*,
-    Win32::UI::WindowsAndMessaging::*,
-};
+use std::fs::*;
+use std::path::*;
 
 use crate::border_config::*;
 use crate::colors::*;
@@ -27,9 +22,9 @@ pub fn get_config() -> PathBuf {
     let config_dir = home_dir.join(".config").join("tacky-borders");
     let fallback_dir = home_dir.join(".tacky-borders");
 
-    let dir_path = if fs::exists(&config_dir).expect("Couldn't check if config dir exists") {
+    let dir_path = if exists(&config_dir).expect("Couldn't check if config dir exists") {
         config_dir
-    } else if fs::exists(&fallback_dir).expect("Couldn't check if config dir exists") {
+    } else if exists(&fallback_dir).expect("Couldn't check if config dir exists") {
         fallback_dir
     } else {
         DirBuilder::new()
@@ -113,7 +108,7 @@ pub fn is_cloaked(hwnd: HWND) -> bool {
         )
     };
     if result.is_err() {
-        println!("error getting is_cloaked");
+        log!("error", "Error getting is_cloacked");
         return true;
     }
     is_cloaked.as_bool()
@@ -131,13 +126,16 @@ pub fn _get_show_cmd(hwnd: HWND) -> u32 {
     let mut wp: WINDOWPLACEMENT = WINDOWPLACEMENT::default();
     let result = unsafe { GetWindowPlacement(hwnd, std::ptr::addr_of_mut!(wp)) };
     if result.is_err() {
-        println!("error getting window_placement!");
+        log!("error", "error getting window_placement!");
         return 0;
     }
     wp.showCmd
 }
 
-pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()> {
+pub fn create_border_for_window(
+    tracking_window: HWND,
+    create_delay_override: Option<u64>,
+) -> Result<()> {
     let borders_mutex = &*BORDERS;
     let config_mutex = &*CONFIG;
     let window = SendHWND(tracking_window);
@@ -147,7 +145,6 @@ pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()>
 
         // This delay can be used to wait for a window to finish its opening animation or for it to
         // become visible if it is not so at first
-        std::thread::sleep(std::time::Duration::from_millis(delay));
 
         if !is_window_visible(window_sent.0) {
             return;
@@ -156,13 +153,13 @@ pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()>
         let window_rule = get_window_rule(window_sent.0);
 
         if window_rule.rule_match.border_enabled == Some(false) {
-            println!("border is disabled for this window, exiting!");
+            log!("debug", "border is disabled for this window, exiting!");
             return;
         }
 
         let config = config_mutex.lock().unwrap();
 
-        let border_size = window_rule
+        let config_size = window_rule
             .rule_match
             .border_size
             .unwrap_or(config.global_rule.border_size);
@@ -170,7 +167,7 @@ pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()>
             .rule_match
             .border_offset
             .unwrap_or(config.global_rule.border_offset);
-        let border_radius = window_rule
+        let config_radius = window_rule
             .rule_match
             .border_radius
             .unwrap_or(config.global_rule.border_radius) as f32;
@@ -199,17 +196,33 @@ pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()>
             _ => false,
         };
 
+        let border_radius = convert_config_radius(config_size, config_radius, window_sent.0);
+
+        let init_delay = match create_delay_override {
+            Some(delay) => delay,
+            None => window_rule
+                .rule_match
+                .init_delay
+                .unwrap_or(config.global_rule.init_delay.unwrap_or(250)),
+        };
+
+        let unminimize_delay = window_rule
+            .rule_match
+            .unminimize_delay
+            .unwrap_or(config.global_rule.unminimize_delay.unwrap_or(200));
+
         //println!("time it takes to get colors: {:?}", before.elapsed());
 
         let mut border = window_border::WindowBorder {
             tracking_window: window_sent.0,
-            border_size,
+            border_size: config_size,
             border_offset,
             border_radius,
             active_color,
             inactive_color,
             use_active_animation,
             use_inactive_animation,
+            unminimize_delay,
             ..Default::default()
         };
         drop(config);
@@ -232,10 +245,49 @@ pub fn create_border_for_window(tracking_window: HWND, delay: u64) -> Result<()>
         borders_hashmap.insert(window_isize, border.border_window.0 as isize);
         drop(borders_hashmap);
 
-        let _ = border.init();
+        let _ = border.init(init_delay);
+        drop(border);
     });
 
     Ok(())
+}
+
+pub fn convert_config_radius(config_size: i32, config_radius: f32, tracking_window: HWND) -> f32 {
+    let mut corner_preference = DWM_WINDOW_CORNER_PREFERENCE::default();
+    let dpi = unsafe { GetDpiForWindow(tracking_window) } as f32;
+
+    // -1.0 means to use default Windows corner preference. I might want to use an enum to allow
+    // for something like border_radius == "system" instead TODO
+    if config_radius == -1.0 {
+        let result = unsafe {
+            DwmGetWindowAttribute(
+                tracking_window,
+                DWMWA_WINDOW_CORNER_PREFERENCE,
+                std::ptr::addr_of_mut!(corner_preference) as _,
+                size_of::<DWM_WINDOW_CORNER_PREFERENCE>() as u32,
+            )
+        };
+        if result.is_err() {
+            log!("error", "Error getting window corner preference!");
+        }
+        match corner_preference {
+            DWMWCP_DEFAULT => {
+                return 8.0 * dpi / 96.0 + (config_size as f32) / 2.0;
+            }
+            DWMWCP_DONOTROUND => {
+                return 0.0;
+            }
+            DWMWCP_ROUND => {
+                return 8.0 * dpi / 96.0 + (config_size as f32) / 2.0;
+            }
+            DWMWCP_ROUNDSMALL => {
+                return 4.0 * dpi / 96.0 + (config_size as f32) / 2.0;
+            }
+            _ => {}
+        }
+    }
+
+    config_radius * dpi / 96.0
 }
 
 pub fn destroy_border_for_window(tracking_window: HWND) -> Result<()> {
@@ -280,7 +332,7 @@ pub fn get_border_from_window(hwnd: HWND) -> Option<HWND> {
 // return false.
 // We can also specify a delay to prevent the border from appearing while a window is in its
 // opening animation.
-pub fn show_border_for_window(hwnd: HWND, delay: u64) -> bool {
+pub fn show_border_for_window(hwnd: HWND, create_delay_override: Option<u64>) -> bool {
     let border_window = get_border_from_window(hwnd);
     if let Some(window) = border_window {
         unsafe {
@@ -291,7 +343,7 @@ pub fn show_border_for_window(hwnd: HWND, delay: u64) -> bool {
         if is_cloaked(hwnd) || has_filtered_style(hwnd) {
             return false;
         }
-        let _ = create_border_for_window(hwnd, delay);
+        let _ = create_border_for_window(hwnd, create_delay_override);
         false
     }
 }
@@ -327,7 +379,7 @@ fn get_window_title(hwnd: HWND) -> String {
     let mut buffer: [u16; 256] = [0; 256];
 
     if unsafe { GetWindowTextW(hwnd, &mut buffer) } == 0 {
-        println!("error getting window title!");
+        log!("error", "Error getting window title!");
     }
 
     unsafe { GetWindowTextW(hwnd, &mut buffer) };
@@ -340,7 +392,7 @@ fn get_window_class(hwnd: HWND) -> String {
     let mut buffer: [u16; 256] = [0; 256];
 
     if unsafe { GetClassNameW(hwnd, &mut buffer) } == 0 {
-        println!("error getting class name!");
+        log!("error", "Error getting window class name!");
     }
 
     String::from_utf16_lossy(&buffer)

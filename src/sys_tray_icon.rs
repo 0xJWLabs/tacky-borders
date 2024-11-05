@@ -5,16 +5,17 @@ use windows::Win32::UI::WindowsAndMessaging::PostThreadMessageW;
 use windows::Win32::UI::WindowsAndMessaging::WM_CLOSE;
 
 use crate::border_config::Config;
-use crate::logger::Logger;
+use crate::log;
 use crate::restart_borders;
 use crate::utils::*;
+use crate::Logger;
 
 pub fn create_tray_icon(main_thread: u32) -> Result<TrayIcon, tray_icon::Error> {
     let icon = match Icon::from_resource(1, Some((64, 64))) {
         Ok(icon) => icon,
         Err(err) => {
-            Logger::log("error", "Failed to create icon");
-            Logger::log("debug", &format!("{:?}", err));
+            log!("error", "Failed to create icon");
+            log!("debug", &format!("{:?}", err));
             std::process::exit(1);
         }
     };
@@ -42,9 +43,9 @@ pub fn create_tray_icon(main_thread: u32) -> Result<TrayIcon, tray_icon::Error> 
         }
         "2" => {
             let result = unsafe { PostThreadMessageW(main_thread, WM_CLOSE, WPARAM(0), LPARAM(0)) };
-            Logger::log(
+            log!(
                 "debug",
-                format!("Sending WM_CLOSE to main thread: {:?}", result).as_str(),
+                format!("Sending WM_CLOSE to main thread: {:?}", result).as_str()
             );
         }
         _ => {}

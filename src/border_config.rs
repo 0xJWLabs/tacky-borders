@@ -2,8 +2,8 @@ use serde::Deserialize;
 use std::fs;
 use std::sync::{LazyLock, Mutex};
 
-use crate::utils::*;
 use crate::colors::*;
+use crate::utils::*;
 
 const DEFAULT_CONFIG: &str = include_str!("resources/config.yaml");
 
@@ -39,6 +39,8 @@ pub struct MatchDetails {
     pub border_size: Option<i32>,
     pub border_offset: Option<i32>,
     pub border_enabled: Option<bool>,
+    pub init_delay: Option<u64>,
+    pub unminimize_delay: Option<u64>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -54,6 +56,8 @@ pub struct GlobalRule {
     pub border_radius: i32,
     pub active_color: Option<RawColor>,
     pub inactive_color: Option<RawColor>,
+    pub init_delay: Option<u64>,
+    pub unminimize_delay: Option<u64>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -105,7 +109,10 @@ impl WindowRule {
                 match_value: None,
                 match_strategy: None,
                 border_enabled: None,
+                init_delay: None,
+                unminimize_delay: None,
             },
         }
     }
 }
+

@@ -25,10 +25,9 @@ pub extern "system" fn handle_win_event_main(
             }
 
             let border_window = get_border_from_window(_hwnd);
-            if border_window.is_some() {
+            if let Some(hwnd) = border_window {
                 unsafe {
-                    let _ =
-                        SendNotifyMessageW(border_window.unwrap(), WM_APP_0, WPARAM(0), LPARAM(0));
+                    let _ = SendNotifyMessageW(hwnd, WM_APP_0, WPARAM(0), LPARAM(0));
                 }
             }
         }
@@ -53,7 +52,7 @@ pub extern "system" fn handle_win_event_main(
             drop(borders);
         }
         EVENT_OBJECT_SHOW => {
-            show_border_for_window(_hwnd, 250);
+            show_border_for_window(_hwnd, None);
         }
         EVENT_OBJECT_HIDE => {
             // I have to check IsWindowVisible because for some reason, EVENT_OBJECT_HIDE can be
@@ -63,39 +62,31 @@ pub extern "system" fn handle_win_event_main(
             }
         }
         EVENT_OBJECT_UNCLOAKED => {
-            show_border_for_window(_hwnd, 0);
+            show_border_for_window(_hwnd, Some(0));
         }
         EVENT_OBJECT_CLOAKED => {
             hide_border_for_window(_hwnd);
         }
         EVENT_SYSTEM_MINIMIZESTART => {
-            let border_window = get_border_from_window(_hwnd);
-            if border_window.is_some() {
+            let border_option = get_border_from_window(_hwnd);
+            if let Some(border_window) = border_option {
                 unsafe {
-                    let _ = PostMessageW(border_window.unwrap(), WM_APP_4, WPARAM(0), LPARAM(0));
+                    let _ = PostMessageW(border_window, WM_APP_4, WPARAM(0), LPARAM(0));
                 }
             }
         }
         EVENT_SYSTEM_MINIMIZEEND => {
-            let border_window = get_border_from_window(_hwnd);
-            if border_window.is_some() {
+            let border_option = get_border_from_window(_hwnd);
+            if let Some(border_window) = border_option {
                 unsafe {
-                    let _ = PostMessageW(border_window.unwrap(), WM_APP_5, WPARAM(0), LPARAM(0));
+                    let _ = PostMessageW(border_window, WM_APP_5, WPARAM(0), LPARAM(0));
                 }
             }
         }
         // TODO this is called an unnecessary number of times which may hurt performance?
         EVENT_OBJECT_DESTROY => {
-            if has_filtered_style(_hwnd) {
-                return;
-            } else {
+            if !has_filtered_style(_hwnd) {
                 let _ = destroy_border_for_window(_hwnd);
-
-                // Use below to debug whether window borders are properly destroyed
-                /*let mutex = &*BORDERS;
-                let borders = mutex.lock().unwrap();
-                println!("borders after destroying window: {:?}", borders);
-                drop(borders);*/
             }
         }
         _ => {}

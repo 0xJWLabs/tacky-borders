@@ -6,7 +6,8 @@ use windows::{
     Win32::Foundation::*, Win32::Graphics::Direct2D::Common::*, Win32::Graphics::Dwm::*,
 };
 
-use crate::logger::Logger;
+use crate::log;
+use crate::Logger;
 
 // Enums
 #[derive(Debug, Clone)]
@@ -67,7 +68,7 @@ impl GradientDirection {
             .and_then(|d| d.trim().parse::<f32>().ok())
         {
             let rad = (degree - 90.0) * std::f32::consts::PI / 180.0;
-            // let rad = degree * PI / 180.0;
+            // let rad = degree * PI / 180.0; // Left to Right
             let (cos, sin) = (rad.cos(), rad.sin());
 
             // Adjusting calculations based on the origin being (0.5, 0.5)
@@ -80,15 +81,15 @@ impl GradientDirection {
         }
 
         match direction {
-            "to right" => vec![0.0, 0.5, 1.0, 0.5],           // Left to right
-            "to left" => vec![1.0, 0.5, 0.0, 0.5],            // Right to left
-            "to top" => vec![0.5, 1.0, 0.5, 0.0],             // Bottom to top
-            "to bottom" => vec![0.5, 0.0, 0.5, 1.0],          // Top to bottom
-            "to top right" => vec![0.0, 1.0, 1.0, 0.0],       // Bottom-left to top-right
-            "to top left" => vec![1.0, 1.0, 0.0, 0.0],        // Bottom-right to top-left
-            "to bottom right" => vec![0.0, 0.0, 1.0, 1.0],    // Top-left to bottom-right
-            "to bottom left" => vec![1.0, 0.0, 0.0, 1.0],     // Top-right to bottom-left
-            _ => vec![0.5, 1.0, 0.5, 0.0],                    // Default to "to top"
+            "to right" => vec![0.0, 0.5, 1.0, 0.5],     // Left to right
+            "to left" => vec![1.0, 0.5, 0.0, 0.5],      // Right to left
+            "to top" => vec![0.5, 1.0, 0.5, 0.0],       // Bottom to top
+            "to bottom" => vec![0.5, 0.0, 0.5, 1.0],    // Top to bottom
+            "to top right" => vec![0.0, 1.0, 1.0, 0.0], // Bottom-left to top-right
+            "to top left" => vec![1.0, 1.0, 0.0, 0.0],  // Bottom-right to top-left
+            "to bottom right" => vec![0.0, 0.0, 1.0, 1.0], // Top-left to bottom-right
+            "to bottom left" => vec![1.0, 0.0, 0.0, 1.0], // Top-right to bottom-left
+            _ => vec![0.5, 1.0, 0.5, 0.0],              // Default to "to top"
         }
     }
 }
@@ -278,7 +279,7 @@ fn get_accent_color() -> D2D1_COLOR_F {
     let result = unsafe { DwmGetColorizationColor(&mut pcr_colorization, &mut pf_opaqueblend) };
 
     if result.is_err() {
-        Logger::log("error", "Error getting windows accent color!");
+        log!("error", "Error getting windows accent color!");
         return D2D1_COLOR_F::default();
     }
 
@@ -311,7 +312,7 @@ fn create_color(color: &str) -> D2D1_COLOR_F {
 }
 
 fn is_direction(direction: &str) -> bool {
-    let valid_directions = vec![
+    let valid_directions = [
         "to right",
         "to left",
         "to top",
@@ -332,9 +333,9 @@ fn get_color_from_hex(hex: &str) -> D2D1_COLOR_F {
     // Ensure the hex string starts with '#' and is of the correct length
     if hex.len() != 7 && hex.len() != 9 && hex.len() != 4 && hex.len() != 5 || !hex.starts_with('#')
     {
-        Logger::log(
+        log!(
             "error",
-            format!("Invalid hex color format: {}", hex).as_str(),
+            format!("Invalid hex color format: {}", hex).as_str()
         );
     }
 
@@ -395,12 +396,7 @@ fn get_color_from_rgba(rgba: &str) -> D2D1_COLOR_F {
             1.0 // Default alpha value for rgb()
         };
 
-        return D2D1_COLOR_F {
-            r,
-            g,
-            b,
-            a
-        };
+        return D2D1_COLOR_F { r, g, b, a };
     }
 
     // Return a default color if parsing fails
@@ -438,11 +434,10 @@ pub fn parse_color_string(color: String) -> Color {
         return Color::Solid(create_color(colors_vec[0]));
     }
 
-    let rest_of_input = color
-        .rsplitn(2, colors_vec.last().unwrap())
-        .next()
-        .unwrap_or("")
-        .trim_start();
+    let last_color = colors_vec.last().unwrap();
+    let last_color_end = color.rfind(last_color).unwrap() + last_color.len();
+    let rest_of_input = color[last_color_end..].trim_start();
+
     let rest_of_input_array: Vec<&str> = rest_of_input
         .split(',')
         .filter_map(|s| {
@@ -501,8 +496,8 @@ fn parse_color_struct(color: RawGradient) -> Color {
     }
 
     if num_colors == 1 {
-        let color = color.colors.get(0);
-        return Color::Solid(create_color(color.unwrap_or(&"accent".to_string())));
+        let color = &color.colors[0];
+        return Color::Solid(create_color(color));
     }
 
     let gradient_stops: Vec<D2D1_GRADIENT_STOP> = color

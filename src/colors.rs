@@ -234,6 +234,91 @@ pub struct Brush {
     pub gradient_angle: Option<f32>,
 }
 
+impl From<Brush> for ID2D1Brush {
+    fn from(props: Brush) -> Self {
+        let render_target = &props.render_target;
+        let brush_properties = &props.brush_properties;
+        match &props.color {
+            Color::Solid(color) => unsafe {
+                render_target
+                    .CreateSolidColorBrush(color, Some(brush_properties))
+                    .unwrap()
+                    .into()
+            },
+            Color::Gradient(color) => {
+                let gradient_stops = color.gradient_stops.clone();
+                let gradient_stop_collection: ID2D1GradientStopCollection = unsafe {
+                    render_target
+                        .CreateGradientStopCollection(
+                            &gradient_stops,
+                            D2D1_GAMMA_2_2,
+                            D2D1_EXTEND_MODE_CLAMP,
+                        )
+                        .unwrap()
+                };
+
+                let width = get_rect_width(props.rect) as f32;
+                let height = get_rect_height(props.rect) as f32;
+
+                let (start_point, end_point) = if props.use_animation {
+                    let center_x = width / 2.0;
+                    let center_y = height / 2.0;
+                    let radius = (center_x.powi(2) + center_y.powi(2)).sqrt();
+
+                    let gradient_angle = props.gradient_angle.unwrap_or(0.0);
+                    let angle_rad = gradient_angle.to_radians();
+                    let (sin, cos) = angle_rad.sin_cos();
+                    (
+                        D2D_POINT_2F {
+                            x: center_x - radius * cos,
+                            y: center_y - radius * sin,
+                        },
+                        D2D_POINT_2F {
+                            x: center_x + radius * cos,
+                            y: center_y + radius * sin,
+                        },
+                    )
+                } else {
+                    let (start_x, start_y, end_x, end_y) = match color.direction.clone() {
+                        Some(coords) => (
+                            coords[0] * width,
+                            coords[1] * height,
+                            coords[2] * width,
+                            coords[3] * height,
+                        ),
+                        None => (0.0, 0.0, width, height),
+                    };
+
+                    (
+                        D2D_POINT_2F {
+                            x: start_x,
+                            y: start_y,
+                        },
+                        D2D_POINT_2F { x: end_x, y: end_y },
+                    )
+                };
+
+                let gradient_properties = D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES {
+                    startPoint: start_point,
+                    endPoint: end_point,
+                };
+
+                unsafe {
+                    render_target
+                        .CreateLinearGradientBrush(
+                            &gradient_properties,
+                            Some(brush_properties),
+                            Some(&gradient_stop_collection),
+                        )
+                        .map_err(|_| error!("Failed to create linear gradient brush"))
+                        .map(|gradient_brush| gradient_brush.into())
+                        .unwrap()
+                }
+            }
+        }
+    }
+}
+
 // Functions
 fn get_accent_color() -> D2D1_COLOR_F {
     let mut pcr_colorization: u32 = 0;
@@ -387,84 +472,5 @@ fn parse_rgba_color(rgba: &str) -> D2D1_COLOR_F {
         g: 0.0,
         b: 0.0,
         a: 1.0,
-    }
-}
-
-pub fn generate_brush(props: Brush) -> Result<ID2D1Brush, std::io::Error> {
-    let render_target = &props.render_target;
-    let brush_properties = &props.brush_properties;
-    match &props.color {
-        Color::Solid(color) => {
-            let solid_brush =
-                unsafe { render_target.CreateSolidColorBrush(color, Some(brush_properties))? };
-
-            Ok(solid_brush.into())
-        }
-        Color::Gradient(color) => {
-            let gradient_stops = color.gradient_stops.clone();
-            let gradient_stop_collection: ID2D1GradientStopCollection = unsafe {
-                render_target.CreateGradientStopCollection(
-                    &gradient_stops,
-                    D2D1_GAMMA_2_2,
-                    D2D1_EXTEND_MODE_CLAMP,
-                )?
-            };
-
-            let width = get_rect_width(props.rect) as f32;
-            let height = get_rect_height(props.rect) as f32;
-
-            let (start_point, end_point) = if props.use_animation {
-                let center_x = width / 2.0;
-                let center_y = height / 2.0;
-                let radius = (center_x.powi(2) + center_y.powi(2)).sqrt();
-
-                let gradient_angle = props.gradient_angle.unwrap_or(0.0);
-                let angle_rad = gradient_angle.to_radians();
-                let (sin, cos) = angle_rad.sin_cos();
-                (
-                    D2D_POINT_2F {
-                        x: center_x - radius * cos,
-                        y: center_y - radius * sin,
-                    },
-                    D2D_POINT_2F {
-                        x: center_x + radius * cos,
-                        y: center_y + radius * sin,
-                    },
-                )
-            } else {
-                let (start_x, start_y, end_x, end_y) = match color.direction.clone() {
-                    Some(coords) => (
-                        coords[0] * width,
-                        coords[1] * height,
-                        coords[2] * width,
-                        coords[3] * height,
-                    ),
-                    None => (0.0, 0.0, width, height),
-                };
-
-                (
-                    D2D_POINT_2F {
-                        x: start_x,
-                        y: start_y,
-                    },
-                    D2D_POINT_2F { x: end_x, y: end_y },
-                )
-            };
-
-            let gradient_properties = D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES {
-                startPoint: start_point,
-                endPoint: end_point,
-            };
-
-            let gradient_brush = unsafe {
-                render_target.CreateLinearGradientBrush(
-                    &gradient_properties,
-                    Some(brush_properties),
-                    Some(&gradient_stop_collection),
-                )?
-            };
-
-            Ok(gradient_brush.into())
-        }
     }
 }

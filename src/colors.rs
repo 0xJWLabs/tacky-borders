@@ -61,44 +61,13 @@ pub struct Gradient {
 impl GradientDirection {
     pub fn to_vec(&self) -> Vec<f32> {
         match self {
-            GradientDirection::String(direction) => Self::parse_direction(direction),
+            GradientDirection::String(direction) => parse_direction(direction),
             GradientDirection::Map(gradient_struct) => {
                 let start_slice: &[f32] = &gradient_struct.start;
                 let end_slice: &[f32] = &gradient_struct.end;
 
                 [start_slice, end_slice].concat()
             }
-        }
-    }
-
-    fn parse_direction(direction: &str) -> Vec<f32> {
-        if let Some(degree) = direction
-            .strip_suffix("deg")
-            .and_then(|d| d.trim().parse::<f32>().ok())
-        {
-            let rad = (degree - 90.0) * std::f32::consts::PI / 180.0;
-            // let rad = degree * PI / 180.0; // Left to Right
-            let (cos, sin) = (rad.cos(), rad.sin());
-
-            // Adjusting calculations based on the origin being (0.5, 0.5)
-            return vec![
-                0.5 - 0.5 * cos,
-                0.5 - 0.5 * sin, // Start point (x1, y1) adjusted
-                0.5 + 0.5 * cos,
-                0.5 + 0.5 * sin, // End point (x2, y2) adjusted
-            ];
-        }
-
-        match direction {
-            "to right" => vec![0.0, 0.5, 1.0, 0.5],     // Left to right
-            "to left" => vec![1.0, 0.5, 0.0, 0.5],      // Right to left
-            "to top" => vec![0.5, 1.0, 0.5, 0.0],       // Bottom to top
-            "to bottom" => vec![0.5, 0.0, 0.5, 1.0],    // Top to bottom
-            "to top right" => vec![0.0, 1.0, 1.0, 0.0], // Bottom-left to top-right
-            "to top left" => vec![1.0, 1.0, 0.0, 0.0],  // Bottom-right to top-left
-            "to bottom right" => vec![0.0, 0.0, 1.0, 1.0], // Top-left to bottom-right
-            "to bottom left" => vec![1.0, 0.0, 0.0, 1.0], // Top-right to bottom-left
-            _ => vec![0.5, 1.0, 0.5, 0.0],              // Default to "to top"
         }
     }
 }
@@ -312,6 +281,37 @@ fn is_direction(direction: &str) -> bool {
         .strip_suffix("deg")
         .and_then(|angle| angle.parse::<f32>().ok())
         .is_some()
+}
+
+fn parse_direction(direction: &str) -> Vec<f32> {
+    if let Some(degree) = direction
+        .strip_suffix("deg")
+        .and_then(|d| d.trim().parse::<f32>().ok())
+    {
+        let rad = (degree - 90.0) * std::f32::consts::PI / 180.0;
+        // let rad = degree * PI / 180.0; // Left to Right
+        let (cos, sin) = (rad.cos(), rad.sin());
+
+        // Adjusting calculations based on the origin being (0.5, 0.5)
+        return vec![
+            0.5 - 0.5 * cos,
+            0.5 - 0.5 * sin, // Start point (x1, y1) adjusted
+            0.5 + 0.5 * cos,
+            0.5 + 0.5 * sin, // End point (x2, y2) adjusted
+        ];
+    }
+
+    match direction {
+        "to right" => vec![0.0, 0.5, 1.0, 0.5],     // Left to right
+        "to left" => vec![1.0, 0.5, 0.0, 0.5],      // Right to left
+        "to top" => vec![0.5, 1.0, 0.5, 0.0],       // Bottom to top
+        "to bottom" => vec![0.5, 0.0, 0.5, 1.0],    // Top to bottom
+        "to top right" => vec![0.0, 1.0, 1.0, 0.0], // Bottom-left to top-right
+        "to top left" => vec![1.0, 1.0, 0.0, 0.0],  // Bottom-right to top-left
+        "to bottom right" => vec![0.0, 0.0, 1.0, 1.0], // Top-left to bottom-right
+        "to bottom left" => vec![1.0, 0.0, 0.0, 1.0], // Top-right to bottom-left
+        _ => vec![0.5, 1.0, 0.5, 0.0],              // Default to "to top"
+    }
 }
 
 fn parse_hex_color(hex: &str) -> D2D1_COLOR_F {

@@ -1,6 +1,10 @@
+use windows::Win32::System::Threading::{
+    OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+};
 use windows::{Win32::Foundation::*, Win32::Graphics::Dwm::*, Win32::UI::WindowsAndMessaging::*};
 
 use dirs::home_dir;
+use log::*;
 use regex::Regex;
 use std::fs::*;
 use std::path::*;
@@ -9,12 +13,12 @@ use crate::border_config::*;
 use crate::colors::*;
 use crate::*;
 
-pub const WM_APP_0: u32 = WM_APP;
-pub const WM_APP_1: u32 = WM_APP + 1;
-pub const WM_APP_2: u32 = WM_APP + 2;
-pub const WM_APP_3: u32 = WM_APP + 3;
-pub const WM_APP_4: u32 = WM_APP + 4;
-pub const WM_APP_5: u32 = WM_APP + 5;
+pub const WM_APP_LOCATIONCHANGE: u32 = WM_APP;
+pub const WM_APP_REORDER: u32 = WM_APP + 1;
+pub const WM_APP_SHOWUNCLOAKED: u32 = WM_APP + 2;
+pub const WM_APP_HIDECLOAKED: u32 = WM_APP + 3;
+pub const WM_APP_MINIMIZESTART: u32 = WM_APP + 4;
+pub const WM_APP_MINIMIZEEND: u32 = WM_APP + 5;
 
 // Configuration
 pub fn get_config() -> PathBuf {
@@ -38,6 +42,36 @@ pub fn get_config() -> PathBuf {
     dir_path
 }
 
+// Log File
+pub fn get_log() -> Result<File> {
+    let config_dir = get_config();
+    let log_path = config_dir.join("log.txt");
+
+    if exists(&log_path).expect("Couldn't check if log path exists") {
+        // Overwrite the file with an empty string
+        write(&log_path, "").map_err(|e| {
+            eprintln!("Failed to reset log file: {:?}", e);
+            e
+        })?;
+    }
+
+    if !exists(&log_path).expect("Couldn't check if log path exists") {
+        write(&log_path, "").expect("could not generate log.txt");
+    }
+
+    let file = OpenOptions::new()
+        .append(true) // Allow appending to the file
+        .create(true) // Create the file if it doesn't exist
+        .open(&log_path)
+        .map_err(|err| {
+            error!("{}", &format!("Failed to open log file: {:?}", &log_path),);
+            debug!("{}", &format!("{:?}", err),);
+            err
+        })?;
+
+    Ok(file)
+}
+
 // Windows Utility Functions
 pub fn get_rect_width(rect: RECT) -> i32 {
     rect.right - rect.left
@@ -45,6 +79,15 @@ pub fn get_rect_width(rect: RECT) -> i32 {
 
 pub fn get_rect_height(rect: RECT) -> i32 {
     rect.bottom - rect.top
+}
+
+pub fn is_rect_visible(rect: &RECT) -> bool {
+    rect.top >= 0 || rect.left >= 0 || rect.bottom >= 0 || rect.right >= 0
+}
+
+pub fn are_rects_same_size(rect1: &RECT, rect2: &RECT) -> bool {
+    rect1.right - rect1.left == rect2.right - rect2.left
+        && rect1.bottom - rect1.top == rect2.bottom - rect2.top
 }
 
 pub fn is_window_visible(hwnd: HWND) -> bool {
@@ -80,9 +123,10 @@ pub fn get_window_rule(hwnd: HWND) -> WindowRule {
 
     for rule in config.window_rules.iter() {
         if let Some(name) = match rule.rule_match.match_type {
-            MatchKind::Title => Some(&title),
-            MatchKind::Process => Some(&process),
-            MatchKind::Class => Some(&class),
+            Some(MatchKind::Title) => Some(&title),
+            Some(MatchKind::Process) => Some(&process),
+            Some(MatchKind::Class) => Some(&class),
+            _ => None,
         } {
             if let Some(contains_str) = &rule.rule_match.match_value {
                 if match_rule(name, contains_str, &rule.rule_match.match_strategy) {
@@ -108,7 +152,7 @@ pub fn is_cloaked(hwnd: HWND) -> bool {
         )
     };
     if result.is_err() {
-        log!("error", "Error getting is_cloacked");
+        debug!("Error getting is_cloacked");
         return true;
     }
     is_cloaked.as_bool()
@@ -119,6 +163,7 @@ pub fn is_cloaked(hwnd: HWND) -> bool {
 pub fn has_native_border(hwnd: HWND) -> bool {
     let style = unsafe { GetWindowLongW(hwnd, GWL_STYLE) as u32 };
     let ex_style = unsafe { GetWindowLongW(hwnd, GWL_EXSTYLE) as u32 };
+
     ex_style & WS_EX_WINDOWEDGE.0 != 0 && style & WS_MAXIMIZE.0 == 0
 }
 
@@ -126,7 +171,7 @@ pub fn _get_show_cmd(hwnd: HWND) -> u32 {
     let mut wp: WINDOWPLACEMENT = WINDOWPLACEMENT::default();
     let result = unsafe { GetWindowPlacement(hwnd, std::ptr::addr_of_mut!(wp)) };
     if result.is_err() {
-        log!("error", "error getting window_placement!");
+        debug!("Error getting window_placement!");
         return 0;
     }
     wp.showCmd
@@ -134,30 +179,20 @@ pub fn _get_show_cmd(hwnd: HWND) -> u32 {
 
 pub fn create_border_for_window(
     tracking_window: HWND,
-    create_delay_override: Option<u64>,
 ) -> Result<()> {
-    let borders_mutex = &*BORDERS;
-    let config_mutex = &*CONFIG;
     let window = SendHWND(tracking_window);
 
     let _ = std::thread::spawn(move || {
         let window_sent = window;
 
-        // This delay can be used to wait for a window to finish its opening animation or for it to
-        // become visible if it is not so at first
-
-        if !is_window_visible(window_sent.0) {
-            return;
-        }
-
         let window_rule = get_window_rule(window_sent.0);
 
         if window_rule.rule_match.border_enabled == Some(false) {
-            log!("debug", "border is disabled for this window, exiting!");
+            error!("border is disabled for this window, exiting!");
             return;
         }
 
-        let config = config_mutex.lock().unwrap();
+        let config = CONFIG.lock().unwrap();
 
         let config_size = window_rule
             .rule_match
@@ -170,40 +205,39 @@ pub fn create_border_for_window(
         let config_radius = window_rule
             .rule_match
             .border_radius
-            .unwrap_or(config.global_rule.border_radius) as f32;
+            .unwrap_or(config.global_rule.border_radius);
 
-        let active_color = generate_color(
-            &window_rule
-                .rule_match
-                .active_color
-                .or(config.global_rule.active_color.clone()),
-        );
+        let config_active = window_rule
+            .rule_match
+            .active_color
+            .or(config.global_rule.active_color.clone());
 
-        let inactive_color = generate_color(
-            &window_rule
-                .rule_match
-                .inactive_color
-                .or(config.global_rule.inactive_color.clone()),
-        );
+        let config_inactive = window_rule
+            .rule_match
+            .inactive_color
+            .or(config.global_rule.inactive_color.clone());
 
-        let use_active_animation = match active_color {
+        let border_colors = convert_config_colors(&config_active, &config_inactive);
+        let use_active_animation = match border_colors.0 {
             Color::Gradient(ref color) => color.animation.unwrap_or(false),
             _ => false,
         };
 
-        let use_inactive_animation = match inactive_color {
+        let use_inactive_animation = match border_colors.1 {
             Color::Gradient(ref color) => color.animation.unwrap_or(false),
             _ => false,
         };
 
         let border_radius = convert_config_radius(config_size, config_radius, window_sent.0);
+        let window_isize = window_sent.0 .0 as isize;
 
-        let init_delay = match create_delay_override {
-            Some(delay) => delay,
-            None => window_rule
+        let init_delay = if INITIAL_WINDOWS.lock().unwrap().contains(&window_isize) {
+            0
+        } else {
+            window_rule
                 .rule_match
                 .init_delay
-                .unwrap_or(config.global_rule.init_delay.unwrap_or(250)),
+                .unwrap_or(config.global_rule.init_delay.unwrap_or(250))
         };
 
         let unminimize_delay = window_rule
@@ -218,8 +252,8 @@ pub fn create_border_for_window(
             border_size: config_size,
             border_offset,
             border_radius,
-            active_color,
-            inactive_color,
+            active_color: border_colors.0,
+            inactive_color: border_colors.1,
             use_active_animation,
             use_inactive_animation,
             unminimize_delay,
@@ -227,25 +261,35 @@ pub fn create_border_for_window(
         };
         drop(config);
 
-        let mut borders_hashmap = borders_mutex.lock().unwrap();
+        let mut borders_hashmap = BORDERS.lock().unwrap();
         let window_isize = window_sent.0 .0 as isize;
 
-        // Check to see if the key already exists in the hashmap. If not, then continue
-        // adding the key and initializing the border. This is important because sometimes, the
-        // event_hook function will call spawn_border_thread multiple times for the same window.
+        // Check to see if the key already exists in the hashmap. I don't think this should ever
+        // return true, but it's just in case.
         if borders_hashmap.contains_key(&window_isize) {
-            //println!("Duplicate window: {:?}", borders_hashmap);
             drop(borders_hashmap);
             return;
         }
 
         let hinstance: HINSTANCE = unsafe { std::mem::transmute(&__ImageBase) };
         let _ = border.create_border_window(hinstance);
-
         borders_hashmap.insert(window_isize, border.border_window.0 as isize);
+
+        // Drop these values (to save some RAM?) before calling init and entering a message loop
         drop(borders_hashmap);
+        let _ = window_sent;
+        let _ = window_rule;
+        let _ = config_size;
+        let _ = border_offset;
+        let _ = config_radius;
+        let _ = config_active;
+        let _ = config_inactive;
+        let _ = border_colors;
+        let _ = window_isize;
+        let _ = hinstance;
 
         let _ = border.init(init_delay);
+
         drop(border);
     });
 
@@ -268,7 +312,7 @@ pub fn convert_config_radius(config_size: i32, config_radius: f32, tracking_wind
             )
         };
         if result.is_err() {
-            log!("error", "Error getting window corner preference!");
+            error!("Error getting window corner preference!");
         }
         match corner_preference {
             DWMWCP_DEFAULT => {
@@ -290,21 +334,27 @@ pub fn convert_config_radius(config_size: i32, config_radius: f32, tracking_wind
     config_radius * dpi / 96.0
 }
 
+pub fn convert_config_colors(color_active: &Option<RawColor>, color_inactive: &Option<RawColor>) -> (Color, Color) {
+    (generate_color(color_active), generate_color(color_inactive))
+}
+
 pub fn destroy_border_for_window(tracking_window: HWND) -> Result<()> {
-    let mutex = &*BORDERS;
     let window = SendHWND(tracking_window);
 
-    let _ = std::thread::spawn(move || {
+    let _ = thread::spawn(move || {
         let window_sent = window;
-        let mut borders_hashmap = mutex.lock().unwrap();
+        let mut borders_hashmap = BORDERS.lock().unwrap();
         let window_isize = window_sent.0 .0 as isize;
-        let border_option = borders_hashmap.get(&window_isize);
+        let Some(border_isize) = borders_hashmap.get(&window_isize) else {
+            drop(borders_hashmap);
+            return;
+        };
 
-        if let Some(option) = border_option {
-            let border_window: HWND = HWND((*option) as *mut _);
-            unsafe { SendMessageW(border_window, WM_DESTROY, WPARAM(0), LPARAM(0)) };
-            borders_hashmap.remove(&window_isize);
+        let border_window: HWND = HWND(*border_isize as _);
+        unsafe {
+            let _ = PostMessageW(border_window, WM_CLOSE, WPARAM(0), LPARAM(0));
         }
+        borders_hashmap.remove(&window_isize);
 
         drop(borders_hashmap);
     });
@@ -313,37 +363,31 @@ pub fn destroy_border_for_window(tracking_window: HWND) -> Result<()> {
 }
 
 pub fn get_border_from_window(hwnd: HWND) -> Option<HWND> {
-    let mutex = &*BORDERS;
-    let borders = mutex.lock().unwrap();
+    let borders = BORDERS.lock().unwrap();
     let hwnd_isize = hwnd.0 as isize;
-    let border_option = borders.get(&hwnd_isize);
+    let Some(border_isize) = borders.get(&hwnd_isize) else {
+        drop(borders);
+        return None;
+    };
 
-    if let Some(option) = border_option {
-        let border_window: HWND = HWND(*option as _);
-        drop(borders);
-        Some(border_window)
-    } else {
-        drop(borders);
-        None
-    }
+    let border_window: HWND = HWND(*border_isize as _);
+    drop(borders);
+    Some(border_window)
 }
 
 // Return true if the border exists in the border hashmap. Otherwise, create a new border and
 // return false.
-// We can also specify a delay to prevent the border from appearing while a window is in its
-// opening animation.
-pub fn show_border_for_window(hwnd: HWND, create_delay_override: Option<u64>) -> bool {
+pub fn show_border_for_window(hwnd: HWND) -> bool {
     let border_window = get_border_from_window(hwnd);
-    if let Some(window) = border_window {
+    if let Some(hwnd) = border_window {
         unsafe {
-            let _ = PostMessageW(window, WM_APP_2, WPARAM(0), LPARAM(0));
+            let _ = PostMessageW(hwnd, WM_APP_SHOWUNCLOAKED, WPARAM(0), LPARAM(0));
         }
         true
     } else {
-        if is_cloaked(hwnd) || has_filtered_style(hwnd) {
-            return false;
+        if is_window_visible(hwnd) && !is_cloaked(hwnd) && !has_filtered_style(hwnd) {
+            let _ = create_border_for_window(hwnd);
         }
-        let _ = create_border_for_window(hwnd, create_delay_override);
         false
     }
 }
@@ -351,12 +395,12 @@ pub fn show_border_for_window(hwnd: HWND, create_delay_override: Option<u64>) ->
 pub fn hide_border_for_window(hwnd: HWND) -> bool {
     let window = SendHWND(hwnd);
 
-    let _ = std::thread::spawn(move || {
+    let _ = thread::spawn(move || {
         let window_sent = window;
-        let border_window = get_border_from_window(window_sent.0);
-        if let Some(window) = border_window {
+        let border_option = get_border_from_window(window_sent.0);
+        if let Some(border_window) = border_option {
             unsafe {
-                let _ = PostMessageW(window, WM_APP_3, WPARAM(0), LPARAM(0));
+                let _ = PostMessageW(border_window, WM_APP_HIDECLOAKED, WPARAM(0), LPARAM(0));
             }
         }
     });
@@ -367,7 +411,7 @@ pub fn hide_border_for_window(hwnd: HWND) -> bool {
 fn match_rule(name: &str, pattern: &str, strategy: &Option<MatchStrategy>) -> bool {
     match strategy {
         Some(MatchStrategy::Contains) => name.to_lowercase().contains(&pattern.to_lowercase()),
-        Some(MatchStrategy::Equals) => name.to_lowercase() == pattern.to_lowercase(),
+        Some(MatchStrategy::Equals) => name.to_lowercase().eq(&pattern.to_lowercase()),
         Some(MatchStrategy::Regex) => Regex::new(pattern)
             .map(|re| re.is_match(name))
             .unwrap_or(false),
@@ -379,7 +423,7 @@ fn get_window_title(hwnd: HWND) -> String {
     let mut buffer: [u16; 256] = [0; 256];
 
     if unsafe { GetWindowTextW(hwnd, &mut buffer) } == 0 {
-        log!("error", "Error getting window title!");
+        error!("Error getting window title!");
     }
 
     unsafe { GetWindowTextW(hwnd, &mut buffer) };
@@ -392,7 +436,7 @@ fn get_window_class(hwnd: HWND) -> String {
     let mut buffer: [u16; 256] = [0; 256];
 
     if unsafe { GetClassNameW(hwnd, &mut buffer) } == 0 {
-        log!("error", "Error getting window class name!");
+        error!("Error getting window class name!");
     }
 
     String::from_utf16_lossy(&buffer)

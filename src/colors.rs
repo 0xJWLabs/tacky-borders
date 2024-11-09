@@ -5,9 +5,7 @@ use std::fmt;
 use windows::{
     Win32::Foundation::*, Win32::Graphics::Direct2D::Common::*, Win32::Graphics::Dwm::*,
 };
-
-use crate::log;
-use crate::Logger;
+use log::*;
 
 // Enums
 #[derive(Debug, Clone)]
@@ -279,7 +277,7 @@ fn get_accent_color() -> D2D1_COLOR_F {
     let result = unsafe { DwmGetColorizationColor(&mut pcr_colorization, &mut pf_opaqueblend) };
 
     if result.is_err() {
-        log!("error", "Error getting windows accent color!");
+        error!("Error getting windows accent color!");
         return D2D1_COLOR_F::default();
     }
 
@@ -333,10 +331,7 @@ fn get_color_from_hex(hex: &str) -> D2D1_COLOR_F {
     // Ensure the hex string starts with '#' and is of the correct length
     if hex.len() != 7 && hex.len() != 9 && hex.len() != 4 && hex.len() != 5 || !hex.starts_with('#')
     {
-        log!(
-            "error",
-            format!("Invalid hex color format: {}", hex).as_str()
-        );
+        error!("{}", format!("Invalid hex color format: {}", hex).as_str());
     }
 
     // Expand shorthand hex formats (#RGB or #RGBA to #RRGGBB or #RRGGBBAA)

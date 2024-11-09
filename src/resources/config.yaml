@@ -1,46 +1,25 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/GlazeBar/tacky-borders/refs/heads/main/schema.json
-# border_size: Defines the thickness of the borders in pixels around each window.
-# Example: 2 indicates a 2-pixel-thick border.
-border_size: 2
+
+# Global Configuration for Tacky Borders
+
+global:
+# border_size: Sets the size of the window border in pixels.
+  border_size: 2
 
 # border_offset: Adjusts the border position by shrinking or expanding it relative to the window.
 #   - Negative values shrink the border inward, effectively reducing the visible border size.
 #   - Positive values expand the border outward.
 # Example: -1 slightly reduces the border’s coverage.
-border_offset: -1
+  border_offset: -1
 
 # border_radius: Sets a custom radius for the window border’s rounded corners.
 #   - Use -1 to let the application automatically handle the radius.
 #   - Any positive value will apply a fixed radius in pixels to the window corners.
 # Example: 5 would apply a 5-pixel corner radius.
-border_radius: -1
+  border_radius: -1
 
-# window_rules 
-# Defines how the borders behave based on specific properties of the windows.
-# Matcg Strategies
-# type:
-# - Global: Applies globally unless overridden by more specific rules.
-# - Class: Applies based on the window's class name.
-# - Title: Applies based on the window title.
-
-# strategy (default: Equals):
-# - "Equals": The match value must be exactly equal to the specified value.
-# - "Regex": The match value must match the specified regular expression.
-# - "Contains": The match value must be a substring of the specified string.
-
-# value:
-# - Specifies the value against which the window's properties are matched.
-# - Can be a string that must either match exactly, be a substring, or conform to a regex pattern
-#   depending on the specified match strategy.
-
-# border_enabled (default: true):
-# - A boolean value indicating whether the border is enabled for this particular rule.
-# - If true, the defined border properties (such as color and thickness) will apply to matching windows.
-# - If false, no border will be applied, effectively disabling it for that rule.
-
-# Color Definitions:
-# - active_color: The color used for the active window border.
-#   - Can be specified as a string or a map format.
+# active_color: Defines the color properties for the active window border.
+#   - Can be specified as either a string (e.g., "#RRGGBB") or a map format.
 #   - If using a map, provide colors in various formats: #RRGGBB, #RRGGBBAA, rgb(...), or rgba(...).
 #     - colors: A list of color values to define the active border colors.
 #     - direction: Specifies the start and end points of a linear gradient for the border.
@@ -52,40 +31,76 @@ border_radius: -1
 #           x: 1.0  # Endpoint of the gradient on the x-axis (0.0 to 1.0).
 #           y: 0.0  # Endpoint of the gradient on the y-axis (0.0 to 1.0).
 #     - animation: Boolean value indicating whether to animate the color transition.
-# - inactive_color: The color used for inactive window borders.
+#   - Example of a string: active_color: "#ff0000"
+#   - Example of a map:
+#     active_color:
+#       colors:
+#         - "#89b4fa"
+#         - "#cba6f7"
+#       direction:
+#         start:
+#           x: 0.0
+#           y: 0.0
+#         end:
+#           x: 1.0
+#           y: 0.0
+#       animation: false
+  active_color:
+    colors: ["#000000", "#ffffff"]
+    direction:
+      start: [0.0, 0.0]
+      end: [1.0, 0.0]
+    animation: false
+
+# inactive_color: The color used for inactive window borders.
 #   - Can also be specified as a string or a map format with similar color options.
+  inactive_color: "#d2d2d2"
+
+# window_rules: Defines how the borders behave based on specific properties of the windows.
+# Each rule can specify a matching strategy and properties for the borders.
+# The following properties can be inherited from global settings or overridden:
+# - border_size
+# - border_offset
+# - border_radius
+# - active_color
+# - inactive_color
 
 window_rules:
-  - match:
-      type: "Global"
-      active_color:
-        colors:
-          - "#000000"
-          - "#ffffff"
-        direction:
-          start:
-            x: 0.0
-            y: 0.0
-          end:
-            x: 1.0
-            y: 1.0
-        animation: true
-      inactive_color: "#1E1E2E"
+  # Match Strategies:
+  # kind: Specifies the type of property to match.
+  # - Process: Matches based on the process name.
+  # - Title: Matches based on the window title.
+  # - Class: Matches based on the window's class name.
+
+  # strategy (default: Equals):
+  # - "Equals": The match value must be exactly equal to the specified value.
+  # - "Regex": The match value must match the specified regular expression.
+  # - "Contains": The match value must be a substring of the specified string.
+
+  # value:
+  # - Specifies the value against which the window's properties are matched.
+  # - Can be a string that must either match exactly, be a substring, or conform to a regex pattern
+  #   depending on the specified match strategy.
+
+  # border_enabled (default: true):
+  # - A boolean value indicating whether the border is enabled for this particular rule.
+  # - If true, the defined border properties (such as color and thickness) will apply to matching windows.
+  # - If false, no border will be applied, effectively disabling it for that rule.
 
   - match:
-      type: "Class"
+      kind: "Class"                     # Matches based on the window's class name.
       value: "Windows.UI.Core.CoreWindow"
       strategy: "Contains"
       border_enabled: false
 
   - match:
-      type: "Title"
+      kind: "Process"                   # Matches based on the process name.
       value: "(?i)^Flow.*"
       strategy: "Regex"
       border_enabled: false
 
   - match:
-      type: "Title"
+      kind: "Title"                     # Matches based on the window title.
       value: "Zebar"
       strategy: "Equals"
       border_enabled: false

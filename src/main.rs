@@ -4,32 +4,44 @@
     windows_subsystem = "windows"
 )]
 
-use logger::*;
+#[macro_use]
+extern crate log;
+extern crate sp_log;
+
+use sp_log::{
+    ColorChoice, CombinedLogger, Config, LevelFilter, TermLogger, TerminalMode, WriteLogger,
+};
+use std::cell::Cell;
 use std::collections::HashMap;
-use std::ffi::*;
 use std::sync::{LazyLock, Mutex};
 use std::thread;
 use utils::*;
+
 use windows::{
-    core::*, Win32::Foundation::*, Win32::Graphics::Dwm::*,
-    Win32::System::SystemServices::IMAGE_DOS_HEADER, Win32::System::Threading::*,
-    Win32::UI::Accessibility::*, Win32::UI::HiDpi::*, Win32::UI::WindowsAndMessaging::*,
+    core::*, Win32::Foundation::*, Win32::System::SystemServices::IMAGE_DOS_HEADER,
+    Win32::UI::Accessibility::*, Win32::UI::HiDpi::*,  Win32::UI::Input::Ime::*,
+    Win32::UI::WindowsAndMessaging::*,
 };
+
+mod border_config;
+mod colors;
+mod event_hook;
+mod sys_tray_icon;
+mod utils;
+mod window_border;
 
 extern "C" {
     pub static __ImageBase: IMAGE_DOS_HEADER;
 }
 
-mod border_config;
-mod colors;
-mod event_hook;
-mod logger;
-mod sys_tray_icon;
-mod utils;
-mod window_border;
+thread_local! {
+    pub static EVENT_HOOK: Cell<HWINEVENTHOOK> = Cell::new(HWINEVENTHOOK::default());
+}
 
 pub static BORDERS: LazyLock<Mutex<HashMap<isize, isize>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+pub static INITIAL_WINDOWS: LazyLock<Mutex<Vec<isize>>> = LazyLock::new(|| Mutex::new(Vec::new()));
 
 // This shit supposedly unsafe af but it works so idgaf.
 #[derive(Debug, PartialEq, Clone)]
@@ -37,45 +49,47 @@ pub struct SendHWND(HWND);
 unsafe impl Send for SendHWND {}
 unsafe impl Sync for SendHWND {}
 
+fn create_logger() {
+    CombinedLogger::init(vec![
+        TermLogger::new(
+            LevelFilter::Info,
+            Config::default(),
+            TerminalMode::Mixed,
+            ColorChoice::Auto,
+        ),
+        WriteLogger::new(LevelFilter::Warn, Config::default(), get_log().unwrap()),
+    ])
+    .unwrap();
+}
+
 fn main() {
-    let dpi_aware =
-        unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
-    if dpi_aware.is_err() {
+    create_logger();
+    if unsafe { !ImmDisableIME(std::mem::transmute::<i32, u32>(-1)).as_bool() } {
+        println!("Could not disable IME!");
+    }
+
+    if unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2).is_err() }
+    {
         println!("Failed to make process DPI aware");
     }
 
-    let _ = register_window_class();
-    log!("debug", "Window class in registered!");
-    let _ = enum_windows();
-
-    let main_thread = unsafe { GetCurrentThreadId() };
-    let tray_icon_option = sys_tray_icon::create_tray_icon(main_thread);
+    let tray_icon_option = sys_tray_icon::create_tray_icon();
     if tray_icon_option.is_err() {
-        log!("error", "Error creating tray icon!");
+        error!("Window class in registered!");
     }
 
-    let win_event_hook = set_event_hook();
+    EVENT_HOOK.replace(set_event_hook());
+    let _ = register_window_class();
+    let _ = enum_windows();
     unsafe {
-        log!("debug", "Entering message loop!");
+        debug!("Entering message loop!");
         let mut message = MSG::default();
         while GetMessageW(&mut message, HWND::default(), 0, 0).into() {
-            if message.message == WM_CLOSE {
-                let result = UnhookWinEvent(win_event_hook);
-                if result.as_bool() {
-                    ExitProcess(0);
-                } else {
-                    log!("error", "Could not unhook win even hook");
-                }
-            }
-
             let _ = TranslateMessage(&message);
             DispatchMessageW(&message);
             thread::sleep(std::time::Duration::from_millis(16))
         }
-        log!(
-            "debug",
-            "MESSSAGE LOOP IN MAIN.RS EXITED. THIS SHOULD NOT HAPPEN"
-        );
+        debug!("MESSSAGE LOOP IN MAIN.RS EXITED. THIS SHOULD NOT HAPPEN");
     }
 }
 
@@ -109,7 +123,7 @@ pub fn set_event_hook() -> HWINEVENTHOOK {
             EVENT_MIN,
             EVENT_MAX,
             None,
-            Some(event_hook::handle_win_event_main),
+            Some(event_hook::handle_win_event),
             0,
             0,
             WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS,
@@ -126,7 +140,7 @@ pub fn enum_windows() -> Result<()> {
             // LPARAM::default(),
         );
     }
-    log!("debug", "Windows have been enumerated");
+    debug!("Windows have been enumerated");
 
     Ok(())
 }
@@ -136,44 +150,48 @@ pub fn restart_borders() {
     let mut borders = mutex.lock().unwrap();
     for value in borders.values() {
         let border_window = HWND(*value as _);
-        unsafe { SendMessageW(border_window, WM_DESTROY, WPARAM(0), LPARAM(0)) };
+        unsafe {
+            let _ = PostMessageW(border_window, WM_DESTROY, WPARAM(0), LPARAM(0));
+        }
     }
-    let _ = borders.drain();
+    borders.clear();
     drop(borders);
     let _ = enum_windows();
 }
 
-fn _apply_colors() {
-    let mut visible_windows: Vec<HWND> = Vec::new();
-    unsafe {
-        let _ = EnumWindows(
-            Some(enum_windows_callback),
-            LPARAM(&mut visible_windows as *mut _ as isize),
-        );
-    }
-
-    for hwnd in visible_windows {
-        unsafe {
-            let _ = DwmSetWindowAttribute(
-                hwnd,
-                DWMWA_BORDER_COLOR,
-                &DWMWA_COLOR_NONE as *const _ as *const c_void,
-                std::mem::size_of::<c_ulong>() as u32,
-            );
-        }
-    }
-}
+// Might use it later
+// fn _apply_colors() {
+//     let mut visible_windows: Vec<HWND> = Vec::new();
+//     unsafe {
+//         let _ = EnumWindows(
+//             Some(enum_windows_callback),
+//             LPARAM(&mut visible_windows as *mut _ as isize),
+//         );
+//     }
+//
+//     for hwnd in visible_windows {
+//         unsafe {
+//             let _ = DwmSetWindowAttribute(
+//                 hwnd,
+//                 DWMWA_BORDER_COLOR,
+//                 &DWMWA_COLOR_NONE as *const _ as *const c_void,
+//                 std::mem::size_of::<c_ulong>() as u32,
+//             );
+//         }
+//     }
+// }
 
 unsafe extern "system" fn enum_windows_callback(_hwnd: HWND, _lparam: LPARAM) -> BOOL {
-    // Returning FALSE will exit the EnumWindows loop so we must return TRUE here
-    if !is_window_visible(_hwnd) || is_cloaked(_hwnd) || has_filtered_style(_hwnd) {
-        return TRUE;
+    if !has_filtered_style(_hwnd) {
+        if is_window_visible(_hwnd) && !is_cloaked(_hwnd) {
+            let _ = create_border_for_window(_hwnd);
+        }
+
+        INITIAL_WINDOWS.lock().unwrap().push(_hwnd.0 as isize);
     }
-    let _ = create_border_for_window(_hwnd, Some(0));
 
-    let visible_windows: &mut Vec<HWND> = std::mem::transmute(_lparam.0);
-    visible_windows.push(_hwnd);
+    // let visible_windows: &mut Vec<HWND> = std::mem::transmute(_lparam.0);
+    // visible_windows.push(_hwnd);
 
-    // First, safely cast the LPARAM's inner value (`isize`) to a raw pointer
     TRUE
 }

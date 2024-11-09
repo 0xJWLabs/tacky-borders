@@ -1,21 +1,19 @@
 use tray_icon::{menu::Menu, menu::MenuEvent, menu::MenuItem, Icon, TrayIcon, TrayIconBuilder};
-use windows::Win32::Foundation::LPARAM;
-use windows::Win32::Foundation::WPARAM;
-use windows::Win32::UI::WindowsAndMessaging::PostThreadMessageW;
-use windows::Win32::UI::WindowsAndMessaging::WM_CLOSE;
+use windows::Win32::System::Threading::ExitProcess;
+use windows::Win32::UI::Accessibility::UnhookWinEvent;
 
 use crate::border_config::Config;
-use crate::log;
 use crate::restart_borders;
 use crate::utils::*;
-use crate::Logger;
+use crate::EVENT_HOOK;
+use log::*;
 
-pub fn create_tray_icon(main_thread: u32) -> Result<TrayIcon, tray_icon::Error> {
+pub fn create_tray_icon() -> Result<TrayIcon, tray_icon::Error> {
     let icon = match Icon::from_resource(1, Some((64, 64))) {
         Ok(icon) => icon,
         Err(err) => {
-            log!("error", "Failed to create icon");
-            log!("debug", &format!("{:?}", err));
+            error!("Failed to create icon");
+            debug!("{}", &format!("{:?}", err));
             std::process::exit(1);
         }
     };
@@ -42,11 +40,16 @@ pub fn create_tray_icon(main_thread: u32) -> Result<TrayIcon, tray_icon::Error> 
             restart_borders();
         }
         "2" => {
-            let result = unsafe { PostThreadMessageW(main_thread, WM_CLOSE, WPARAM(0), LPARAM(0)) };
-            log!(
-                "debug",
-                format!("Sending WM_CLOSE to main thread: {:?}", result).as_str()
-            );
+            let event_hook = EVENT_HOOK.get();
+            unsafe {
+                let result = UnhookWinEvent(event_hook);
+                if result.as_bool() {
+                    debug!("Exiting tacky-borders!");
+                    ExitProcess(0);
+                } else {
+                    error!("Could not unhook win event hook");
+                }
+            }
         }
         _ => {}
     }));

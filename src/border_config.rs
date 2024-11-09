@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::sync::{LazyLock, Mutex};
 
@@ -9,7 +9,7 @@ const DEFAULT_CONFIG: &str = include_str!("resources/config.yaml");
 
 pub static CONFIG: LazyLock<Mutex<Config>> = LazyLock::new(|| Mutex::new(Config::new()));
 
-#[derive(Debug, Deserialize, PartialEq, Clone)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
 // Maybe support Process later.
 // Getting the process name seems annoying.
 pub enum MatchKind {
@@ -28,14 +28,14 @@ pub enum MatchStrategy {
 #[derive(Debug, Deserialize, Clone)]
 pub struct MatchDetails {
     #[serde(rename = "kind")]
-    pub match_type: MatchKind,
+    pub match_type: Option<MatchKind>,
     #[serde(rename = "value")]
     pub match_value: Option<String>,
     #[serde(rename = "strategy")]
     pub match_strategy: Option<MatchStrategy>,
     pub active_color: Option<RawColor>,
     pub inactive_color: Option<RawColor>,
-    pub border_radius: Option<i32>,
+    pub border_radius: Option<f32>,
     pub border_size: Option<i32>,
     pub border_offset: Option<i32>,
     pub border_enabled: Option<bool>,
@@ -53,7 +53,7 @@ pub struct WindowRule {
 pub struct GlobalRule {
     pub border_size: i32,
     pub border_offset: i32,
-    pub border_radius: i32,
+    pub border_radius: f32,
     pub active_color: Option<RawColor>,
     pub inactive_color: Option<RawColor>,
     pub init_delay: Option<u64>,
@@ -100,7 +100,7 @@ impl WindowRule {
     pub fn default() -> Self {
         WindowRule {
             rule_match: MatchDetails {
-                match_type: MatchKind::Title,
+                match_type: None,
                 border_size: None,
                 border_radius: None,
                 border_offset: None,
@@ -115,4 +115,3 @@ impl WindowRule {
         }
     }
 }
-

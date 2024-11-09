@@ -177,9 +177,7 @@ pub fn _get_show_cmd(hwnd: HWND) -> u32 {
     wp.showCmd
 }
 
-pub fn create_border_for_window(
-    tracking_window: HWND,
-) -> Result<()> {
+pub fn create_border_for_window(tracking_window: HWND) -> Result<()> {
     let window = SendHWND(tracking_window);
 
     let _ = std::thread::spawn(move || {
@@ -334,8 +332,14 @@ pub fn convert_config_radius(config_size: i32, config_radius: f32, tracking_wind
     config_radius * dpi / 96.0
 }
 
-pub fn convert_config_colors(color_active: &Option<RawColor>, color_inactive: &Option<RawColor>) -> (Color, Color) {
-    (generate_color(color_active), generate_color(color_inactive))
+pub fn convert_config_colors(
+    color_active: &Option<ColorDefinition>,
+    color_inactive: &Option<ColorDefinition>,
+) -> (Color, Color) {
+    (
+        Color::from(color_active.as_ref()),
+        Color::from(color_inactive.as_ref()),
+    )
 }
 
 pub fn destroy_border_for_window(tracking_window: HWND) -> Result<()> {

@@ -256,95 +256,6 @@ impl WindowBorder {
         Ok(())
     }
 
-    pub fn create_brush(&self, render_target: &ID2D1RenderTarget, color: Color) -> Result<ID2D1Brush> {
-        match &color {
-            Color::Solid(color) => {
-                let solid_brush = unsafe {
-                    render_target.CreateSolidColorBrush(color, Some(&self.brush_properties))?
-                };
-
-                Ok(solid_brush.into())
-            }
-            Color::Gradient(color) => {
-                let gradient_stops = color.gradient_stops.clone();
-                let gradient_stop_collection: ID2D1GradientStopCollection = unsafe {
-                    render_target.CreateGradientStopCollection(
-                        &gradient_stops,
-                        D2D1_GAMMA_2_2,
-                        D2D1_EXTEND_MODE_CLAMP,
-                    )?
-                };
-
-                let width = get_rect_width(self.window_rect) as f32;
-                let height = get_rect_height(self.window_rect) as f32;
-
-                let is_active = is_window_active(self.tracking_window);
-                let condition = if is_active {
-                    self.use_active_animation
-                } else {
-                    self.use_inactive_animation
-                };
-
-                let (start_point, end_point) = if condition {
-                    let gradient_angle = if is_active {
-                        self.active_gradient_angle
-                    } else {
-                        self.inactive_gradient_angle
-                    };
-                    let center_x = width / 2.0;
-                    let center_y = height / 2.0;
-                    let radius = (center_x.powi(2) + center_y.powi(2)).sqrt();
-
-                    let angle_rad = gradient_angle.to_radians();
-                    let (sin, cos) = angle_rad.sin_cos();
-                    (
-                        D2D_POINT_2F {
-                            x: center_x - radius * cos,
-                            y: center_y - radius * sin,
-                        },
-                        D2D_POINT_2F {
-                            x: center_x + radius * cos,
-                            y: center_y + radius * sin,
-                        },
-                    )
-                } else {
-                    let (start_x, start_y, end_x, end_y) = match color.direction.clone() {
-                        Some(coords) => (
-                            coords[0] * width,
-                            coords[1] * height,
-                            coords[2] * width,
-                            coords[3] * height,
-                        ),
-                        None => (0.0, 0.0, width, height),
-                    };
-
-                    (
-                        D2D_POINT_2F {
-                            x: start_x,
-                            y: start_y,
-                        },
-                        D2D_POINT_2F { x: end_x, y: end_y },
-                    )
-                };
-
-                let gradient_properties = D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES {
-                    startPoint: start_point,
-                    endPoint: end_point,
-                };
-
-                let gradient_brush = unsafe {
-                    render_target.CreateLinearGradientBrush(
-                        &gradient_properties,
-                        Some(&self.brush_properties),
-                        Some(&gradient_stop_collection),
-                    )?
-                };
-
-                Ok(gradient_brush.into())
-            }
-        }
-    }
-
     pub fn render(&mut self) -> Result<()> {
         // Get the render target
         let render_target = match self.render_target.get() {
@@ -393,9 +304,29 @@ impl WindowBorder {
                 }
             }
 
-            let brush = self.create_brush(render_target, self.current_color.clone()).unwrap();
+            // let brush = self.create_brush(self.current_color.clone()).unwrap();
 
-            // let brush = self.create_brush(render_target)?;
+            let is_active = is_window_active(self.tracking_window);
+            let condition = if is_active {
+                self.use_active_animation
+            } else {
+                self.use_inactive_animation
+            };
+
+            let gradient_angle = if is_active {
+                self.active_gradient_angle
+            } else {
+                self.inactive_gradient_angle
+            };
+
+            let brush = generate_brush(Brush {
+                render_target: render_target.clone(),
+                color: self.current_color.clone(),
+                rect: self.window_rect,
+                use_animation: condition,
+                brush_properties: self.brush_properties,
+                gradient_angle: Some(gradient_angle) 
+            })?;
             render_target.BeginDraw();
             render_target.Clear(None);
             render_target.DrawRoundedRectangle(

@@ -13,13 +13,15 @@ use sp_log::{
 };
 use std::cell::Cell;
 use std::collections::HashMap;
+use std::ffi::c_ulong;
 use std::sync::{LazyLock, Mutex};
 use std::thread;
 use utils::*;
+use windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE};
 
 use windows::{
     core::*, Win32::Foundation::*, Win32::System::SystemServices::IMAGE_DOS_HEADER,
-    Win32::UI::Accessibility::*, Win32::UI::HiDpi::*,  Win32::UI::Input::Ime::*,
+    Win32::UI::Accessibility::*, Win32::UI::HiDpi::*, Win32::UI::Input::Ime::*,
     Win32::UI::WindowsAndMessaging::*,
 };
 
@@ -159,27 +161,27 @@ pub fn restart_borders() {
     let _ = enum_windows();
 }
 
-// Might use it later
-// fn _apply_colors() {
-//     let mut visible_windows: Vec<HWND> = Vec::new();
-//     unsafe {
-//         let _ = EnumWindows(
-//             Some(enum_windows_callback),
-//             LPARAM(&mut visible_windows as *mut _ as isize),
-//         );
-//     }
-//
-//     for hwnd in visible_windows {
-//         unsafe {
-//             let _ = DwmSetWindowAttribute(
-//                 hwnd,
-//                 DWMWA_BORDER_COLOR,
-//                 &DWMWA_COLOR_NONE as *const _ as *const c_void,
-//                 std::mem::size_of::<c_ulong>() as u32,
-//             );
-//         }
-//     }
-// }
+// Might use it to remove native border
+fn _remove_border() {
+    let mut visible_windows: Vec<HWND> = Vec::new();
+    unsafe {
+        let _ = EnumWindows(
+            Some(enum_windows_callback),
+            LPARAM(&mut visible_windows as *mut _ as isize),
+        );
+    }
+
+    for hwnd in visible_windows {
+        unsafe {
+            let _ = DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_BORDER_COLOR,
+                &DWMWA_COLOR_NONE as *const _ as _,
+                std::mem::size_of::<c_ulong>() as u32,
+            );
+        }
+    }
+}
 
 unsafe extern "system" fn enum_windows_callback(_hwnd: HWND, _lparam: LPARAM) -> BOOL {
     if !has_filtered_style(_hwnd) {

@@ -33,8 +33,8 @@ pub struct MatchDetails {
     pub match_value: Option<String>,
     #[serde(rename = "strategy")]
     pub match_strategy: Option<MatchStrategy>,
-    pub active_color: Option<RawColor>,
-    pub inactive_color: Option<RawColor>,
+    pub active_color: Option<ColorDefinition>,
+    pub inactive_color: Option<ColorDefinition>,
     pub border_radius: Option<f32>,
     pub border_size: Option<i32>,
     pub border_offset: Option<i32>,
@@ -54,8 +54,8 @@ pub struct GlobalRule {
     pub border_size: i32,
     pub border_offset: i32,
     pub border_radius: f32,
-    pub active_color: Option<RawColor>,
-    pub inactive_color: Option<RawColor>,
+    pub active_color: Option<ColorDefinition>,
+    pub inactive_color: Option<ColorDefinition>,
     pub init_delay: Option<u64>,
     pub unminimize_delay: Option<u64>,
 }

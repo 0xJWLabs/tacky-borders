@@ -2,8 +2,8 @@ use windows::{
     Win32::Foundation::*, Win32::UI::Accessibility::*, Win32::UI::WindowsAndMessaging::*,
 };
 
-use crate::utils::*;
 use crate::BORDERS;
+use crate::winapi::*;
 
 pub extern "system" fn handle_win_event(
     _h_win_event_hook: HWINEVENTHOOK,
@@ -20,11 +20,11 @@ pub extern "system" fn handle_win_event(
 
     match _event {
         EVENT_OBJECT_LOCATIONCHANGE => {
-            if has_filtered_style(_hwnd) {
+            if WinApi::has_filtered_style(_hwnd) {
                 return;
             }
 
-            let border_window = get_border_from_window(_hwnd);
+            let border_window = WinApi::get_border_from_window(_hwnd);
             if let Some(hwnd) = border_window {
                 unsafe {
                     let _ = SendNotifyMessageW(hwnd, WM_APP_LOCATIONCHANGE, WPARAM(0), LPARAM(0));
@@ -32,7 +32,7 @@ pub extern "system" fn handle_win_event(
             }
         }
         EVENT_OBJECT_REORDER => {
-            if has_filtered_style(_hwnd) {
+            if WinApi::has_filtered_style(_hwnd) {
                 return;
             }
 
@@ -40,7 +40,7 @@ pub extern "system" fn handle_win_event(
 
             for value in borders.values() {
                 let border_window: HWND = HWND(*value as _);
-                if is_window_visible(border_window) {
+                if WinApi::is_window_visible(border_window) {
                     unsafe {
                         let _ = PostMessageW(border_window, WM_APP_REORDER, WPARAM(0), LPARAM(0));
                     }
@@ -49,20 +49,20 @@ pub extern "system" fn handle_win_event(
             drop(borders);
         }
         EVENT_OBJECT_SHOW | EVENT_OBJECT_UNCLOAKED => {
-            show_border_for_window(_hwnd);
+            WinApi::show_border_for_window(_hwnd);
         }
         EVENT_OBJECT_HIDE => {
             // I have to check IsWindowVisible because for some reason, EVENT_OBJECT_HIDE can be
             // sent even while the window is still visible (it does this for Vesktop)
-            if !is_window_visible(_hwnd) {
-                hide_border_for_window(_hwnd);
+            if !WinApi::is_window_visible(_hwnd) {
+                WinApi::hide_border_for_window(_hwnd);
             }
         }
         EVENT_OBJECT_CLOAKED => {
-            hide_border_for_window(_hwnd);
+            WinApi::hide_border_for_window(_hwnd);
         }
         EVENT_SYSTEM_MINIMIZESTART => {
-            let border_option = get_border_from_window(_hwnd);
+            let border_option = WinApi::get_border_from_window(_hwnd);
             if let Some(border_window) = border_option {
                 unsafe {
                     let _ = PostMessageW(border_window, WM_APP_MINIMIZESTART, WPARAM(0), LPARAM(0));
@@ -70,7 +70,7 @@ pub extern "system" fn handle_win_event(
             }
         }
         EVENT_SYSTEM_MINIMIZEEND => {
-            let border_option = get_border_from_window(_hwnd);
+            let border_option = WinApi::get_border_from_window(_hwnd);
             if let Some(border_window) = border_option {
                 unsafe {
                     let _ = PostMessageW(border_window, WM_APP_MINIMIZEEND, WPARAM(0), LPARAM(0));
@@ -79,8 +79,8 @@ pub extern "system" fn handle_win_event(
         }
         // TODO this is called an unnecessary number of times which may hurt performance?
         EVENT_OBJECT_DESTROY => {
-            if !has_filtered_style(_hwnd) {
-                let _ = destroy_border_for_window(_hwnd);
+            if !WinApi::has_filtered_style(_hwnd) {
+                let _ = WinApi::destroy_border_for_window(_hwnd);
 
                 // Use below to debug whether window borders are properly destroyed
                 /*let mutex = &*BORDERS;

@@ -1,16 +1,9 @@
 use regex::Regex;
 use serde::Deserialize;
-use windows::Win32::Graphics::Direct2D::ID2D1Brush;
-use windows::Win32::Graphics::Direct2D::ID2D1HwndRenderTarget;
-use windows::Win32::Graphics::Direct2D::D2D1_BRUSH_PROPERTIES;
-use windows::Win32::Graphics::Direct2D::D2D1_EXTEND_MODE_CLAMP;
-use windows::Win32::Graphics::Direct2D::D2D1_GAMMA_2_2;
-use windows::Win32::Graphics::Direct2D::D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES;
 use windows::{
     Win32::Foundation::*, Win32::Graphics::Direct2D::Common::*, Win32::Graphics::Dwm::*,
 };
 
-use crate::utils::*;
 use log::*;
 
 // Constants
@@ -225,102 +218,6 @@ impl Default for Gradient {
                 },
             ],
             animation: Some(false),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Brush {
-    pub render_target: ID2D1HwndRenderTarget,
-    pub color: Color,
-    pub rect: RECT,
-    pub brush_properties: D2D1_BRUSH_PROPERTIES,
-    pub use_animation: bool,
-    pub gradient_angle: Option<f32>,
-}
-
-impl Brush {
-    pub fn to_id2d1_brush(&self) -> Result<ID2D1Brush, std::io::Error> {
-        let render_target = &self.render_target;
-        let brush_properties = &self.brush_properties;
-
-        match &self.color {
-            Color::Solid(color) => {
-                // Create Solid Color Brush
-                let solid_brush = unsafe {
-                    render_target.CreateSolidColorBrush(color, Some(brush_properties))?
-                };
-                Ok(solid_brush.into()) // Convert to ID2D1Brush
-            }
-            Color::Gradient(gradient_color) => {
-                // Create Gradient Brush
-                let gradient_stops = gradient_color.gradient_stops.clone();
-                let gradient_stop_collection = unsafe {
-                    render_target.CreateGradientStopCollection(
-                        &gradient_stops,
-                        D2D1_GAMMA_2_2,
-                        D2D1_EXTEND_MODE_CLAMP,
-                    )?
-                };
-
-                // Calculate gradient points based on the animation flag and direction
-                let (start_point, end_point) = if self.use_animation {
-                    let width = get_rect_width(self.rect) as f32;
-                    let height = get_rect_height(self.rect) as f32;
-
-                    let center_x = width / 2.0;
-                    let center_y = height / 2.0;
-                    let radius = (center_x.powi(2) + center_y.powi(2)).sqrt();
-
-                    let gradient_angle = self.gradient_angle.unwrap_or(0.0);
-                    let angle_rad = gradient_angle.to_radians();
-                    let (sin, cos) = angle_rad.sin_cos();
-
-                    (
-                        D2D_POINT_2F {
-                            x: center_x - radius * cos,
-                            y: center_y - radius * sin,
-                        },
-                        D2D_POINT_2F {
-                            x: center_x + radius * cos,
-                            y: center_y + radius * sin,
-                        },
-                    )
-                } else {
-                    let width = get_rect_width(self.rect) as f32;
-                    let height = get_rect_height(self.rect) as f32;
-
-                    let (start_x, start_y, end_x, end_y) = match gradient_color.direction.clone() {
-                        Some(coords) => (
-                            coords[0] * width,
-                            coords[1] * height,
-                            coords[2] * width,
-                            coords[3] * height,
-                        ),
-                        None => (0.0, 0.0, width, height),
-                    };
-
-                    (
-                        D2D_POINT_2F { x: start_x, y: start_y },
-                        D2D_POINT_2F { x: end_x, y: end_y },
-                    )
-                };
-
-                let gradient_properties = D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES {
-                    startPoint: start_point,
-                    endPoint: end_point,
-                };
-
-                let gradient_brush = unsafe {
-                    render_target.CreateLinearGradientBrush(
-                        &gradient_properties,
-                        Some(brush_properties),
-                        Some(&gradient_stop_collection),
-                    )?
-                };
-
-                Ok(gradient_brush.into()) // Convert to ID2D1Brush
-            }
         }
     }
 }

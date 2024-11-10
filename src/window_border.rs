@@ -1,5 +1,5 @@
 use crate::colors::*;
-use crate::utils::*;
+use crate::winapi::*;
 use crate::*;
 use log:: *;
 use std::ptr;
@@ -97,14 +97,14 @@ impl WindowBorder {
             }
 
             let _ = self.create_render_targets();
-            if has_native_border(self.tracking_window) {
+            if WinApi::has_native_border(self.tracking_window) {
                 let _ = self.update_position(Some(SWP_SHOWWINDOW));
                 let _ = self.render();
 
                 // Sometimes, it doesn't show the window at first, so we wait 5ms and update it.
                 // This is very hacky and needs to be looked into. It may be related to the issue
                 // detailed in update_window_rect. TODO
-                while !is_window_visible(self.tracking_window) {
+                while !WinApi::is_window_visible(self.tracking_window) {
                     thread::sleep(std::time::Duration::from_millis(5))
                 }
                 let _ = self.update_position(Some(SWP_SHOWWINDOW));
@@ -182,7 +182,7 @@ impl WindowBorder {
             let window_sent: SendHWND = SendHWND(self.border_window);
             std::thread::spawn(move || {
                 let window = window_sent;
-                if is_window_visible(window.0) {
+                if WinApi::is_window_visible(window.0) {
                     unsafe {
                         // Post initial WM_PAINT to start the rendering process
                         let _ = PostMessageW(window.0, WM_PAINT, WPARAM(0), LPARAM(0));
@@ -195,20 +195,16 @@ impl WindowBorder {
     }
 
     pub fn update_window_rect(&mut self) -> Result<()> {
-        let result = unsafe {
-            DwmGetWindowAttribute(
-                self.tracking_window,
-                DWMWA_EXTENDED_FRAME_BOUNDS,
-                std::ptr::addr_of_mut!(self.window_rect) as *mut _,
-                size_of::<RECT>() as u32,
-            )
-        };
-        if result.is_err() {
-            error!("Error getting frame rect!");
-            unsafe {
-                let _ = ShowWindow(self.border_window, SW_HIDE);
-            }
-        }
+        let _ = WinApi::dwm_get_window_attribute(self.tracking_window, 
+            DWMWA_EXTENDED_FRAME_BOUNDS, 
+            &mut self.window_rect, 
+            Some(ErrorMsg::Fn(|| {
+                error!("Error getting frame rect!");
+                unsafe {
+                    let _ = ShowWindow(self.border_window, SW_HIDE);
+                }
+            }))
+        );
 
         self.window_rect.top -= self.border_size;
         self.window_rect.left -= self.border_size;
@@ -247,7 +243,7 @@ impl WindowBorder {
     }
 
     pub fn update_color(&mut self) -> Result<()> {
-        if is_window_active(self.tracking_window) {
+        if WinApi::is_window_active(self.tracking_window) {
             self.current_color = self.active_color.clone()
         } else {
             self.current_color = self.inactive_color.clone()
@@ -281,7 +277,7 @@ impl WindowBorder {
             let _ = render_target.Resize(ptr::addr_of!(pixel_size));
 
             let now = std::time::Instant::now();
-            let is_active = is_window_active(self.tracking_window);
+            let is_active = WinApi::is_window_active(self.tracking_window);
             let last_render_time = if is_active {
                 self.last_render_time_active
             } else {
@@ -306,7 +302,6 @@ impl WindowBorder {
 
             // let brush = self.create_brush(self.current_color.clone()).unwrap();
 
-            let is_active = is_window_active(self.tracking_window);
             let condition = if is_active {
                 self.use_active_animation
             } else {
@@ -380,12 +375,12 @@ impl WindowBorder {
                 if self.pause {
                     return LRESULT(0);
                 }
-                if !has_native_border(self.tracking_window) {
+                if !WinApi::has_native_border(self.tracking_window) {
                     let _ = self.update_position(Some(SWP_HIDEWINDOW));
                     return LRESULT(0);
                 }
 
-                let flags = if !is_window_visible(self.border_window) {
+                let flags = if !WinApi::is_window_visible(self.border_window) {
                     Some(SWP_SHOWWINDOW)
                 } else {
                     None
@@ -398,9 +393,9 @@ impl WindowBorder {
                 // TODO When a window is minimized, all four points of the rect go way below 0. For
                 // some reason, after unminimizing/restoring, render() will sometimes render at
                 // this minimized size. self.window_rect = old_rect is hopefully only a temporary solution.
-                if !is_rect_visible(&self.window_rect) {
+                if !WinApi::is_rect_visible(&self.window_rect) {
                     self.window_rect = old_rect;
-                } else if !are_rects_same_size(&self.window_rect, &old_rect) {
+                } else if !WinApi::are_rects_same_size(&self.window_rect, &old_rect) {
                     // Only re-render the border when its size changes
                     let _ = self.render();
                 }
@@ -417,7 +412,7 @@ impl WindowBorder {
             }
             // EVENT_OBJECT_SHOW / EVENT_OBJECT_UNCLOAKED
             WM_APP_SHOWUNCLOAKED => {
-                if has_native_border(self.tracking_window) {
+                if WinApi::has_native_border(self.tracking_window) {
                     let _ = self.update_color();
                     let _ = self.update_window_rect();
                     let _ = self.update_position(Some(SWP_SHOWWINDOW));
@@ -441,7 +436,7 @@ impl WindowBorder {
             WM_APP_MINIMIZEEND => {
                 thread::sleep(time::Duration::from_millis(self.unminimize_delay));
 
-                if has_native_border(self.tracking_window) {
+                if WinApi::has_native_border(self.tracking_window) {
                     let _ = self.update_color();
                     let _ = self.update_window_rect();
                     let _ = self.update_position(Some(SWP_SHOWWINDOW));

@@ -16,8 +16,9 @@ use std::collections::HashMap;
 use std::ffi::c_ulong;
 use std::sync::{LazyLock, Mutex};
 use std::thread;
-use utils::*;
+use utils::get_log;
 use windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE};
+use winapi::WinApi;
 
 use windows::{
     core::*, Win32::Foundation::*, Win32::System::SystemServices::IMAGE_DOS_HEADER,
@@ -31,6 +32,7 @@ mod event_hook;
 mod sys_tray_icon;
 mod utils;
 mod window_border;
+mod winapi;
 
 extern "C" {
     pub static __ImageBase: IMAGE_DOS_HEADER;
@@ -82,7 +84,7 @@ fn main() {
 
     EVENT_HOOK.replace(set_event_hook());
     let _ = register_window_class();
-    let _ = enum_windows();
+    let _ = WinApi::enum_windows();
     unsafe {
         debug!("Entering message loop!");
         let mut message = MSG::default();
@@ -133,20 +135,6 @@ pub fn set_event_hook() -> HWINEVENTHOOK {
     }
 }
 
-pub fn enum_windows() -> Result<()> {
-    let mut windows: Vec<HWND> = Vec::new();
-    unsafe {
-        let _ = EnumWindows(
-            Some(enum_windows_callback),
-            LPARAM(&mut windows as *mut _ as isize),
-            // LPARAM::default(),
-        );
-    }
-    debug!("Windows have been enumerated");
-
-    Ok(())
-}
-
 pub fn restart_borders() {
     let mutex = &*BORDERS;
     let mut borders = mutex.lock().unwrap();
@@ -158,7 +146,7 @@ pub fn restart_borders() {
     }
     borders.clear();
     drop(borders);
-    let _ = enum_windows();
+    let _ = WinApi::enum_windows();
 }
 
 // Might use it to remove native border
@@ -184,9 +172,9 @@ fn _remove_border() {
 }
 
 unsafe extern "system" fn enum_windows_callback(_hwnd: HWND, _lparam: LPARAM) -> BOOL {
-    if !has_filtered_style(_hwnd) {
-        if is_window_visible(_hwnd) && !is_cloaked(_hwnd) {
-            let _ = create_border_for_window(_hwnd);
+    if !WinApi::has_filtered_style(_hwnd) {
+        if WinApi::is_window_visible(_hwnd) && !WinApi::is_window_cloaked(_hwnd) {
+            let _ = WinApi::create_border_for_window(_hwnd);
         }
 
         INITIAL_WINDOWS.lock().unwrap().push(_hwnd.0 as isize);

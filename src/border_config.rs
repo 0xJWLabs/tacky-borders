@@ -3,7 +3,7 @@ use std::fs;
 use std::sync::{LazyLock, Mutex};
 
 use crate::colors::*;
-use crate::utils::*;
+use crate::utils::get_config;
 
 const DEFAULT_CONFIG: &str = include_str!("resources/config.yaml");
 

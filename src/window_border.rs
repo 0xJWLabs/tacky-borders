@@ -319,14 +319,14 @@ impl WindowBorder {
                 self.inactive_gradient_angle
             };
 
-            let brush = ID2D1Brush::from(Brush {
+            let brush = Brush {
                 render_target: render_target.clone(),
                 color: self.current_color.clone(),
                 rect: self.window_rect,
                 use_animation: condition,
                 brush_properties: self.brush_properties,
                 gradient_angle: Some(gradient_angle)
-            });
+            }.to_id2d1_brush().unwrap();
 
             render_target.BeginDraw();
             render_target.Clear(None);

@@ -18,7 +18,6 @@ use windows::{
         UI::WindowsAndMessaging::*,
     },
 };
-use windows_result::*;
 
 use crate::border_config::*;
 use crate::*;

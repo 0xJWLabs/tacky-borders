@@ -1,16 +1,73 @@
 use crate::colors::*;
-use crate::winapi::*;
+use crate::windowsapi::Brush;
+use crate::windowsapi::ErrorMsg;
+use crate::windowsapi::WindowsApi;
+use crate::windowsapi::WM_APP_HIDECLOAKED;
+use crate::windowsapi::WM_APP_LOCATIONCHANGE;
+use crate::windowsapi::WM_APP_MINIMIZEEND;
+use crate::windowsapi::WM_APP_MINIMIZESTART;
+use crate::windowsapi::WM_APP_REORDER;
+use crate::windowsapi::WM_APP_SHOWUNCLOAKED;
 use crate::*;
-use log:: *;
+use log::*;
 use std::ptr;
 use std::sync::LazyLock;
 use std::sync::OnceLock;
 use std::thread;
 use std::time;
-use windows::{
-    Foundation::Numerics::*, Win32::Graphics::Direct2D::Common::*, Win32::Graphics::Direct2D::*,
-    Win32::Graphics::Dwm::*, Win32::Graphics::Dxgi::Common::*, Win32::Graphics::Gdi::*,
-};
+use windows::Foundation::Numerics::Matrix3x2;
+use windows::Win32::Foundation::FALSE;
+use windows::Win32::Foundation::HINSTANCE;
+use windows::Win32::Foundation::HWND;
+use windows::Win32::Foundation::RECT;
+use windows::Win32::Foundation::TRUE;
+use windows::Win32::Graphics::Direct2D::Common::D2D1_ALPHA_MODE_PREMULTIPLIED;
+use windows::Win32::Graphics::Direct2D::Common::D2D1_PIXEL_FORMAT;
+use windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F;
+use windows::Win32::Graphics::Direct2D::Common::D2D_SIZE_U;
+use windows::Win32::Graphics::Direct2D::D2D1CreateFactory;
+use windows::Win32::Graphics::Direct2D::ID2D1Factory;
+use windows::Win32::Graphics::Direct2D::ID2D1HwndRenderTarget;
+use windows::Win32::Graphics::Direct2D::D2D1_ANTIALIAS_MODE_PER_PRIMITIVE;
+use windows::Win32::Graphics::Direct2D::D2D1_BRUSH_PROPERTIES;
+use windows::Win32::Graphics::Direct2D::D2D1_FACTORY_TYPE_MULTI_THREADED;
+use windows::Win32::Graphics::Direct2D::D2D1_HWND_RENDER_TARGET_PROPERTIES;
+use windows::Win32::Graphics::Direct2D::D2D1_PRESENT_OPTIONS_IMMEDIATELY;
+use windows::Win32::Graphics::Direct2D::D2D1_RENDER_TARGET_PROPERTIES;
+use windows::Win32::Graphics::Direct2D::D2D1_RENDER_TARGET_TYPE_DEFAULT;
+use windows::Win32::Graphics::Direct2D::D2D1_ROUNDED_RECT;
+use windows::Win32::UI::WindowsAndMessaging::CreateWindowExW;
+use windows::Win32::UI::WindowsAndMessaging::DefWindowProcW;
+use windows::Win32::UI::WindowsAndMessaging::GetSystemMetrics;
+use windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW;
+use windows::Win32::UI::WindowsAndMessaging::PostQuitMessage;
+use windows::Win32::UI::WindowsAndMessaging::SetTimer;
+use windows::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW;
+use windows::Win32::UI::WindowsAndMessaging::CREATESTRUCTW;
+use windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA;
+use windows::Win32::UI::WindowsAndMessaging::GW_HWNDPREV;
+use windows::Win32::UI::WindowsAndMessaging::LWA_ALPHA;
+use windows::Win32::UI::WindowsAndMessaging::LWA_COLORKEY;
+use windows::Win32::UI::WindowsAndMessaging::SM_CXVIRTUALSCREEN;
+use windows::Win32::UI::WindowsAndMessaging::SWP_NOACTIVATE;
+use windows::Win32::UI::WindowsAndMessaging::SWP_NOREDRAW;
+use windows::Win32::UI::WindowsAndMessaging::SWP_NOSENDCHANGING;
+use windows::Win32::UI::WindowsAndMessaging::SWP_NOZORDER;
+use windows::Win32::UI::WindowsAndMessaging::SWP_SHOWWINDOW;
+use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
+use windows::Win32::UI::WindowsAndMessaging::WM_CREATE;
+use windows::Win32::UI::WindowsAndMessaging::WM_DESTROY;
+use windows::Win32::UI::WindowsAndMessaging::WM_PAINT;
+use windows::Win32::UI::WindowsAndMessaging::WM_TIMER;
+use windows::Win32::UI::WindowsAndMessaging::WM_WINDOWPOSCHANGED;
+use windows::Win32::UI::WindowsAndMessaging::WM_WINDOWPOSCHANGING;
+use windows::Win32::UI::WindowsAndMessaging::WS_DISABLED;
+use windows::Win32::UI::WindowsAndMessaging::WS_EX_LAYERED;
+use windows::Win32::UI::WindowsAndMessaging::WS_EX_TOOLWINDOW;
+use windows::Win32::UI::WindowsAndMessaging::WS_EX_TOPMOST;
+use windows::Win32::UI::WindowsAndMessaging::WS_EX_TRANSPARENT;
+use windows::Win32::UI::WindowsAndMessaging::WS_POPUP;
+use windows::{Win32::Graphics::Dwm::*, Win32::Graphics::Dxgi::Common::*, Win32::Graphics::Gdi::*};
 
 pub static RENDER_FACTORY: LazyLock<ID2D1Factory> = unsafe {
     LazyLock::new(|| {
@@ -84,27 +141,31 @@ impl WindowBorder {
             }
 
             let _ = DwmEnableBlurBehindWindow(self.border_window, &bh);
+            let _ = WindowsApi::set_layered_window_attributes::<fn()>(
+                self.border_window,
+                COLORREF(0x00000000),
+                0,
+                LWA_COLORKEY,
+                None,
+            );
 
-            if SetLayeredWindowAttributes(self.border_window, COLORREF(0x00000000), 0, LWA_COLORKEY)
-                .is_err()
-            {
-                error!("Error setting layered window attributes!");
-            }
-            if SetLayeredWindowAttributes(self.border_window, COLORREF(0x00000000), 255, LWA_ALPHA)
-                .is_err()
-            {
-                error!("Error setting layered window attributes!");
-            }
+            let _ = WindowsApi::set_layered_window_attributes::<fn()>(
+                self.border_window,
+                COLORREF(0x00000000),
+                255,
+                LWA_ALPHA,
+                None,
+            );
 
             let _ = self.create_render_targets();
-            if WinApi::has_native_border(self.tracking_window) {
+            if WindowsApi::has_native_border(self.tracking_window) {
                 let _ = self.update_position(Some(SWP_SHOWWINDOW));
                 let _ = self.render();
 
                 // Sometimes, it doesn't show the window at first, so we wait 5ms and update it.
                 // This is very hacky and needs to be looked into. It may be related to the issue
                 // detailed in update_window_rect. TODO
-                while !WinApi::is_window_visible(self.tracking_window) {
+                while !WindowsApi::is_window_visible(self.tracking_window) {
                     thread::sleep(std::time::Duration::from_millis(5))
                 }
                 let _ = self.update_position(Some(SWP_SHOWWINDOW));
@@ -117,7 +178,10 @@ impl WindowBorder {
                 let _ = TranslateMessage(&message);
                 DispatchMessageW(&message);
             }
-            debug!("{}", format!("exiting border thread for {:?}!", self.tracking_window));
+            debug!(
+                "{}",
+                format!("exiting border thread for {:?}!", self.tracking_window)
+            );
         }
 
         Ok(())
@@ -182,7 +246,7 @@ impl WindowBorder {
             let window_sent: SendHWND = SendHWND(self.border_window);
             std::thread::spawn(move || {
                 let window = window_sent;
-                if WinApi::is_window_visible(window.0) {
+                if WindowsApi::is_window_visible(window.0) {
                     unsafe {
                         // Post initial WM_PAINT to start the rendering process
                         let _ = PostMessageW(window.0, WM_PAINT, WPARAM(0), LPARAM(0));
@@ -195,15 +259,16 @@ impl WindowBorder {
     }
 
     pub fn update_window_rect(&mut self) -> Result<()> {
-        let _ = WinApi::dwm_get_window_attribute(self.tracking_window, 
-            DWMWA_EXTENDED_FRAME_BOUNDS, 
-            &mut self.window_rect, 
+        let _ = WindowsApi::dwm_get_window_attribute(
+            self.tracking_window,
+            DWMWA_EXTENDED_FRAME_BOUNDS,
+            &mut self.window_rect,
             Some(ErrorMsg::Fn(|| {
                 error!("Error getting frame rect!");
                 unsafe {
                     let _ = ShowWindow(self.border_window, SW_HIDE);
                 }
-            }))
+            })),
         );
 
         self.window_rect.top -= self.border_size;
@@ -218,7 +283,8 @@ impl WindowBorder {
         unsafe {
             // Place the window border above the tracking window
             let hwnd_above_tracking = GetWindow(self.tracking_window, GW_HWNDPREV);
-            let mut u_flags = SWP_NOSENDCHANGING | SWP_NOACTIVATE | SWP_NOREDRAW | c_flags.unwrap_or_default();
+            let mut u_flags =
+                SWP_NOSENDCHANGING | SWP_NOACTIVATE | SWP_NOREDRAW | c_flags.unwrap_or_default();
 
             if hwnd_above_tracking == Ok(self.border_window) {
                 u_flags |= SWP_NOZORDER;
@@ -243,7 +309,7 @@ impl WindowBorder {
     }
 
     pub fn update_color(&mut self) -> Result<()> {
-        if WinApi::is_window_active(self.tracking_window) {
+        if WindowsApi::is_window_active(self.tracking_window) {
             self.current_color = self.active_color.clone()
         } else {
             self.current_color = self.inactive_color.clone()
@@ -277,7 +343,7 @@ impl WindowBorder {
             let _ = render_target.Resize(ptr::addr_of!(pixel_size));
 
             let now = std::time::Instant::now();
-            let is_active = WinApi::is_window_active(self.tracking_window);
+            let is_active = WindowsApi::is_window_active(self.tracking_window);
             let last_render_time = if is_active {
                 self.last_render_time_active
             } else {
@@ -320,8 +386,10 @@ impl WindowBorder {
                 rect: self.window_rect,
                 use_animation: condition,
                 brush_properties: self.brush_properties,
-                gradient_angle: Some(gradient_angle)
-            }.to_id2d1_brush().unwrap();
+                gradient_angle: Some(gradient_angle),
+            }
+            .to_id2d1_brush()
+            .unwrap();
 
             render_target.BeginDraw();
             render_target.Clear(None);
@@ -370,17 +438,17 @@ impl WindowBorder {
         lparam: LPARAM,
     ) -> LRESULT {
         match message {
-             // EVENT_OBJECT_LOCATIONCHANGE
-             WM_APP_LOCATIONCHANGE => {
+            // EVENT_OBJECT_LOCATIONCHANGE
+            WM_APP_LOCATIONCHANGE => {
                 if self.pause {
                     return LRESULT(0);
                 }
-                if !WinApi::has_native_border(self.tracking_window) {
+                if !WindowsApi::has_native_border(self.tracking_window) {
                     let _ = self.update_position(Some(SWP_HIDEWINDOW));
                     return LRESULT(0);
                 }
 
-                let flags = if !WinApi::is_window_visible(self.border_window) {
+                let flags = if !WindowsApi::is_window_visible(self.border_window) {
                     Some(SWP_SHOWWINDOW)
                 } else {
                     None
@@ -393,9 +461,9 @@ impl WindowBorder {
                 // TODO When a window is minimized, all four points of the rect go way below 0. For
                 // some reason, after unminimizing/restoring, render() will sometimes render at
                 // this minimized size. self.window_rect = old_rect is hopefully only a temporary solution.
-                if !WinApi::is_rect_visible(&self.window_rect) {
+                if !WindowsApi::is_rect_visible(&self.window_rect) {
                     self.window_rect = old_rect;
-                } else if !WinApi::are_rects_same_size(&self.window_rect, &old_rect) {
+                } else if !WindowsApi::are_rects_same_size(&self.window_rect, &old_rect) {
                     // Only re-render the border when its size changes
                     let _ = self.render();
                 }
@@ -412,7 +480,7 @@ impl WindowBorder {
             }
             // EVENT_OBJECT_SHOW / EVENT_OBJECT_UNCLOAKED
             WM_APP_SHOWUNCLOAKED => {
-                if WinApi::has_native_border(self.tracking_window) {
+                if WindowsApi::has_native_border(self.tracking_window) {
                     let _ = self.update_color();
                     let _ = self.update_window_rect();
                     let _ = self.update_position(Some(SWP_SHOWWINDOW));
@@ -436,14 +504,14 @@ impl WindowBorder {
             WM_APP_MINIMIZEEND => {
                 thread::sleep(time::Duration::from_millis(self.unminimize_delay));
 
-                if WinApi::has_native_border(self.tracking_window) {
+                if WindowsApi::has_native_border(self.tracking_window) {
                     let _ = self.update_color();
                     let _ = self.update_window_rect();
                     let _ = self.update_position(Some(SWP_SHOWWINDOW));
                     let _ = self.render();
                 }
                 self.pause = false;
-            } 
+            }
             WM_PAINT => {
                 let _ = self.render();
                 let _ = ValidateRect(window, None);

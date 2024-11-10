@@ -1,4 +1,5 @@
-use colors::{Color, ColorDefinition};
+use colors::Color;
+use colors::ColorDefinition;
 use regex::Regex;
 use windows::{
     core::PWSTR,
@@ -21,6 +22,7 @@ use windows::{
 
 use crate::border_config::*;
 use crate::*;
+use windows::Win32::UI::HiDpi::GetDpiForWindow;
 
 pub const WM_APP_LOCATIONCHANGE: u32 = WM_APP;
 pub const WM_APP_REORDER: u32 = WM_APP + 1;
@@ -72,8 +74,8 @@ impl Brush {
 
                 // Calculate gradient points based on the animation flag and direction
                 let (start_point, end_point) = if self.use_animation {
-                    let width = WinApi::get_rect_width(self.rect) as f32;
-                    let height = WinApi::get_rect_height(self.rect) as f32;
+                    let width = WindowsApi::get_rect_width(self.rect) as f32;
+                    let height = WindowsApi::get_rect_height(self.rect) as f32;
 
                     let center_x = width / 2.0;
                     let center_y = height / 2.0;
@@ -94,8 +96,8 @@ impl Brush {
                         },
                     )
                 } else {
-                    let width = WinApi::get_rect_width(self.rect) as f32;
-                    let height = WinApi::get_rect_height(self.rect) as f32;
+                    let width = WindowsApi::get_rect_width(self.rect) as f32;
+                    let height = WindowsApi::get_rect_height(self.rect) as f32;
 
                     let (start_x, start_y, end_x, end_y) = match gradient_color.direction.clone() {
                         Some(coords) => (
@@ -135,9 +137,9 @@ impl Brush {
     }
 }
 
-pub struct WinApi;
+pub struct WindowsApi;
 
-impl WinApi {
+impl WindowsApi {
     pub fn get_rect_width(rect: RECT) -> i32 {
         rect.right - rect.left
     }
@@ -153,6 +155,57 @@ impl WinApi {
     pub fn are_rects_same_size(rect1: &RECT, rect2: &RECT) -> bool {
         rect1.right - rect1.left == rect2.right - rect2.left
             && rect1.bottom - rect1.top == rect2.bottom - rect2.top
+    }
+
+    pub fn set_layered_window_attributes<E>(
+        hwnd: HWND,
+        crkey: COLORREF,
+        alpha: u8,
+        flags: LAYERED_WINDOW_ATTRIBUTES_FLAGS,
+        err: Option<ErrorMsg<E>>,
+    ) -> Result<()>
+    where
+        E: FnOnce(),
+    {
+        let result = unsafe { SetLayeredWindowAttributes(hwnd, crkey, alpha, flags) };
+        if result.is_err() {
+            match err {
+                Some(ErrorMsg::Fn(f)) => f(), // Call the function if it's a `Fn` variant
+                Some(ErrorMsg::String(msg)) => println!("Error: {}", msg), // Print the message if it's a `String` variant,
+                None => println!("Error: Setting window layered attributes"),
+            };
+        }
+
+        Ok(())
+    }
+
+    pub fn _dwm_set_window_attribute<T, E>(
+        hwnd: HWND,
+        attribute: DWMWINDOWATTRIBUTE,
+        value: &T,
+        err: Option<ErrorMsg<E>>,
+    ) -> Result<()>
+    where
+        E: FnOnce(),
+    {
+        let result = unsafe {
+            DwmSetWindowAttribute(
+                hwnd,
+                attribute,
+                (value as *const T).cast(),
+                u32::try_from(std::mem::size_of::<T>())?,
+            )
+        };
+
+        if result.is_err() {
+            match err {
+                Some(ErrorMsg::Fn(f)) => f(), // Call the function if it's a `Fn` variant
+                Some(ErrorMsg::String(msg)) => println!("Error: {}", msg), // Print the message if it's a `String` variant,
+                None => println!("Error: Setting window attribute"),
+            };
+        }
+
+        Ok(())
     }
 
     pub fn dwm_get_window_attribute<T, E>(
@@ -184,7 +237,7 @@ impl WinApi {
         Ok(())
     }
 
-    pub fn enum_windows() -> Result<()> {
+    pub fn enum_windows() -> Result<Vec<HWND>> {
         let mut windows: Vec<HWND> = Vec::new();
         unsafe {
             let _ = EnumWindows(
@@ -195,7 +248,7 @@ impl WinApi {
         }
         debug!("Windows have been enumerated");
 
-        Ok(())
+        Ok(windows)
     }
 
     pub fn is_window_cloaked(hwnd: HWND) -> bool {
@@ -547,7 +600,7 @@ fn convert_config_radius(config_size: i32, config_radius: f32, tracking_window: 
     // -1.0 means to use default Windows corner preference. I might want to use an enum to allow
     // for something like border_radius == "system" instead TODO
     if config_radius == -1.0 {
-        let _ = WinApi::dwm_get_window_attribute::<DWM_WINDOW_CORNER_PREFERENCE, fn()>(
+        let _ = WindowsApi::dwm_get_window_attribute::<DWM_WINDOW_CORNER_PREFERENCE, fn()>(
             tracking_window,
             DWMWA_WINDOW_CORNER_PREFERENCE,
             &mut corner_preference,

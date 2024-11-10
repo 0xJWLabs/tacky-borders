@@ -1,8 +1,10 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use std::fs;
-use std::sync::{LazyLock, Mutex};
+use std::sync::LazyLock;
+use std::sync::Mutex;
 
-use crate::colors::*;
+use crate::colors::ColorDefinition;
 use crate::utils::get_config;
 
 const DEFAULT_CONFIG: &str = include_str!("resources/config.yaml");

@@ -1,10 +1,10 @@
 use regex::Regex;
 use serde::Deserialize;
-use windows::{
-    Win32::Foundation::*, Win32::Graphics::Direct2D::Common::*, Win32::Graphics::Dwm::*,
-};
-
-use log::*;
+use windows::Win32::Foundation::BOOL;
+use windows::Win32::Foundation::FALSE;
+use windows::Win32::Graphics::Direct2D::Common::D2D1_COLOR_F;
+use windows::Win32::Graphics::Direct2D::Common::D2D1_GRADIENT_STOP;
+use windows::Win32::Graphics::Dwm::DwmGetColorizationColor;
 
 // Constants
 const COLOR_PATTERN: &str = r"(?i)#[0-9A-F]{3,8}|rgba?\([0-9]{1,3},\s*[0-9]{1,3},\s*[0-9]{1,3}(?:,\s*[0-9]*(?:\.[0-9]+)?)?\)|accent|transparent";

@@ -1,4 +1,9 @@
-use tray_icon::{menu::Menu, menu::MenuEvent, menu::MenuItem, Icon, TrayIcon, TrayIconBuilder};
+use tray_icon::menu::Menu;
+use tray_icon::menu::MenuEvent;
+use tray_icon::menu::MenuItem;
+use tray_icon::Icon;
+use tray_icon::TrayIcon;
+use tray_icon::TrayIconBuilder;
 use windows::Win32::System::Threading::ExitProcess;
 use windows::Win32::UI::Accessibility::UnhookWinEvent;
 
@@ -6,7 +11,6 @@ use crate::border_config::Config;
 use crate::restart_borders;
 use crate::utils::*;
 use crate::EVENT_HOOK;
-use log::*;
 
 pub fn create_tray_icon() -> Result<TrayIcon, tray_icon::Error> {
     let icon = match Icon::from_resource(1, Some((64, 64))) {
@@ -25,7 +29,7 @@ pub fn create_tray_icon() -> Result<TrayIcon, tray_icon::Error> {
 
     let tray_icon = TrayIconBuilder::new()
         .with_menu(Box::new(tray_menu))
-        .with_tooltip("tacky-borders")
+        .with_tooltip(format!("tacky-borders v{}", env!("CARGO_PKG_VERSION")))
         .with_icon(icon)
         .build();
 

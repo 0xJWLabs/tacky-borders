@@ -36,6 +36,7 @@ pub enum BorderRadiusOption {
 }
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
+#[serde(untagged)]
 pub enum BorderRadius {
     String(BorderRadiusOption),
     Float(f32)

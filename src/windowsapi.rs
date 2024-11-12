@@ -1,28 +1,78 @@
-use colors::Color;
-use colors::ColorConfig;
+use std::thread;
 use regex::Regex;
-use windows::{
-    core::PWSTR,
-    Win32::{
-        Foundation::*,
-        Graphics::{
-            Direct2D::{
-                Common::D2D_POINT_2F, ID2D1Brush, ID2D1HwndRenderTarget, D2D1_BRUSH_PROPERTIES,
-                D2D1_EXTEND_MODE_CLAMP, D2D1_GAMMA_2_2, D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES,
-            },
-            Dwm::*,
-        },
-        System::Threading::{
-            OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
-            PROCESS_QUERY_LIMITED_INFORMATION,
-        },
-        UI::WindowsAndMessaging::*,
-    },
-};
 
-use crate::border_config::*;
-use crate::*;
+use windows::core::Result;
+use windows::core::PWSTR;
+use windows::Win32::Foundation::BOOL;
+use windows::Win32::Foundation::CloseHandle;
+use windows::Win32::Foundation::COLORREF;
+use windows::Win32::Foundation::FALSE;
+use windows::Win32::Foundation::HINSTANCE;
+use windows::Win32::Foundation::HWND;
+use windows::Win32::Foundation::LPARAM;
+use windows::Win32::Foundation::RECT;
+use windows::Win32::Foundation::WPARAM;
+
+use windows::Win32::Graphics::Direct2D::D2D1_BRUSH_PROPERTIES;
+use windows::Win32::Graphics::Direct2D::D2D1_EXTEND_MODE_CLAMP;
+use windows::Win32::Graphics::Direct2D::D2D1_GAMMA_2_2;
+use windows::Win32::Graphics::Direct2D::D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES;
+use windows::Win32::Graphics::Direct2D::ID2D1Brush;
+use windows::Win32::Graphics::Direct2D::ID2D1HwndRenderTarget;
+use windows::Win32::Graphics::Direct2D::Common::D2D_POINT_2F;
+
+use windows::Win32::Graphics::Dwm::DWMWINDOWATTRIBUTE;
+use windows::Win32::Graphics::Dwm::DWMWA_CLOAKED;
+use windows::Win32::Graphics::Dwm::DWMWA_WINDOW_CORNER_PREFERENCE;
+use windows::Win32::Graphics::Dwm::DWM_WINDOW_CORNER_PREFERENCE;
+use windows::Win32::Graphics::Dwm::DWMWCP_DEFAULT;
+use windows::Win32::Graphics::Dwm::DWMWCP_DONOTROUND;
+use windows::Win32::Graphics::Dwm::DWMWCP_ROUND;
+use windows::Win32::Graphics::Dwm::DWMWCP_ROUNDSMALL;
+use windows::Win32::Graphics::Dwm::DwmGetWindowAttribute;
+use windows::Win32::Graphics::Dwm::DwmSetWindowAttribute;
+
+use windows::Win32::System::Threading::OpenProcess;
+use windows::Win32::System::Threading::PROCESS_NAME_WIN32;
+use windows::Win32::System::Threading::PROCESS_QUERY_LIMITED_INFORMATION;
+use windows::Win32::System::Threading::QueryFullProcessImageNameW;
+
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
+
+use windows::Win32::UI::WindowsAndMessaging::EnumWindows;
+use windows::Win32::UI::WindowsAndMessaging::GWL_EXSTYLE;
+use windows::Win32::UI::WindowsAndMessaging::GWL_STYLE;
+use windows::Win32::UI::WindowsAndMessaging::GetClassNameW;
+use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+use windows::Win32::UI::WindowsAndMessaging::GetWindowLongW;
+use windows::Win32::UI::WindowsAndMessaging::GetWindowTextW;
+use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
+use windows::Win32::UI::WindowsAndMessaging::IsWindowVisible;
+use windows::Win32::UI::WindowsAndMessaging::LAYERED_WINDOW_ATTRIBUTES_FLAGS;
+use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
+use windows::Win32::UI::WindowsAndMessaging::SetLayeredWindowAttributes;
+use windows::Win32::UI::WindowsAndMessaging::WM_APP;
+use windows::Win32::UI::WindowsAndMessaging::WM_CLOSE;
+
+use windows::Win32::UI::WindowsAndMessaging::WS_CHILD;
+use windows::Win32::UI::WindowsAndMessaging::WS_EX_NOACTIVATE;
+use windows::Win32::UI::WindowsAndMessaging::WS_EX_TOOLWINDOW;
+use windows::Win32::UI::WindowsAndMessaging::WS_EX_WINDOWEDGE;
+use windows::Win32::UI::WindowsAndMessaging::WS_MAXIMIZE;
+
+use crate::BORDERS;
+use crate::__ImageBase;
+use crate::INITIAL_WINDOWS;
+use crate::border_config::BorderRadius;
+use crate::border_config::BorderRadiusOption;
+use crate::border_config::MatchKind;
+use crate::border_config::MatchStrategy;
+use crate::border_config::WindowRule;
+use crate::border_config::CONFIG;
+use crate::colors::Color;
+use crate::colors::ColorConfig;
+use crate::enum_windows_callback;
+use crate::window_border::WindowBorder;
 
 pub const WM_APP_LOCATIONCHANGE: u32 = WM_APP;
 pub const WM_APP_REORDER: u32 = WM_APP + 1;
@@ -30,6 +80,11 @@ pub const WM_APP_SHOWUNCLOAKED: u32 = WM_APP + 2;
 pub const WM_APP_HIDECLOAKED: u32 = WM_APP + 3;
 pub const WM_APP_MINIMIZESTART: u32 = WM_APP + 4;
 pub const WM_APP_MINIMIZEEND: u32 = WM_APP + 5;
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct SendHWND(pub HWND);
+unsafe impl Send for SendHWND {}
+unsafe impl Sync for SendHWND {}
 
 pub enum ErrorMsg<F>
 where
@@ -507,7 +562,7 @@ impl WindowsApi {
 
             //println!("time it takes to get colors: {:?}", before.elapsed());
 
-            let mut border = window_border::WindowBorder {
+            let mut border = WindowBorder {
                 tracking_window: window_sent.0,
                 border_size: config_size,
                 border_offset,
@@ -611,7 +666,9 @@ fn convert_config_radius(
                     tracking_window,
                     DWMWA_WINDOW_CORNER_PREFERENCE,
                     &mut corner_preference,
-                    Some(ErrorMsg::String("Getting window corner preference".to_string())),
+                    Some(ErrorMsg::String(
+                        "Getting window corner preference".to_string(),
+                    )),
                 );
                 match corner_preference {
                     DWMWCP_DEFAULT | DWMWCP_ROUND => {
@@ -636,7 +693,9 @@ fn convert_config_radius(
                     tracking_window,
                     DWMWA_WINDOW_CORNER_PREFERENCE,
                     &mut corner_preference,
-                    Some(ErrorMsg::String("Getting window corner preference".to_string())),
+                    Some(ErrorMsg::String(
+                        "Getting window corner preference".to_string(),
+                    )),
                 );
                 match corner_preference {
                     DWMWCP_DEFAULT | DWMWCP_ROUND => {

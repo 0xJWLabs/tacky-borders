@@ -1,9 +1,13 @@
 use dirs::home_dir;
-use log::*;
-use std::fs::*;
-use std::path::*;
 
-use crate::*;
+use std::fs::DirBuilder;
+use std::fs::exists;
+use std::fs::File;
+use std::fs::OpenOptions;
+use std::fs::write;
+use std::path::PathBuf;
+
+use windows::core::Result;
 
 // Configuration
 pub fn get_config() -> PathBuf {

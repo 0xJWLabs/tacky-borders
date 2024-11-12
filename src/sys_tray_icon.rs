@@ -4,13 +4,14 @@ use tray_icon::menu::MenuItem;
 use tray_icon::Icon;
 use tray_icon::TrayIcon;
 use tray_icon::TrayIconBuilder;
+
 use windows::Win32::System::Threading::ExitProcess;
 use windows::Win32::UI::Accessibility::UnhookWinEvent;
 
 use crate::border_config::Config;
 use crate::restart_borders;
-use crate::utils::*;
 use crate::EVENT_HOOK;
+use crate::utils::get_config;
 
 pub fn create_tray_icon() -> Result<TrayIcon, tray_icon::Error> {
     let icon = match Icon::from_resource(1, Some((64, 64))) {

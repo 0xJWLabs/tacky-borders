@@ -1,4 +1,4 @@
-use crate::colors::*;
+use crate::colors::Color;
 use crate::windowsapi::Brush;
 use crate::windowsapi::ErrorMsg;
 use crate::windowsapi::WindowsApi;
@@ -8,19 +8,29 @@ use crate::windowsapi::WM_APP_MINIMIZEEND;
 use crate::windowsapi::WM_APP_MINIMIZESTART;
 use crate::windowsapi::WM_APP_REORDER;
 use crate::windowsapi::WM_APP_SHOWUNCLOAKED;
-use crate::*;
-use log::*;
+use crate::windowsapi::SendHWND;
+
 use std::ptr;
 use std::sync::LazyLock;
 use std::sync::OnceLock;
 use std::thread;
 use std::time;
+
+use windows::core::Result;
+use windows::core::w;
+
 use windows::Foundation::Numerics::Matrix3x2;
+
 use windows::Win32::Foundation::FALSE;
 use windows::Win32::Foundation::HINSTANCE;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Foundation::RECT;
 use windows::Win32::Foundation::TRUE;
+use windows::Win32::Foundation::COLORREF;
+use windows::Win32::Foundation::LPARAM;
+use windows::Win32::Foundation::WPARAM;
+use windows::Win32::Foundation::LRESULT;
+
 use windows::Win32::Graphics::Direct2D::Common::D2D1_ALPHA_MODE_PREMULTIPLIED;
 use windows::Win32::Graphics::Direct2D::Common::D2D1_PIXEL_FORMAT;
 use windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F;
@@ -36,16 +46,38 @@ use windows::Win32::Graphics::Direct2D::D2D1_PRESENT_OPTIONS_IMMEDIATELY;
 use windows::Win32::Graphics::Direct2D::D2D1_RENDER_TARGET_PROPERTIES;
 use windows::Win32::Graphics::Direct2D::D2D1_RENDER_TARGET_TYPE_DEFAULT;
 use windows::Win32::Graphics::Direct2D::D2D1_ROUNDED_RECT;
+
+use windows::Win32::Graphics::Dwm::DWM_BLURBEHIND;
+use windows::Win32::Graphics::Dwm::DWM_BB_ENABLE;
+use windows::Win32::Graphics::Dwm::DWM_BB_BLURREGION;
+use windows::Win32::Graphics::Dwm::DwmEnableBlurBehindWindow;
+use windows::Win32::Graphics::Dwm::DWMWA_EXTENDED_FRAME_BOUNDS;
+
+use windows::Win32::Graphics::Gdi::InvalidateRect;
+use windows::Win32::Graphics::Gdi::ValidateRect;
+use windows::Win32::Graphics::Gdi::CreateRectRgn;
+use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_UNKNOWN;
+
 use windows::Win32::UI::WindowsAndMessaging::CreateWindowExW;
 use windows::Win32::UI::WindowsAndMessaging::DefWindowProcW;
+use windows::Win32::UI::WindowsAndMessaging::GetMessageW;
+use windows::Win32::UI::WindowsAndMessaging::TranslateMessage;
+use windows::Win32::UI::WindowsAndMessaging::DispatchMessageW;
 use windows::Win32::UI::WindowsAndMessaging::GetSystemMetrics;
 use windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW;
 use windows::Win32::UI::WindowsAndMessaging::PostQuitMessage;
 use windows::Win32::UI::WindowsAndMessaging::SetTimer;
 use windows::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW;
+use windows::Win32::UI::WindowsAndMessaging::ShowWindow;
+use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
+use windows::Win32::UI::WindowsAndMessaging::GetWindow;
+use windows::Win32::UI::WindowsAndMessaging::SetWindowPos;
+use windows::Win32::UI::WindowsAndMessaging::SET_WINDOW_POS_FLAGS;
 use windows::Win32::UI::WindowsAndMessaging::CREATESTRUCTW;
+use windows::Win32::UI::WindowsAndMessaging::HWND_TOP;
 use windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA;
 use windows::Win32::UI::WindowsAndMessaging::GW_HWNDPREV;
+use windows::Win32::UI::WindowsAndMessaging::MSG;
 use windows::Win32::UI::WindowsAndMessaging::LWA_ALPHA;
 use windows::Win32::UI::WindowsAndMessaging::LWA_COLORKEY;
 use windows::Win32::UI::WindowsAndMessaging::SM_CXVIRTUALSCREEN;
@@ -54,6 +86,7 @@ use windows::Win32::UI::WindowsAndMessaging::SWP_NOREDRAW;
 use windows::Win32::UI::WindowsAndMessaging::SWP_NOSENDCHANGING;
 use windows::Win32::UI::WindowsAndMessaging::SWP_NOZORDER;
 use windows::Win32::UI::WindowsAndMessaging::SWP_SHOWWINDOW;
+use windows::Win32::UI::WindowsAndMessaging::SWP_HIDEWINDOW;
 use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
 use windows::Win32::UI::WindowsAndMessaging::WM_CREATE;
 use windows::Win32::UI::WindowsAndMessaging::WM_DESTROY;
@@ -67,7 +100,6 @@ use windows::Win32::UI::WindowsAndMessaging::WS_EX_TOOLWINDOW;
 use windows::Win32::UI::WindowsAndMessaging::WS_EX_TOPMOST;
 use windows::Win32::UI::WindowsAndMessaging::WS_EX_TRANSPARENT;
 use windows::Win32::UI::WindowsAndMessaging::WS_POPUP;
-use windows::{Win32::Graphics::Dwm::*, Win32::Graphics::Dxgi::Common::*, Win32::Graphics::Gdi::*};
 
 pub static RENDER_FACTORY: LazyLock<ID2D1Factory> = unsafe {
     LazyLock::new(|| {

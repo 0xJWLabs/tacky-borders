@@ -4,7 +4,7 @@ use std::fs;
 use std::sync::LazyLock;
 use std::sync::Mutex;
 
-use crate::colors::ColorDefinition;
+use crate::colors::ColorConfig;
 use crate::utils::get_config;
 
 const DEFAULT_CONFIG: &str = include_str!("resources/config.yaml");
@@ -50,8 +50,8 @@ pub struct MatchDetails {
     pub match_value: Option<String>,
     #[serde(rename = "strategy")]
     pub match_strategy: Option<MatchStrategy>,
-    pub active_color: Option<ColorDefinition>,
-    pub inactive_color: Option<ColorDefinition>,
+    pub active_color: Option<ColorConfig>,
+    pub inactive_color: Option<ColorConfig>,
     pub border_radius: Option<BorderRadius>,
     pub border_size: Option<i32>,
     pub border_offset: Option<i32>,
@@ -71,8 +71,8 @@ pub struct GlobalRule {
     pub border_size: i32,
     pub border_offset: i32,
     pub border_radius: BorderRadius,
-    pub active_color: Option<ColorDefinition>,
-    pub inactive_color: Option<ColorDefinition>,
+    pub active_color: Option<ColorConfig>,
+    pub inactive_color: Option<ColorConfig>,
     pub init_delay: Option<u64>,
     pub unminimize_delay: Option<u64>,
 }

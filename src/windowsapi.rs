@@ -1,5 +1,5 @@
 use colors::Color;
-use colors::ColorDefinition;
+use colors::ColorConfig;
 use regex::Regex;
 use windows::{
     core::PWSTR,
@@ -668,8 +668,8 @@ fn convert_config_radius(
 }
 
 fn convert_config_colors(
-    color_active: &Option<ColorDefinition>,
-    color_inactive: &Option<ColorDefinition>,
+    color_active: &Option<ColorConfig>,
+    color_inactive: &Option<ColorConfig>,
 ) -> (Color, Color) {
     (
         Color::from(color_active.as_ref()),

@@ -1,5 +1,7 @@
 use regex::Regex;
 use serde::Deserialize;
+use std::sync::LazyLock;
+use std::sync::Mutex;
 use windows::Win32::Foundation::BOOL;
 use windows::Win32::Foundation::FALSE;
 use windows::Win32::Graphics::Direct2D::Common::D2D1_COLOR_F;
@@ -8,6 +10,8 @@ use windows::Win32::Graphics::Dwm::DwmGetColorizationColor;
 
 // Constants
 const COLOR_PATTERN: &str = r"(?i)#[0-9A-F]{3,8}|rgba?\([0-9]{1,3},\s*[0-9]{1,3},\s*[0-9]{1,3}(?:,\s*[0-9]*(?:\.[0-9]+)?)?\)|accent|transparent";
+static COLOR_REGEX: LazyLock<Mutex<Regex>> =
+    LazyLock::new(|| Mutex::new(Regex::new(COLOR_PATTERN).unwrap()));
 
 // Enums
 #[derive(Debug, Clone, Deserialize)]
@@ -19,9 +23,9 @@ pub enum GradientDirection {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
-pub enum ColorDefinition {
+pub enum ColorConfig {
     String(String),
-    Map(GradientDefinition),
+    Map(GradientConfig),
 }
 
 #[derive(Debug, Clone)]
@@ -37,7 +41,7 @@ pub struct GradientDirectionCoordinates {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct GradientDefinition {
+pub struct GradientConfig {
     pub colors: Vec<String>,
     pub direction: GradientDirection,
     pub animation: Option<bool>,
@@ -50,10 +54,49 @@ pub struct Gradient {
     pub animation: Option<bool>,
 }
 
-impl GradientDirection {
-    pub fn to_vec(&self) -> Vec<f32> {
+// Traits
+trait ToColor {
+    fn to_color(self) -> D2D1_COLOR_F;
+}
+
+trait ToDirection {
+    fn to_direction(self) -> Vec<f32>;
+}
+
+// Impl
+impl ToDirection for GradientDirection {
+    fn to_direction(self) -> Vec<f32> {
         match self {
-            GradientDirection::String(direction) => parse_direction(direction),
+            GradientDirection::String(direction) => {
+                if let Some(degree) = direction
+                    .strip_suffix("deg")
+                    .and_then(|d| d.trim().parse::<f32>().ok())
+                {
+                    let rad = (degree - 90.0) * std::f32::consts::PI / 180.0;
+                    // let rad = degree * PI / 180.0; // Left to Right
+                    let (cos, sin) = (rad.cos(), rad.sin());
+
+                    // Adjusting calculations based on the origin being (0.5, 0.5)
+                    return vec![
+                        0.5 - 0.5 * cos,
+                        0.5 - 0.5 * sin, // Start point (x1, y1) adjusted
+                        0.5 + 0.5 * cos,
+                        0.5 + 0.5 * sin, // End point (x2, y2) adjusted
+                    ];
+                }
+
+                match direction.as_str() {
+                    "to right" => vec![0.0, 0.5, 1.0, 0.5],     // Left to right
+                    "to left" => vec![1.0, 0.5, 0.0, 0.5],      // Right to left
+                    "to top" => vec![0.5, 1.0, 0.5, 0.0],       // Bottom to top
+                    "to bottom" => vec![0.5, 0.0, 0.5, 1.0],    // Top to bottom
+                    "to top right" => vec![0.0, 1.0, 1.0, 0.0], // Bottom-left to top-right
+                    "to top left" => vec![1.0, 1.0, 0.0, 0.0],  // Bottom-right to top-left
+                    "to bottom right" => vec![0.0, 0.0, 1.0, 1.0], // Top-left to bottom-right
+                    "to bottom left" => vec![1.0, 0.0, 0.0, 1.0], // Top-right to bottom-left
+                    _ => vec![0.5, 1.0, 0.5, 0.0],              // Default to "to top"
+                }
+            }
             GradientDirection::Map(gradient_struct) => {
                 let start_slice: &[f32] = &gradient_struct.start;
                 let end_slice: &[f32] = &gradient_struct.end;
@@ -77,23 +120,25 @@ impl From<String> for Color {
             );
         }
 
-        let color_re = Regex::new(COLOR_PATTERN).unwrap();
+        let color_re = COLOR_REGEX.lock().unwrap();
 
         // Collect valid colors using regex
-        let colors_vec: Vec<&str> = color_re
+        let color_matches: Vec<&str> = color_re
             .captures_iter(&color)
             .filter_map(|cap| cap.get(0).map(|m| m.as_str()))
             .collect();
 
-        if colors_vec.len() == 1 {
-            return Color::Solid(get_color(colors_vec[0]));
+        drop(color_re);
+
+        if color_matches.len() == 1 {
+            return Color::Solid(color_matches[0].to_string().to_color());
         }
 
-        let rest_of_input = color
-            [color.rfind(colors_vec.last().unwrap()).unwrap() + colors_vec.last().unwrap().len()..]
+        let remaining_input = color[color.rfind(color_matches.last().unwrap()).unwrap()
+            + color_matches.last().unwrap().len()..]
             .trim_start();
 
-        let rest_of_input_array: Vec<&str> = rest_of_input
+        let remaining_input_arr: Vec<&str> = remaining_input
             .split(',')
             .filter_map(|s| {
                 let trimmed = s.trim();
@@ -102,14 +147,17 @@ impl From<String> for Color {
             .collect();
 
         let (mut animation, mut direction) = (false, None);
-        let colors: Vec<D2D1_COLOR_F> = colors_vec.iter().map(|&part| get_color(part)).collect();
+        let colors: Vec<D2D1_COLOR_F> = color_matches
+            .iter()
+            .map(|&color| color.to_string().to_color())
+            .collect();
 
-        for part in rest_of_input_array {
-            match part.to_lowercase().as_str() {
+        for input in remaining_input_arr {
+            match input.to_lowercase().as_str() {
                 "true" => animation = true,
                 "false" => animation = false,
-                _ if is_direction(part) && direction.is_none() => {
-                    direction = Some(part.to_string())
+                _ if is_valid_direction(input) && direction.is_none() => {
+                    direction = Some(input.to_string())
                 }
                 _ => {}
             }
@@ -133,7 +181,7 @@ impl From<String> for Color {
             })
             .collect();
 
-        let direction = GradientDirection::String(direction.unwrap()).to_vec();
+        let direction = GradientDirection::String(direction.unwrap()).to_direction();
 
         // Return the GradientColor
         Color::Gradient(Gradient {
@@ -144,11 +192,11 @@ impl From<String> for Color {
     }
 }
 
-impl From<GradientDefinition> for Color {
-    fn from(color: GradientDefinition) -> Self {
+impl From<GradientConfig> for Color {
+    fn from(color: GradientConfig) -> Self {
         match color.colors.len() {
             0 => Color::Gradient(Gradient::default()),
-            1 => Color::Solid(get_color(&color.colors[0])),
+            1 => Color::Solid(color.colors[0].clone().to_color()),
             _ => {
                 let gradient_stops: Vec<_> = color
                     .colors
@@ -156,13 +204,13 @@ impl From<GradientDefinition> for Color {
                     .enumerate()
                     .map(|(i, hex)| D2D1_GRADIENT_STOP {
                         position: i as f32 / (color.colors.len() - 1) as f32,
-                        color: get_color(hex),
+                        color: hex.to_string().to_color(),
                     })
                     .collect();
 
                 Color::Gradient(Gradient {
                     gradient_stops,
-                    direction: Some(color.direction.to_vec()),
+                    direction: Some(color.direction.to_direction()),
                     animation: color.animation,
                 })
             }
@@ -170,12 +218,12 @@ impl From<GradientDefinition> for Color {
     }
 }
 
-impl From<Option<&ColorDefinition>> for Color {
-    fn from(color_definition: Option<&ColorDefinition>) -> Self {
+impl From<Option<&ColorConfig>> for Color {
+    fn from(color_definition: Option<&ColorConfig>) -> Self {
         match color_definition {
             Some(color) => match color {
-                ColorDefinition::String(s) => Color::from(s.clone()),
-                ColorDefinition::Map(gradient_def) => Color::from(gradient_def.clone()),
+                ColorConfig::String(s) => Color::from(s.clone()),
+                ColorConfig::Map(gradient_def) => Color::from(gradient_def.clone()),
             },
             None => Color::default(), // Return a default color when None is provided
         }
@@ -222,39 +270,88 @@ impl Default for Gradient {
     }
 }
 
+impl ToColor for u32 {
+    fn to_color(self) -> D2D1_COLOR_F {
+        let r = ((self & 0x00FF0000) >> 16) as f32 / 255.0;
+        let g = ((self & 0x0000FF00) >> 8) as f32 / 255.0;
+        let b = (self & 0x000000FF) as f32 / 255.0;
+
+        D2D1_COLOR_F { r, g, b, a: 1.0 }
+    }
+}
+
+impl ToColor for String {
+    fn to_color(self) -> D2D1_COLOR_F {
+        if self == "accent" {
+            let mut pcr_colorization: u32 = 0;
+            let mut pf_opaqueblend: BOOL = FALSE;
+            let result =
+                unsafe { DwmGetColorizationColor(&mut pcr_colorization, &mut pf_opaqueblend) };
+
+            if result.is_err() {
+                error!("Error getting windows accent color!");
+                return D2D1_COLOR_F::default();
+            }
+
+            return pcr_colorization.to_color();
+        } else if self.starts_with("#") {
+            if self.len() != 7 && self.len() != 9 && self.len() != 4 && self.len() != 5 {
+                error!("{}", format!("Invalid hex color format: {}", self).as_str());
+                return D2D1_COLOR_F::default();
+            }
+
+            let hex = match self.len() {
+                4 | 5 => format!(
+                    "#{}{}{}{}",
+                    self.get(1..2).unwrap_or("").repeat(2),
+                    self.get(2..3).unwrap_or("").repeat(2),
+                    self.get(3..4).unwrap_or("").repeat(2),
+                    self.get(4..5).unwrap_or("").repeat(2)
+                ),
+                _ => self.to_string(),
+            };
+
+            // Parse RGB and Alpha
+            let (r, g, b, a) = (
+                u8::from_str_radix(&hex[1..3], 16).unwrap_or(0) as f32 / 255.0,
+                u8::from_str_radix(&hex[3..5], 16).unwrap_or(0) as f32 / 255.0,
+                u8::from_str_radix(&hex[5..7], 16).unwrap_or(0) as f32 / 255.0,
+                if hex.len() == 9 {
+                    u8::from_str_radix(&hex[7..9], 16).unwrap_or(0) as f32 / 255.0
+                } else {
+                    1.0
+                },
+            );
+
+            return D2D1_COLOR_F { r, g, b, a };
+        } else if self.starts_with("rgb(") || self.starts_with("rgba(") {
+            let rgba = self
+                .trim_start_matches("rgb(")
+                .trim_start_matches("rgba(")
+                .trim_end_matches(')');
+            let components: Vec<&str> = rgba.split(',').map(|s| s.trim()).collect();
+            if components.len() == 3 || components.len() == 4 {
+                let r: f32 = components[0].parse::<u32>().unwrap_or(0) as f32 / 255.0;
+                let g: f32 = components[1].parse::<u32>().unwrap_or(0) as f32 / 255.0;
+                let b: f32 = components[2].parse::<u32>().unwrap_or(0) as f32 / 255.0;
+                let a = components
+                    .get(3)
+                    .and_then(|s| s.parse::<f32>().ok())
+                    .unwrap_or(1.0)
+                    .clamp(0.0, 1.0);
+
+                return D2D1_COLOR_F { r, g, b, a };
+            }
+
+            return D2D1_COLOR_F::default();
+        }
+
+        D2D1_COLOR_F::default()
+    }
+}
+
 // Functions
-fn get_accent_color() -> D2D1_COLOR_F {
-    let mut pcr_colorization: u32 = 0;
-    let mut pf_opaqueblend: BOOL = FALSE;
-    let result = unsafe { DwmGetColorizationColor(&mut pcr_colorization, &mut pf_opaqueblend) };
-
-    if result.is_err() {
-        error!("Error getting windows accent color!");
-        return D2D1_COLOR_F::default();
-    }
-
-    let red = ((pcr_colorization & 0x00FF0000) >> 16) as f32 / 255.0;
-    let green = ((pcr_colorization & 0x0000FF00) >> 8) as f32 / 255.0;
-    let blue = (pcr_colorization & 0x000000FF) as f32 / 255.0;
-
-    D2D1_COLOR_F {
-        r: red,
-        g: green,
-        b: blue,
-        a: 1.0,
-    }
-}
-
-fn get_color(color: &str) -> D2D1_COLOR_F {
-    match color {
-        "accent" => get_accent_color(),
-        _ if color.starts_with("rgb(") || color.starts_with("rgba(") => parse_rgba_color(color),
-        _ if color.starts_with("#") => parse_hex_color(color),
-        _ => D2D1_COLOR_F::default(),
-    }
-}
-
-fn is_direction(direction: &str) -> bool {
+fn is_valid_direction(direction: &str) -> bool {
     matches!(
         direction,
         "to right"
@@ -269,111 +366,4 @@ fn is_direction(direction: &str) -> bool {
         .strip_suffix("deg")
         .and_then(|angle| angle.parse::<f32>().ok())
         .is_some()
-}
-
-fn parse_direction(direction: &str) -> Vec<f32> {
-    if let Some(degree) = direction
-        .strip_suffix("deg")
-        .and_then(|d| d.trim().parse::<f32>().ok())
-    {
-        let rad = (degree - 90.0) * std::f32::consts::PI / 180.0;
-        // let rad = degree * PI / 180.0; // Left to Right
-        let (cos, sin) = (rad.cos(), rad.sin());
-
-        // Adjusting calculations based on the origin being (0.5, 0.5)
-        return vec![
-            0.5 - 0.5 * cos,
-            0.5 - 0.5 * sin, // Start point (x1, y1) adjusted
-            0.5 + 0.5 * cos,
-            0.5 + 0.5 * sin, // End point (x2, y2) adjusted
-        ];
-    }
-
-    match direction {
-        "to right" => vec![0.0, 0.5, 1.0, 0.5],     // Left to right
-        "to left" => vec![1.0, 0.5, 0.0, 0.5],      // Right to left
-        "to top" => vec![0.5, 1.0, 0.5, 0.0],       // Bottom to top
-        "to bottom" => vec![0.5, 0.0, 0.5, 1.0],    // Top to bottom
-        "to top right" => vec![0.0, 1.0, 1.0, 0.0], // Bottom-left to top-right
-        "to top left" => vec![1.0, 1.0, 0.0, 0.0],  // Bottom-right to top-left
-        "to bottom right" => vec![0.0, 0.0, 1.0, 1.0], // Top-left to bottom-right
-        "to bottom left" => vec![1.0, 0.0, 0.0, 1.0], // Top-right to bottom-left
-        _ => vec![0.5, 1.0, 0.5, 0.0],              // Default to "to top"
-    }
-}
-
-fn parse_hex_color(hex: &str) -> D2D1_COLOR_F {
-    // Ensure the hex string starts with '#' and is of the correct length
-    if hex.len() != 7 && hex.len() != 9 && hex.len() != 4 && hex.len() != 5 || !hex.starts_with('#')
-    {
-        error!("{}", format!("Invalid hex color format: {}", hex).as_str());
-    }
-
-    // Expand shorthand hex formats (#RGB or #RGBA to #RRGGBB or #RRGGBBAA)
-    let expanded_hex = match hex.len() {
-        4 => format!(
-            "#{}{}{}{}{}{}",
-            &hex[1..2],
-            &hex[1..2],
-            &hex[2..3],
-            &hex[2..3],
-            &hex[3..4],
-            &hex[3..4]
-        ),
-        5 => format!(
-            "#{}{}{}{}{}{}{}{}",
-            &hex[1..2],
-            &hex[1..2],
-            &hex[2..3],
-            &hex[2..3],
-            &hex[3..4],
-            &hex[3..4],
-            &hex[4..5],
-            &hex[4..5]
-        ),
-        _ => hex.to_string(),
-    };
-
-    // Parse RGB values
-    let r = f32::from(u8::from_str_radix(&expanded_hex[1..3], 16).unwrap_or(0)) / 255.0;
-    let g = f32::from(u8::from_str_radix(&expanded_hex[3..5], 16).unwrap_or(0)) / 255.0;
-    let b = f32::from(u8::from_str_radix(&expanded_hex[5..7], 16).unwrap_or(0)) / 255.0;
-
-    // Parse alpha value if present
-    let a = if expanded_hex.len() == 9 {
-        f32::from(u8::from_str_radix(&expanded_hex[7..9], 16).unwrap_or(0)) / 255.0
-    } else {
-        1.0
-    };
-
-    D2D1_COLOR_F { r, g, b, a }
-}
-
-fn parse_rgba_color(rgba: &str) -> D2D1_COLOR_F {
-    let rgba = rgba
-        .trim_start_matches("rgb(")
-        .trim_start_matches("rgba(")
-        .trim_end_matches(')');
-    let components: Vec<&str> = rgba.split(',').map(|s| s.trim()).collect();
-    if components.len() == 3 || components.len() == 4 {
-        let r: f32 = components[0].parse::<u32>().unwrap_or(0) as f32 / 255.0;
-        let g: f32 = components[1].parse::<u32>().unwrap_or(0) as f32 / 255.0;
-        let b: f32 = components[2].parse::<u32>().unwrap_or(0) as f32 / 255.0;
-
-        let a: f32 = if components.len() == 4 {
-            (components[3].parse::<u32>().unwrap_or(0) as f32).clamp(0.0, 1.0)
-        } else {
-            1.0 // Default alpha value for rgb()
-        };
-
-        return D2D1_COLOR_F { r, g, b, a };
-    }
-
-    // Return a default color if parsing fails
-    D2D1_COLOR_F {
-        r: 0.0,
-        g: 0.0,
-        b: 0.0,
-        a: 1.0,
-    }
 }

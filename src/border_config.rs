@@ -27,6 +27,20 @@ pub enum MatchStrategy {
     Contains,
 }
 
+#[derive(Debug, Deserialize, PartialEq, Clone)]
+pub enum BorderRadiusOption {
+    Round,
+    Square,
+    SmallRound,
+    Auto
+}
+
+#[derive(Debug, Deserialize, PartialEq, Clone)]
+pub enum BorderRadius {
+    String(BorderRadiusOption),
+    Float(f32)
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct MatchDetails {
     #[serde(rename = "kind")]
@@ -37,7 +51,7 @@ pub struct MatchDetails {
     pub match_strategy: Option<MatchStrategy>,
     pub active_color: Option<ColorDefinition>,
     pub inactive_color: Option<ColorDefinition>,
-    pub border_radius: Option<f32>,
+    pub border_radius: Option<BorderRadius>,
     pub border_size: Option<i32>,
     pub border_offset: Option<i32>,
     pub border_enabled: Option<bool>,
@@ -55,7 +69,7 @@ pub struct WindowRule {
 pub struct GlobalRule {
     pub border_size: i32,
     pub border_offset: i32,
-    pub border_radius: f32,
+    pub border_radius: BorderRadius,
     pub active_color: Option<ColorDefinition>,
     pub inactive_color: Option<ColorDefinition>,
     pub init_delay: Option<u64>,

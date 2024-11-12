@@ -465,7 +465,7 @@ impl WindowsApi {
             let config_radius = window_rule
                 .rule_match
                 .border_radius
-                .unwrap_or(config.global_rule.border_radius);
+                .unwrap_or(config.global_rule.border_radius.clone());
 
             let config_active = window_rule
                 .rule_match
@@ -593,39 +593,78 @@ fn match_rule(name: &str, pattern: &str, strategy: &Option<MatchStrategy>) -> bo
     }
 }
 
-fn convert_config_radius(config_size: i32, config_radius: f32, tracking_window: HWND) -> f32 {
+fn convert_config_radius(
+    config_size: i32,
+    config_radius: BorderRadius,
+    tracking_window: HWND,
+) -> f32 {
     let mut corner_preference = DWM_WINDOW_CORNER_PREFERENCE::default();
     let dpi = unsafe { GetDpiForWindow(tracking_window) } as f32;
+    let base_radius = (config_size as f32) / 2.0;
+    let scale_factor = dpi / 96.0;
 
-    // -1.0 means to use default Windows corner preference. I might want to use an enum to allow
-    // for something like border_radius == "system" instead TODO
-    if config_radius == -1.0 {
-        let _ = WindowsApi::dwm_get_window_attribute::<DWM_WINDOW_CORNER_PREFERENCE, fn()>(
-            tracking_window,
-            DWMWA_WINDOW_CORNER_PREFERENCE,
-            &mut corner_preference,
-            Some(ErrorMsg::String(
-                "Getting window corner preference".to_string(),
-            )),
-        );
-        match corner_preference {
-            DWMWCP_DEFAULT => {
-                return 8.0 * dpi / 96.0 + (config_size as f32) / 2.0;
+    match config_radius {
+        BorderRadius::Float(radius) => {
+            if radius == -1.0 {
+                // Get system corner preference if radius is -1
+                let _ = WindowsApi::dwm_get_window_attribute::<DWM_WINDOW_CORNER_PREFERENCE, fn()>(
+                    tracking_window,
+                    DWMWA_WINDOW_CORNER_PREFERENCE,
+                    &mut corner_preference,
+                    Some(ErrorMsg::String("Getting window corner preference".to_string())),
+                );
+                match corner_preference {
+                    DWMWCP_DEFAULT | DWMWCP_ROUND => {
+                        return 8.0 * scale_factor + base_radius;
+                    }
+                    DWMWCP_ROUNDSMALL => {
+                        return 4.0 * scale_factor + base_radius;
+                    }
+                    DWMWCP_DONOTROUND => {
+                        return 0.0;
+                    }
+                    _ => return base_radius, // fallback default
+                }
             }
-            DWMWCP_DONOTROUND => {
+            // Return specified radius scaled by DPI
+            radius * scale_factor
+        }
+        BorderRadius::String(radius) => match radius {
+            BorderRadiusOption::Auto => {
+                // Get system corner preference for Auto option
+                let _ = WindowsApi::dwm_get_window_attribute::<DWM_WINDOW_CORNER_PREFERENCE, fn()>(
+                    tracking_window,
+                    DWMWA_WINDOW_CORNER_PREFERENCE,
+                    &mut corner_preference,
+                    Some(ErrorMsg::String("Getting window corner preference".to_string())),
+                );
+                match corner_preference {
+                    DWMWCP_DEFAULT | DWMWCP_ROUND => {
+                        return 8.0 * scale_factor + base_radius;
+                    }
+                    DWMWCP_ROUNDSMALL => {
+                        return 4.0 * scale_factor + base_radius;
+                    }
+                    DWMWCP_DONOTROUND => {
+                        return 0.0;
+                    }
+                    _ => return base_radius, // fallback default
+                }
+            }
+            BorderRadiusOption::Round => {
+                // Round corner radius
+                return 8.0 * scale_factor + base_radius;
+            }
+            BorderRadiusOption::SmallRound => {
+                // Small round corner radius
+                return 4.0 * scale_factor + base_radius;
+            }
+            BorderRadiusOption::Square => {
+                // No rounding for square corners
                 return 0.0;
             }
-            DWMWCP_ROUND => {
-                return 8.0 * dpi / 96.0 + (config_size as f32) / 2.0;
-            }
-            DWMWCP_ROUNDSMALL => {
-                return 4.0 * dpi / 96.0 + (config_size as f32) / 2.0;
-            }
-            _ => {}
-        }
+        },
     }
-
-    config_radius * dpi / 96.0
 }
 
 fn convert_config_colors(

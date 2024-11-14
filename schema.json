@@ -7,15 +7,15 @@
       "description": "Global rule for customizing border settings.",
       "type": "object",
       "required": [
-        "border_size",
+        "border_width",
         "border_offset",
         "border_radius"
       ],
       "properties": {
-        "border_size": {
+        "border_width": {
           "description": "Thickness of the window borders in pixels. (default: 2)",
-          "type": "integer",
-          "format": "int32"
+          "type": "number",
+          "format": "float"
         },
         "border_offset": {
           "description": "Adjusts border size relative to the window in pixels. Positive values expand; negative values shrink. (default: -1)",
@@ -567,10 +567,10 @@
                 "description": "Enables or disables border for this rule. (default: true)",
                 "type": "boolean"
               },
-              "border_size": {
+              "border_width": {
                 "description": "Thickness of the window borders in pixels. (default: 2)",
-                "type": "integer",
-                "format": "int32"
+                "type": "number",
+                "format": "float"
               },
               "border_offset": {
                 "description": "Adjusts border size relative to the window in pixels. Positive values expand; negative values shrink. (default: -1)",

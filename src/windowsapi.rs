@@ -1,10 +1,10 @@
-use std::thread;
 use regex::Regex;
+use std::thread;
 
 use windows::core::Result;
 use windows::core::PWSTR;
-use windows::Win32::Foundation::BOOL;
 use windows::Win32::Foundation::CloseHandle;
+use windows::Win32::Foundation::BOOL;
 use windows::Win32::Foundation::COLORREF;
 use windows::Win32::Foundation::FALSE;
 use windows::Win32::Foundation::HINSTANCE;
@@ -13,44 +13,44 @@ use windows::Win32::Foundation::LPARAM;
 use windows::Win32::Foundation::RECT;
 use windows::Win32::Foundation::WPARAM;
 
+use windows::Win32::Graphics::Direct2D::Common::D2D_POINT_2F;
+use windows::Win32::Graphics::Direct2D::ID2D1Brush;
+use windows::Win32::Graphics::Direct2D::ID2D1HwndRenderTarget;
 use windows::Win32::Graphics::Direct2D::D2D1_BRUSH_PROPERTIES;
 use windows::Win32::Graphics::Direct2D::D2D1_EXTEND_MODE_CLAMP;
 use windows::Win32::Graphics::Direct2D::D2D1_GAMMA_2_2;
 use windows::Win32::Graphics::Direct2D::D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES;
-use windows::Win32::Graphics::Direct2D::ID2D1Brush;
-use windows::Win32::Graphics::Direct2D::ID2D1HwndRenderTarget;
-use windows::Win32::Graphics::Direct2D::Common::D2D_POINT_2F;
 
-use windows::Win32::Graphics::Dwm::DWMWINDOWATTRIBUTE;
+use windows::Win32::Graphics::Dwm::DwmGetWindowAttribute;
+use windows::Win32::Graphics::Dwm::DwmSetWindowAttribute;
 use windows::Win32::Graphics::Dwm::DWMWA_CLOAKED;
 use windows::Win32::Graphics::Dwm::DWMWA_WINDOW_CORNER_PREFERENCE;
-use windows::Win32::Graphics::Dwm::DWM_WINDOW_CORNER_PREFERENCE;
 use windows::Win32::Graphics::Dwm::DWMWCP_DEFAULT;
 use windows::Win32::Graphics::Dwm::DWMWCP_DONOTROUND;
 use windows::Win32::Graphics::Dwm::DWMWCP_ROUND;
 use windows::Win32::Graphics::Dwm::DWMWCP_ROUNDSMALL;
-use windows::Win32::Graphics::Dwm::DwmGetWindowAttribute;
-use windows::Win32::Graphics::Dwm::DwmSetWindowAttribute;
+use windows::Win32::Graphics::Dwm::DWMWINDOWATTRIBUTE;
+use windows::Win32::Graphics::Dwm::DWM_WINDOW_CORNER_PREFERENCE;
 
 use windows::Win32::System::Threading::OpenProcess;
+use windows::Win32::System::Threading::QueryFullProcessImageNameW;
 use windows::Win32::System::Threading::PROCESS_NAME_WIN32;
 use windows::Win32::System::Threading::PROCESS_QUERY_LIMITED_INFORMATION;
-use windows::Win32::System::Threading::QueryFullProcessImageNameW;
 
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 
 use windows::Win32::UI::WindowsAndMessaging::EnumWindows;
-use windows::Win32::UI::WindowsAndMessaging::GWL_EXSTYLE;
-use windows::Win32::UI::WindowsAndMessaging::GWL_STYLE;
 use windows::Win32::UI::WindowsAndMessaging::GetClassNameW;
 use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
 use windows::Win32::UI::WindowsAndMessaging::GetWindowLongW;
 use windows::Win32::UI::WindowsAndMessaging::GetWindowTextW;
 use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
 use windows::Win32::UI::WindowsAndMessaging::IsWindowVisible;
-use windows::Win32::UI::WindowsAndMessaging::LAYERED_WINDOW_ATTRIBUTES_FLAGS;
 use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
 use windows::Win32::UI::WindowsAndMessaging::SetLayeredWindowAttributes;
+use windows::Win32::UI::WindowsAndMessaging::GWL_EXSTYLE;
+use windows::Win32::UI::WindowsAndMessaging::GWL_STYLE;
+use windows::Win32::UI::WindowsAndMessaging::LAYERED_WINDOW_ATTRIBUTES_FLAGS;
 use windows::Win32::UI::WindowsAndMessaging::WM_APP;
 use windows::Win32::UI::WindowsAndMessaging::WM_CLOSE;
 
@@ -60,9 +60,7 @@ use windows::Win32::UI::WindowsAndMessaging::WS_EX_TOOLWINDOW;
 use windows::Win32::UI::WindowsAndMessaging::WS_EX_WINDOWEDGE;
 use windows::Win32::UI::WindowsAndMessaging::WS_MAXIMIZE;
 
-use crate::BORDERS;
 use crate::__ImageBase;
-use crate::INITIAL_WINDOWS;
 use crate::border_config::BorderRadius;
 use crate::border_config::BorderRadiusOption;
 use crate::border_config::MatchKind;
@@ -73,6 +71,8 @@ use crate::colors::Color;
 use crate::colors::ColorConfig;
 use crate::enum_windows_callback;
 use crate::window_border::WindowBorder;
+use crate::BORDERS;
+use crate::INITIAL_WINDOWS;
 
 pub const WM_APP_LOCATIONCHANGE: u32 = WM_APP;
 pub const WM_APP_REORDER: u32 = WM_APP + 1;
@@ -276,7 +276,8 @@ impl WindowsApi {
             DwmGetWindowAttribute(
                 hwnd,
                 attribute,
-                (value as *mut T).cast(),
+                std::ptr::addr_of_mut!(*value) as _,
+                // (value as *mut T).cast(),
                 u32::try_from(std::mem::size_of::<T>())?,
             )
         };
@@ -509,10 +510,10 @@ impl WindowsApi {
 
             let config = CONFIG.lock().unwrap();
 
-            let config_size = window_rule
+            let config_width = window_rule
                 .rule_match
-                .border_size
-                .unwrap_or(config.global_rule.border_size);
+                .border_width
+                .unwrap_or(config.global_rule.border_width);
             let border_offset = window_rule
                 .rule_match
                 .border_offset
@@ -543,8 +544,10 @@ impl WindowsApi {
                 _ => false,
             };
 
-            let border_radius = convert_config_radius(config_size, config_radius, window_sent.0);
-            let window_isize = window_sent.0 .0 as isize;
+            let dpi = unsafe { GetDpiForWindow(window_sent.0) } as f32;
+            let border_width = (config_width * dpi / 96.0) as i32;
+            let border_radius = convert_config_radius(border_width, config_radius, window_sent.0, dpi);
+            let window_isize = window_sent.0.0 as isize;
 
             let init_delay = if INITIAL_WINDOWS.lock().unwrap().contains(&window_isize) {
                 0
@@ -564,7 +567,7 @@ impl WindowsApi {
 
             let mut border = WindowBorder {
                 tracking_window: window_sent.0,
-                border_size: config_size,
+                border_width,
                 border_offset,
                 border_radius,
                 active_color: border_colors.0,
@@ -594,7 +597,7 @@ impl WindowsApi {
             drop(borders_hashmap);
             let _ = window_sent;
             let _ = window_rule;
-            let _ = config_size;
+            let _ = config_radius;
             let _ = border_offset;
             let _ = config_radius;
             let _ = config_active;
@@ -649,79 +652,46 @@ fn match_rule(name: &str, pattern: &str, strategy: &Option<MatchStrategy>) -> bo
 }
 
 fn convert_config_radius(
-    config_size: i32,
+    config_width: i32,
     config_radius: BorderRadius,
     tracking_window: HWND,
+    dpi: f32
 ) -> f32 {
     let mut corner_preference = DWM_WINDOW_CORNER_PREFERENCE::default();
-    let dpi = unsafe { GetDpiForWindow(tracking_window) } as f32;
-    let base_radius = (config_size as f32) / 2.0;
+    let base_radius = (config_width as f32) / 2.0;
     let scale_factor = dpi / 96.0;
 
+    let _ = WindowsApi::dwm_get_window_attribute::<DWM_WINDOW_CORNER_PREFERENCE, fn()>(
+        tracking_window,
+        DWMWA_WINDOW_CORNER_PREFERENCE,
+        &mut corner_preference,
+        Some(ErrorMsg::String(
+            "Getting window corner preference".to_string(),
+        )),
+    );
+
+    let calculate_radius = |corner_pref| match corner_pref {
+        DWMWCP_DEFAULT | DWMWCP_ROUND => 8.0 * scale_factor + base_radius,
+        DWMWCP_ROUNDSMALL => 4.0 * scale_factor + base_radius,
+        DWMWCP_DONOTROUND => 0.0,
+        _ => base_radius, // fallback default
+    };
+
     match config_radius {
+        // Handle Float radius directly, or fallback to corner preference if radius is -1.0
         BorderRadius::Float(radius) => {
             if radius == -1.0 {
-                // Get system corner preference if radius is -1
-                let _ = WindowsApi::dwm_get_window_attribute::<DWM_WINDOW_CORNER_PREFERENCE, fn()>(
-                    tracking_window,
-                    DWMWA_WINDOW_CORNER_PREFERENCE,
-                    &mut corner_preference,
-                    Some(ErrorMsg::String(
-                        "Getting window corner preference".to_string(),
-                    )),
-                );
-                match corner_preference {
-                    DWMWCP_DEFAULT | DWMWCP_ROUND => {
-                        return 8.0 * scale_factor + base_radius;
-                    }
-                    DWMWCP_ROUNDSMALL => {
-                        return 4.0 * scale_factor + base_radius;
-                    }
-                    DWMWCP_DONOTROUND => {
-                        return 0.0;
-                    }
-                    _ => return base_radius, // fallback default
-                }
+                calculate_radius(corner_preference)
+            } else {
+                radius * scale_factor
             }
-            // Return specified radius scaled by DPI
-            radius * scale_factor
         }
+        // Handle String radius options
         BorderRadius::String(radius) => match radius {
-            BorderRadiusOption::Auto => {
-                // Get system corner preference for Auto option
-                let _ = WindowsApi::dwm_get_window_attribute::<DWM_WINDOW_CORNER_PREFERENCE, fn()>(
-                    tracking_window,
-                    DWMWA_WINDOW_CORNER_PREFERENCE,
-                    &mut corner_preference,
-                    Some(ErrorMsg::String(
-                        "Getting window corner preference".to_string(),
-                    )),
-                );
-                match corner_preference {
-                    DWMWCP_DEFAULT | DWMWCP_ROUND => {
-                        return 8.0 * scale_factor + base_radius;
-                    }
-                    DWMWCP_ROUNDSMALL => {
-                        return 4.0 * scale_factor + base_radius;
-                    }
-                    DWMWCP_DONOTROUND => {
-                        return 0.0;
-                    }
-                    _ => return base_radius, // fallback default
-                }
-            }
-            BorderRadiusOption::Round => {
-                // Round corner radius
-                return 8.0 * scale_factor + base_radius;
-            }
-            BorderRadiusOption::SmallRound => {
-                // Small round corner radius
-                return 4.0 * scale_factor + base_radius;
-            }
-            BorderRadiusOption::Square => {
-                // No rounding for square corners
-                return 0.0;
-            }
+            BorderRadiusOption::Auto => calculate_radius(corner_preference),
+            BorderRadiusOption::Round => 8.0 * scale_factor + base_radius,
+            BorderRadiusOption::SmallRound => 4.0 * scale_factor + base_radius,
+            BorderRadiusOption::Square => 0.0,
         },
     }
 }

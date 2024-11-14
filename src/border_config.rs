@@ -53,7 +53,7 @@ pub struct MatchDetails {
     pub active_color: Option<ColorConfig>,
     pub inactive_color: Option<ColorConfig>,
     pub border_radius: Option<BorderRadius>,
-    pub border_size: Option<i32>,
+    pub border_width: Option<f32>,
     pub border_offset: Option<i32>,
     pub border_enabled: Option<bool>,
     pub init_delay: Option<u64>,
@@ -68,7 +68,7 @@ pub struct WindowRule {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct GlobalRule {
-    pub border_size: i32,
+    pub border_width: f32,
     pub border_offset: i32,
     pub border_radius: BorderRadius,
     pub active_color: Option<ColorConfig>,
@@ -118,7 +118,7 @@ impl WindowRule {
         WindowRule {
             rule_match: MatchDetails {
                 match_type: None,
-                border_size: None,
+                border_width: None,
                 border_radius: None,
                 border_offset: None,
                 active_color: None,

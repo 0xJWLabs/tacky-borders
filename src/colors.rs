@@ -1,21 +1,23 @@
 use regex::Regex;
 use serde::Deserialize;
+use std::sync::LazyLock;
+use std::sync::Mutex;
+use std::f32::consts::PI;
+use windows::Win32::Foundation::BOOL;
+use windows::Win32::Foundation::FALSE;
+use windows::Win32::Foundation::RECT;
+use windows::Win32::Graphics::Direct2D::Common::D2D1_COLOR_F;
+use windows::Win32::Graphics::Direct2D::Common::D2D1_GRADIENT_STOP;
+use windows::Win32::Graphics::Direct2D::Common::D2D_POINT_2F;
 use windows::Win32::Graphics::Direct2D::ID2D1Brush;
 use windows::Win32::Graphics::Direct2D::ID2D1HwndRenderTarget;
 use windows::Win32::Graphics::Direct2D::D2D1_BRUSH_PROPERTIES;
 use windows::Win32::Graphics::Direct2D::D2D1_EXTEND_MODE_CLAMP;
 use windows::Win32::Graphics::Direct2D::D2D1_GAMMA_2_2;
 use windows::Win32::Graphics::Direct2D::D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES;
-use std::sync::LazyLock;
-use std::sync::Mutex;
-use windows::Win32::Foundation::BOOL;
-use windows::Win32::Foundation::FALSE;
-use windows::Win32::Foundation::RECT;
-use windows::Win32::Graphics::Direct2D::Common::D2D1_COLOR_F;
-use windows::Win32::Graphics::Direct2D::Common::D2D_POINT_2F;
-use windows::Win32::Graphics::Direct2D::Common::D2D1_GRADIENT_STOP;
 use windows::Win32::Graphics::Dwm::DwmGetColorizationColor;
 
+use crate::utils::strip_string;
 use crate::windowsapi::WindowsApi;
 
 // Constants
@@ -61,14 +63,6 @@ pub struct Solid {
     pub color: D2D1_COLOR_F,
 }
 
-impl Default for Solid {
-    fn default() -> Self {
-        Self {
-            color: D2D1_COLOR_F::default()
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Gradient {
     pub direction: GradientDirectionCoordinates,
@@ -89,7 +83,7 @@ impl Default for Animations {
             active: Some(Vec::default()),
             inactive: Some(Vec::default()),
             fps: Some(30),
-            speed: Some(200.0)
+            speed: Some(200.0),
         }
     }
 }
@@ -102,63 +96,71 @@ pub enum AnimationType {
 
 // Traits
 trait ToColor {
-    fn to_color(self) -> D2D1_COLOR_F;
+    fn to_color(self, is_active: Option<bool>) -> D2D1_COLOR_F;
 }
 
-trait ToDirection {
-    fn to_direction(self) -> GradientDirectionCoordinates;
-}
+// Implementations
+impl From<&String> for GradientDirectionCoordinates {
+    fn from(value: &String) -> Self {
+        if let Some(degree) = value 
+            .strip_suffix("deg")
+            .and_then(|d| d.trim().parse::<f32>().ok())
+        {
+            let rad = (degree - 90.0) * PI / 180.0;
+            let (cos, sin) = (rad.cos(), rad.sin());
 
-// Impl
-impl ToDirection for GradientDirection {
-    fn to_direction(self) -> GradientDirectionCoordinates {
-        match self {
-            GradientDirection::String(direction) => {
-                if let Some(degree) = direction
-                    .strip_suffix("deg")
-                    .and_then(|d| d.trim().parse::<f32>().ok())
-                {
-                    let rad = (degree - 90.0) * std::f32::consts::PI / 180.0;
-                    // let rad = degree * PI / 180.0; // Left to Right
-                    let (cos, sin) = (rad.cos(), rad.sin());
+            // Adjusting calculations based on the origin being (0.5, 0.5)
+            return GradientDirectionCoordinates {
+                start: [0.5 - 0.5 * cos, 0.5 - 0.5 * sin],
+                end: [0.5 + 0.5 * cos, 0.5 + 0.5 * sin],
+            };
+        }
 
-                    // Adjusting calculations based on the origin being (0.5, 0.5)
-                    return GradientDirectionCoordinates {
-                        start: [0.5 - 0.5 * cos, 0.5 - 0.5 * sin],
-                        end: [0.5 + 0.5 * cos, 0.5 + 0.5 * sin]
-                    };
-                }
-
-                match direction.as_str() {
-                    "to right" => GradientDirectionCoordinates { start: [0.0, 0.5], end: [1.0, 0.5] },     // Left to right
-                    "to left" => GradientDirectionCoordinates { start: [1.0, 0.5], end: [0.0, 0.5] },      // Right to left
-                    "to top" => GradientDirectionCoordinates { start: [0.5, 1.0], end: [0.5, 0.0] },       // Bottom to top
-                    "to bottom" => GradientDirectionCoordinates { start: [0.5, 0.0], end: [0.5, 1.0] },    // Top to bottom
-                    "to top right" => GradientDirectionCoordinates { start: [0.0, 1.0], end: [1.0, 0.0] }, // Bottom-left to top-right
-                    "to top left" => GradientDirectionCoordinates { start: [1.0, 1.0], end: [0.0, 0.0] },  // Bottom-right to top-left
-                    "to bottom right" => GradientDirectionCoordinates { start: [0.0, 0.0], end: [1.0, 1.0] }, // Top-left to bottom-right
-                    "to bottom left" => GradientDirectionCoordinates { start: [1.0, 0.0], end: [0.0, 1.0] }, // Top-right to bottom-left
-                    _ => GradientDirectionCoordinates { start: [0.5, 1.0], end: [0.5, 0.0] },              // Default to "to top"
-                }
-            }
-            GradientDirection::Map(gradient_struct) => {
-                gradient_struct 
-            }
+        match value.as_str() {
+            "to right" => GradientDirectionCoordinates {
+                start: [0.0, 0.5],
+                end: [1.0, 0.5],
+            }, // Left to right
+            "to left" => GradientDirectionCoordinates {
+                start: [1.0, 0.5],
+                end: [0.0, 0.5],
+            }, // Right to left
+            "to top" => GradientDirectionCoordinates {
+                start: [0.5, 1.0],
+                end: [0.5, 0.0],
+            }, // Bottom to top
+            "to bottom" => GradientDirectionCoordinates {
+                start: [0.5, 0.0],
+                end: [0.5, 1.0],
+            }, // Top to bottom
+            "to top right" => GradientDirectionCoordinates {
+                start: [0.0, 1.0],
+                end: [1.0, 0.0],
+            }, // Bottom-left to top-right
+            "to top left" => GradientDirectionCoordinates {
+                start: [1.0, 1.0],
+                end: [0.0, 0.0],
+            }, // Bottom-right to top-left
+            "to bottom right" => GradientDirectionCoordinates {
+                start: [0.0, 0.0],
+                end: [1.0, 1.0],
+            }, // Top-left to bottom-right
+            "to bottom left" => GradientDirectionCoordinates {
+                start: [1.0, 0.0],
+                end: [0.0, 1.0],
+            }, // Top-right to bottom-left
+            _ => GradientDirectionCoordinates {
+                start: [0.5, 1.0],
+                end: [0.5, 0.0],
+            }, // Default to "to top"
         }
     }
 }
 
-impl From<String> for Color {
-    fn from(color: String) -> Self {
+impl Color {
+    fn from_string(color: String, is_active: Option<bool>) -> Self {
         if color.starts_with("gradient(") && color.ends_with(")") {
-            return Color::from(
-                color
-                    .strip_prefix("gradient(")
-                    .unwrap_or(&color)
-                    .strip_suffix(")")
-                    .unwrap_or(&color)
-                    .to_string(),
-            );
+            return Self::from_string(strip_string(color, &["gradient("], ')'), is_active);
         }
 
         let color_re = COLOR_REGEX.lock().unwrap();
@@ -172,8 +174,8 @@ impl From<String> for Color {
         drop(color_re);
 
         if color_matches.len() == 1 {
-            return Color::Solid(Solid {
-                color: color_matches[0].to_string().to_color()
+            return Self::Solid(Solid {
+                color: color_matches[0].to_string().to_color(is_active),
             });
         }
 
@@ -189,28 +191,15 @@ impl From<String> for Color {
             })
             .collect();
 
-        let mut direction = None;
+        let direction = remaining_input_arr
+            .iter()
+            .find(|&&input| is_valid_direction(input))
+            .map(|&s| s.to_string())
+            .unwrap_or_else(|| "to_right".to_string());
         let colors: Vec<D2D1_COLOR_F> = color_matches
             .iter()
-            .map(|&color| color.to_string().to_color())
+            .map(|&color| color.to_string().to_color(is_active))
             .collect();
-
-        for input in remaining_input_arr {
-            match input.to_lowercase().as_str() {
-                _ if is_valid_direction(input) && direction.is_none() => {
-                    direction = Some(input.to_string())
-                }
-                _ => {}
-            }
-        }
-
-        if colors.is_empty() {
-            return Color::Gradient(Gradient::default());
-        }
-
-        if direction.is_none() {
-            direction = Some("to_right".to_string());
-        }
 
         let num_colors = colors.len();
         let gradient_stops: Vec<D2D1_GRADIENT_STOP> = colors
@@ -222,21 +211,23 @@ impl From<String> for Color {
             })
             .collect();
 
-        let direction = GradientDirection::String(direction.unwrap()).to_direction();
+        let direction = GradientDirectionCoordinates::from(&direction);
 
         // Return the GradientColor
-        Color::Gradient(Gradient {
+        Self::Gradient(Gradient {
             gradient_stops,
             direction,
         })
     }
-}
 
-impl From<GradientConfig> for Color {
-    fn from(color: GradientConfig) -> Self {
+    fn from_mapping(color: GradientConfig, is_active: Option<bool>) -> Self {
         match color.colors.len() {
-            0 => Color::Gradient(Gradient::default()),
-            1 => Color::Solid(Solid { color: color.colors[0].clone().to_color() }),
+            0 => Color::Solid(Solid {
+                color: D2D1_COLOR_F::default(),
+            }),
+            1 => Color::Solid(Solid {
+                color: color.colors[0].clone().to_color(is_active),
+            }),
             _ => {
                 let gradient_stops: Vec<_> = color
                     .colors
@@ -244,25 +235,30 @@ impl From<GradientConfig> for Color {
                     .enumerate()
                     .map(|(i, hex)| D2D1_GRADIENT_STOP {
                         position: i as f32 / (color.colors.len() - 1) as f32,
-                        color: hex.to_string().to_color(),
+                        color: hex.to_string().to_color(is_active),
                     })
                     .collect();
 
+                let direction = match color.direction {
+                    GradientDirection::String(direction) => GradientDirectionCoordinates::from(&direction),
+                    GradientDirection::Map(direction) => direction
+                };
+
                 Color::Gradient(Gradient {
                     gradient_stops,
-                    direction: color.direction.to_direction(),
+                    direction,
                 })
             }
         }
     }
-}
 
-impl From<Option<&ColorConfig>> for Color {
-    fn from(color_definition: Option<&ColorConfig>) -> Self {
+    pub fn from(color_definition: Option<&ColorConfig>, is_active: Option<bool>) -> Self {
         match color_definition {
             Some(color) => match color {
-                ColorConfig::String(s) => Color::from(s.clone()),
-                ColorConfig::Map(gradient_def) => Color::from(gradient_def.clone()),
+                ColorConfig::String(s) => Self::from_string(s.clone(), is_active),
+                ColorConfig::Map(gradient_def) => {
+                    Self::from_mapping(gradient_def.clone(), is_active)
+                }
             },
             None => Color::default(), // Return a default color when None is provided
         }
@@ -271,50 +267,14 @@ impl From<Option<&ColorConfig>> for Color {
 
 impl Default for Color {
     fn default() -> Self {
-        Color::Solid(Solid::default())
-    }
-}
-
-impl Default for Gradient {
-    fn default() -> Self {
-        Gradient {
-            direction: GradientDirectionCoordinates { start: [0.0, 0.5], end: [1.0, 0.5] },
-            gradient_stops: vec![
-                D2D1_GRADIENT_STOP {
-                    position: 0.0,
-                    color: D2D1_COLOR_F {
-                        r: 0.0,
-                        g: 0.0,
-                        b: 0.0,
-                        a: 1.0,
-                    },
-                },
-                D2D1_GRADIENT_STOP {
-                    position: 1.0,
-                    color: D2D1_COLOR_F {
-                        r: 1.0,
-                        g: 1.0,
-                        b: 1.0,
-                        a: 1.0,
-                    },
-                },
-            ],
-        }
-    }
-}
-
-impl ToColor for u32 {
-    fn to_color(self) -> D2D1_COLOR_F {
-        let r = ((self & 0x00FF0000) >> 16) as f32 / 255.0;
-        let g = ((self & 0x0000FF00) >> 8) as f32 / 255.0;
-        let b = (self & 0x000000FF) as f32 / 255.0;
-
-        D2D1_COLOR_F { r, g, b, a: 1.0 }
+        Color::Solid(Solid {
+            color: D2D1_COLOR_F::default(),
+        })
     }
 }
 
 impl ToColor for String {
-    fn to_color(self) -> D2D1_COLOR_F {
+    fn to_color(self, is_active_color: Option<bool>) -> D2D1_COLOR_F {
         if self == "accent" {
             let mut pcr_colorization: u32 = 0;
             let mut pf_opaqueblend: BOOL = FALSE;
@@ -326,7 +286,20 @@ impl ToColor for String {
                 return D2D1_COLOR_F::default();
             }
 
-            return pcr_colorization.to_color();
+            let r = ((pcr_colorization & 0x00FF0000) >> 16) as f32 / 255.0;
+            let g = ((pcr_colorization & 0x0000FF00) >> 8) as f32 / 255.0;
+            let b = (pcr_colorization & 0x000000FF) as f32 / 255.0;
+            let avg = (r + g + b) / 3.0;
+
+            return match is_active_color {
+                Some(true) => D2D1_COLOR_F { r, g, b, a: 1.0 },
+                _ => D2D1_COLOR_F {
+                    r: avg / 1.5 + r / 10.0,
+                    g: avg / 1.5 + g / 10.0,
+                    b: avg / 1.5 + b / 10.0,
+                    a: 1.0,
+                },
+            };
         } else if self.starts_with("#") {
             if self.len() != 7 && self.len() != 9 && self.len() != 4 && self.len() != 5 {
                 error!("{}", format!("Invalid hex color format: {}", self).as_str());
@@ -358,10 +331,7 @@ impl ToColor for String {
 
             return D2D1_COLOR_F { r, g, b, a };
         } else if self.starts_with("rgb(") || self.starts_with("rgba(") {
-            let rgba = self
-                .trim_start_matches("rgb(")
-                .trim_start_matches("rgba(")
-                .trim_end_matches(')');
+            let rgba = strip_string(self, &["rgb(", "rgba("], ')');
             let components: Vec<&str> = rgba.split(',').map(|s| s.trim()).collect();
             if components.len() == 3 || components.len() == 4 {
                 let r: f32 = components[0].parse::<u32>().unwrap_or(0) as f32 / 255.0;
@@ -432,7 +402,7 @@ impl Color {
                 };
 
                 Some(brush.into())
-            }
+            },
         }
     }
 }
@@ -468,16 +438,10 @@ pub fn interpolate_d2d1_colors(
     let g_step = (active_color.g - inactive_color.g) * anim_elapsed * interpolation_speed;
     let b_step = (active_color.b - inactive_color.b) * anim_elapsed * interpolation_speed;
 
-    // D2D1_COLOR_F has the copy trait so we can just do this to create an implicit copy
     let mut interpolated = *current_color;
 
     match in_event_anim {
-        // fade inactive_color to active_color
         1 => {
-            // TODO these assume that active_color is brighter than
-            // inactive_color in all three rgb values. Obviously this
-            // won't always be true so I need to find some other way to
-            // check whether we have reached the desired color.
             if interpolated.r + r_step >= active_color.r
                 && interpolated.g + g_step >= active_color.g
                 && interpolated.b + b_step >= active_color.b
@@ -490,7 +454,6 @@ pub fn interpolate_d2d1_colors(
             interpolated.g += g_step;
             interpolated.b += b_step;
         }
-        // fade active_color to inactive_color
         2 => {
             if interpolated.r - r_step <= inactive_color.r
                 && interpolated.g - g_step <= inactive_color.g

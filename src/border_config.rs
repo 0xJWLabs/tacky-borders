@@ -12,22 +12,6 @@ const DEFAULT_CONFIG: &str = include_str!("resources/config.yaml");
 
 pub static CONFIG: LazyLock<Mutex<Config>> = LazyLock::new(|| Mutex::new(Config::new()));
 
-#[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
-// Maybe support Process later.
-// Getting the process name seems annoying.
-pub enum MatchKind {
-    Title,
-    Class,
-    Process,
-}
-
-#[derive(Debug, Deserialize, PartialEq, Clone)]
-pub enum MatchStrategy {
-    Equals,
-    Regex,
-    Contains,
-}
-
 #[derive(Debug, Deserialize, PartialEq, Clone)]
 pub enum BorderRadiusOption {
     Round,
@@ -41,6 +25,20 @@ pub enum BorderRadiusOption {
 pub enum BorderRadius {
     String(BorderRadiusOption),
     Float(f32)
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
+pub enum MatchKind {
+    Title,
+    Class,
+    Process,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Clone)]
+pub enum MatchStrategy {
+    Equals,
+    Regex,
+    Contains,
 }
 
 #[derive(Debug, Deserialize, Clone)]

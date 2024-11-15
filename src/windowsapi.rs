@@ -596,7 +596,7 @@ fn convert_config_colors(
     color_inactive: &Option<ColorConfig>,
 ) -> (Color, Color) {
     (
-        Color::from(color_active.as_ref()),
-        Color::from(color_inactive.as_ref()),
+        Color::from(color_active.as_ref(), Some(true)),
+        Color::from(color_inactive.as_ref(), Some(false)),
     )
 }

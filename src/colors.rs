@@ -1,8 +1,7 @@
 use regex::Regex;
 use serde::Deserialize;
-use std::sync::LazyLock;
-use std::sync::Mutex;
 use std::f32::consts::PI;
+use std::sync::LazyLock;
 use windows::Win32::Foundation::BOOL;
 use windows::Win32::Foundation::FALSE;
 use windows::Win32::Foundation::RECT;
@@ -22,22 +21,22 @@ use crate::windowsapi::WindowsApi;
 
 // Constants
 const COLOR_PATTERN: &str = r"(?i)#[0-9A-F]{3,8}|rgba?\([0-9]{1,3},\s*[0-9]{1,3},\s*[0-9]{1,3}(?:,\s*[0-9]*(?:\.[0-9]+)?)?\)|accent|transparent";
-static COLOR_REGEX: LazyLock<Mutex<Regex>> =
-    LazyLock::new(|| Mutex::new(Regex::new(COLOR_PATTERN).unwrap()));
+static COLOR_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(COLOR_PATTERN).unwrap());
 
 // Enums
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum GradientDirection {
     String(String),
-    Map(GradientDirectionCoordinates),
+    Coordinates(GradientDirectionCoordinates),
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum ColorConfig {
     String(String),
-    Map(GradientConfig),
+    Mapping(GradientConfig),
 }
 
 #[derive(Debug, Clone)]
@@ -77,17 +76,6 @@ pub struct Animations {
     pub speed: Option<f32>,
 }
 
-impl Default for Animations {
-    fn default() -> Self {
-        Self {
-            active: Some(Vec::default()),
-            inactive: Some(Vec::default()),
-            fps: Some(30),
-            speed: Some(200.0),
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub enum AnimationType {
     Spiral,
@@ -96,185 +84,12 @@ pub enum AnimationType {
 
 // Traits
 trait ToColor {
-    fn to_color(self, is_active: Option<bool>) -> D2D1_COLOR_F;
+    fn to_d2d1_color(self, is_active: Option<bool>) -> D2D1_COLOR_F;
 }
 
 // Implementations
-impl From<&String> for GradientDirectionCoordinates {
-    fn from(value: &String) -> Self {
-        if let Some(degree) = value 
-            .strip_suffix("deg")
-            .and_then(|d| d.trim().parse::<f32>().ok())
-        {
-            let rad = (degree - 90.0) * PI / 180.0;
-            let (cos, sin) = (rad.cos(), rad.sin());
-
-            // Adjusting calculations based on the origin being (0.5, 0.5)
-            return GradientDirectionCoordinates {
-                start: [0.5 - 0.5 * cos, 0.5 - 0.5 * sin],
-                end: [0.5 + 0.5 * cos, 0.5 + 0.5 * sin],
-            };
-        }
-
-        match value.as_str() {
-            "to right" => GradientDirectionCoordinates {
-                start: [0.0, 0.5],
-                end: [1.0, 0.5],
-            }, // Left to right
-            "to left" => GradientDirectionCoordinates {
-                start: [1.0, 0.5],
-                end: [0.0, 0.5],
-            }, // Right to left
-            "to top" => GradientDirectionCoordinates {
-                start: [0.5, 1.0],
-                end: [0.5, 0.0],
-            }, // Bottom to top
-            "to bottom" => GradientDirectionCoordinates {
-                start: [0.5, 0.0],
-                end: [0.5, 1.0],
-            }, // Top to bottom
-            "to top right" => GradientDirectionCoordinates {
-                start: [0.0, 1.0],
-                end: [1.0, 0.0],
-            }, // Bottom-left to top-right
-            "to top left" => GradientDirectionCoordinates {
-                start: [1.0, 1.0],
-                end: [0.0, 0.0],
-            }, // Bottom-right to top-left
-            "to bottom right" => GradientDirectionCoordinates {
-                start: [0.0, 0.0],
-                end: [1.0, 1.0],
-            }, // Top-left to bottom-right
-            "to bottom left" => GradientDirectionCoordinates {
-                start: [1.0, 0.0],
-                end: [0.0, 1.0],
-            }, // Top-right to bottom-left
-            _ => GradientDirectionCoordinates {
-                start: [0.5, 1.0],
-                end: [0.5, 0.0],
-            }, // Default to "to top"
-        }
-    }
-}
-
-impl Color {
-    fn from_string(color: String, is_active: Option<bool>) -> Self {
-        if color.starts_with("gradient(") && color.ends_with(")") {
-            return Self::from_string(strip_string(color, &["gradient("], ')'), is_active);
-        }
-
-        let color_re = COLOR_REGEX.lock().unwrap();
-
-        // Collect valid colors using regex
-        let color_matches: Vec<&str> = color_re
-            .captures_iter(&color)
-            .filter_map(|cap| cap.get(0).map(|m| m.as_str()))
-            .collect();
-
-        drop(color_re);
-
-        if color_matches.len() == 1 {
-            return Self::Solid(Solid {
-                color: color_matches[0].to_string().to_color(is_active),
-            });
-        }
-
-        let remaining_input = color[color.rfind(color_matches.last().unwrap()).unwrap()
-            + color_matches.last().unwrap().len()..]
-            .trim_start();
-
-        let remaining_input_arr: Vec<&str> = remaining_input
-            .split(',')
-            .filter_map(|s| {
-                let trimmed = s.trim();
-                (!trimmed.is_empty()).then_some(trimmed)
-            })
-            .collect();
-
-        let direction = remaining_input_arr
-            .iter()
-            .find(|&&input| is_valid_direction(input))
-            .map(|&s| s.to_string())
-            .unwrap_or_else(|| "to_right".to_string());
-        let colors: Vec<D2D1_COLOR_F> = color_matches
-            .iter()
-            .map(|&color| color.to_string().to_color(is_active))
-            .collect();
-
-        let num_colors = colors.len();
-        let gradient_stops: Vec<D2D1_GRADIENT_STOP> = colors
-            .into_iter()
-            .enumerate()
-            .map(|(i, color)| D2D1_GRADIENT_STOP {
-                position: i as f32 / (num_colors - 1) as f32,
-                color,
-            })
-            .collect();
-
-        let direction = GradientDirectionCoordinates::from(&direction);
-
-        // Return the GradientColor
-        Self::Gradient(Gradient {
-            gradient_stops,
-            direction,
-        })
-    }
-
-    fn from_mapping(color: GradientConfig, is_active: Option<bool>) -> Self {
-        match color.colors.len() {
-            0 => Color::Solid(Solid {
-                color: D2D1_COLOR_F::default(),
-            }),
-            1 => Color::Solid(Solid {
-                color: color.colors[0].clone().to_color(is_active),
-            }),
-            _ => {
-                let gradient_stops: Vec<_> = color
-                    .colors
-                    .iter()
-                    .enumerate()
-                    .map(|(i, hex)| D2D1_GRADIENT_STOP {
-                        position: i as f32 / (color.colors.len() - 1) as f32,
-                        color: hex.to_string().to_color(is_active),
-                    })
-                    .collect();
-
-                let direction = match color.direction {
-                    GradientDirection::String(direction) => GradientDirectionCoordinates::from(&direction),
-                    GradientDirection::Map(direction) => direction
-                };
-
-                Color::Gradient(Gradient {
-                    gradient_stops,
-                    direction,
-                })
-            }
-        }
-    }
-
-    pub fn from(color_definition: Option<&ColorConfig>, is_active: Option<bool>) -> Self {
-        match color_definition {
-            Some(color) => match color {
-                ColorConfig::String(s) => Self::from_string(s.clone(), is_active),
-                ColorConfig::Map(gradient_def) => {
-                    Self::from_mapping(gradient_def.clone(), is_active)
-                }
-            },
-            None => Color::default(), // Return a default color when None is provided
-        }
-    }
-}
-
-impl Default for Color {
-    fn default() -> Self {
-        Color::Solid(Solid {
-            color: D2D1_COLOR_F::default(),
-        })
-    }
-}
-
 impl ToColor for String {
-    fn to_color(self, is_active_color: Option<bool>) -> D2D1_COLOR_F {
+    fn to_d2d1_color(self, is_active_color: Option<bool>) -> D2D1_COLOR_F {
         if self == "accent" {
             let mut pcr_colorization: u32 = 0;
             let mut pf_opaqueblend: BOOL = FALSE;
@@ -353,6 +168,174 @@ impl ToColor for String {
     }
 }
 
+impl From<&String> for GradientDirectionCoordinates {
+    fn from(value: &String) -> Self {
+        if let Some(degree) = value
+            .strip_suffix("deg")
+            .and_then(|d| d.trim().parse::<f32>().ok())
+        {
+            let rad = (degree - 90.0) * PI / 180.0;
+            let (cos, sin) = (rad.cos(), rad.sin());
+
+            // Adjusting calculations based on the origin being (0.5, 0.5)
+            return GradientDirectionCoordinates {
+                start: [0.5 - 0.5 * cos, 0.5 - 0.5 * sin],
+                end: [0.5 + 0.5 * cos, 0.5 + 0.5 * sin],
+            };
+        }
+
+        match value.as_str() {
+            "to right" => GradientDirectionCoordinates {
+                start: [0.0, 0.5],
+                end: [1.0, 0.5],
+            },
+            "to left" => GradientDirectionCoordinates {
+                start: [1.0, 0.5],
+                end: [0.0, 0.5],
+            },
+            "to top" => GradientDirectionCoordinates {
+                start: [0.5, 1.0],
+                end: [0.5, 0.0],
+            },
+            "to bottom" => GradientDirectionCoordinates {
+                start: [0.5, 0.0],
+                end: [0.5, 1.0],
+            },
+            "to top right" => GradientDirectionCoordinates {
+                start: [0.0, 1.0],
+                end: [1.0, 0.0],
+            },
+            "to top left" => GradientDirectionCoordinates {
+                start: [1.0, 1.0],
+                end: [0.0, 0.0],
+            },
+            "to bottom right" => GradientDirectionCoordinates {
+                start: [0.0, 0.0],
+                end: [1.0, 1.0],
+            },
+            "to bottom left" => GradientDirectionCoordinates {
+                start: [1.0, 0.0],
+                end: [0.0, 1.0],
+            },
+            _ => GradientDirectionCoordinates {
+                start: [0.5, 1.0],
+                end: [0.5, 0.0],
+            },
+        }
+    }
+}
+
+impl Color {
+    fn from_string(color: String, is_active: Option<bool>) -> Self {
+        if color.starts_with("gradient(") && color.ends_with(")") {
+            return Self::from_string(strip_string(color, &["gradient("], ')'), is_active);
+        }
+
+        let color_re = &COLOR_REGEX;
+
+        // Collect valid colors using regex
+        let color_matches: Vec<&str> = color_re
+            .captures_iter(&color)
+            .filter_map(|cap| cap.get(0).map(|m| m.as_str()))
+            .collect();
+
+        if color_matches.len() == 1 {
+            return Self::Solid(Solid {
+                color: color_matches[0].to_string().to_d2d1_color(is_active),
+            });
+        }
+
+        let remaining_input = color[color.rfind(color_matches.last().unwrap()).unwrap()
+            + color_matches.last().unwrap().len()..]
+            .trim_start();
+
+        let remaining_input_arr: Vec<&str> = remaining_input
+            .split(',')
+            .filter_map(|s| {
+                let trimmed = s.trim();
+                (!trimmed.is_empty()).then_some(trimmed)
+            })
+            .collect();
+
+        let direction = remaining_input_arr
+            .iter()
+            .find(|&&input| is_valid_direction(input))
+            .map(|&s| s.to_string())
+            .unwrap_or_else(|| "to_right".to_string());
+        let colors: Vec<D2D1_COLOR_F> = color_matches
+            .iter()
+            .map(|&color| color.to_string().to_d2d1_color(is_active))
+            .collect();
+
+        let num_colors = colors.len();
+        let gradient_stops: Vec<D2D1_GRADIENT_STOP> = colors
+            .into_iter()
+            .enumerate()
+            .map(|(i, color)| D2D1_GRADIENT_STOP {
+                position: i as f32 / (num_colors - 1) as f32,
+                color,
+            })
+            .collect();
+
+        let direction = GradientDirectionCoordinates::from(&direction);
+
+        // Return the GradientColor
+        Self::Gradient(Gradient {
+            gradient_stops,
+            direction,
+        })
+    }
+
+    fn from_mapping(color: GradientConfig, is_active: Option<bool>) -> Self {
+        match color.colors.len() {
+            0 => Color::Solid(Solid {
+                color: D2D1_COLOR_F::default(),
+            }),
+            1 => Color::Solid(Solid {
+                color: color.colors[0].clone().to_d2d1_color(is_active),
+            }),
+            _ => {
+                let gradient_stops: Vec<_> = color
+                    .colors
+                    .iter()
+                    .enumerate()
+                    .map(|(i, hex)| D2D1_GRADIENT_STOP {
+                        position: i as f32 / (color.colors.len() - 1) as f32,
+                        color: hex.to_string().to_d2d1_color(is_active),
+                    })
+                    .collect();
+
+                let direction = match color.direction {
+                    GradientDirection::String(direction) => {
+                        GradientDirectionCoordinates::from(&direction)
+                    }
+                    GradientDirection::Coordinates(direction) => direction,
+                };
+
+                Color::Gradient(Gradient {
+                    gradient_stops,
+                    direction,
+                })
+            }
+        }
+    }
+
+    pub fn from(color_definition: &ColorConfig, is_active: Option<bool>) -> Self {
+        match color_definition {
+            ColorConfig::String(s) => Self::from_string(s.clone(), is_active),
+            ColorConfig::Mapping(gradient_def) => Self::from_mapping(gradient_def.clone(), is_active),
+        }
+    }
+}
+
+impl Default for Color {
+    fn default() -> Self {
+        Color::Solid(Solid {
+            color: D2D1_COLOR_F::default(),
+        })
+    }
+}
+
 impl Color {
     pub fn create_brush(
         &mut self,
@@ -404,6 +387,28 @@ impl Color {
                 Some(brush.into())
             },
         }
+    }
+}
+
+impl Default for Animations {
+    fn default() -> Self {
+        Self {
+            active: None,
+            inactive: None,
+            fps: Some(60),
+            speed: Some(200.0),
+        }
+    }
+}
+
+impl Animations {
+    pub fn merge_with_defaults(mut self) -> Self {
+        let default = Self::default();
+        self.active = self.active.or(default.active);
+        self.inactive = self.inactive.or(default.inactive);
+        self.fps = self.fps.or(default.fps);
+        self.speed = self.speed.or(default.speed);
+        self
     }
 }
 

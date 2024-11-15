@@ -169,7 +169,7 @@ impl WindowBorder {
                 .as_ref()
                 .is_some_and(|vec| !vec.is_empty())
         {
-            let timer_duration = (1000 / self.animations.fps.unwrap_or(60)) as u32;
+            let timer_duration = (1000 / self.animations.fps.unwrap()) as u32;
             unsafe {
                 SetTimer(self.border_window, 1, timer_duration, None);
             }
@@ -568,7 +568,7 @@ impl WindowBorder {
                         let center_y = (self.window_rect.bottom - self.window_rect.top) / 2;
                         self.brush_properties.transform = self.brush_properties.transform
                             * Matrix3x2::rotation(
-                                self.animations.speed.unwrap_or(30.0) * anim_elapsed.as_secs_f32(),
+                                self.animations.speed.unwrap() * anim_elapsed.as_secs_f32(),
                                 center_x as f32,
                                 center_y as f32,
                             );
@@ -600,54 +600,12 @@ impl WindowBorder {
                             Color::Gradient(_) => {}
                         },
                         Color::Gradient(_) => {}
-                        // Color::Gradient(active_gradient) => match self.inactive_color.clone() {
-                        //     Color::Solid(inactive_solid) => {
-                        //         let current_gradient = match self.current_color.clone() {
-                        //             Color::Solid(current_solid) => {
-                        //                 let mut solid_as_gradient = active_gradient.clone();
-                        //                 for i in 0..solid_as_gradient.gradient_stops.len() {
-                        //                     solid_as_gradient .gradient_stops[i].color = current_solid.color;
-                        //                 }
-                        //                 Color::Gradient(solid_as_gradient)
-                        //             }
-                        //             Color::Gradient(current_gradient) => Color::Gradient(current_gradient),
-                        //         };
-
-                        //         let Color::Gradient(current_gradient) = current_gradient.clone()
-                        //         else {
-                        //             return LRESULT(0);
-                        //         };
-
-                        //         let mut gradient_stops: Vec<D2D1_GRADIENT_STOP> = Vec::new();
-                        //         for i in 0..active_gradient.gradient_stops.len() {
-                        //             let color = interpolate_d2d1_colors(
-                        //                 &current_gradient.gradient_stops[i].color,
-                        //                 &active_gradient.gradient_stops[i].color,
-                        //                 &inactive_solid.color,
-                        //                 anim_elapsed.as_secs_f32(),
-                        //                 self.animations.speed.unwrap(),
-                        //                 &mut self.in_event_anim
-                        //             );
-                        //             let stop = D2D1_GRADIENT_STOP {
-                        //                 color,
-                        //                 position: active_gradient.gradient_stops[i].position
-                        //             };
-                        //             gradient_stops.push(stop);
-                        //         }
-
-                        //         self.current_color = Color::Gradient(Gradient {
-                        //             gradient_stops,
-                        //             direction: active_gradient.direction
-                        //         });
-                        //     }
-                        //     Color::Gradient(_) => {}
-                        // }
                     }
                 }
 
                 if render_elapsed
                     >= time::Duration::from_millis(
-                        (1000 / self.animations.fps.unwrap_or(60)) as u64,
+                        (1000 / self.animations.fps.unwrap()) as u64,
                     )
                 {
                     let _ = self.render();

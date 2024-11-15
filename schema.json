@@ -9,7 +9,9 @@
       "required": [
         "border_width",
         "border_offset",
-        "border_radius"
+        "border_radius",
+        "active_color",
+        "inactive_color"
       ],
       "properties": {
         "border_width": {
@@ -623,7 +625,7 @@
                   }
                 ]
               },
-              "border_enabled": {
+              "enabled": {
                 "description": "Enables or disables border for this rule. (default: true)",
                 "type": "boolean"
               },

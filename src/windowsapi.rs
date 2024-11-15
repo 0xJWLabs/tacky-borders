@@ -323,7 +323,7 @@ impl WindowsApi {
         let config = config_mutex.lock().unwrap();
 
         for rule in config.window_rules.iter() {
-            if let Some(name) = match rule.rule_match.match_type {
+            if let Some(name) = match rule.rule_match.match_kind {
                 Some(MatchKind::Title) => Some(&title),
                 Some(MatchKind::Process) => Some(&process),
                 Some(MatchKind::Class) => Some(&class),
@@ -421,20 +421,22 @@ impl WindowsApi {
             let config_active = window_rule
                 .rule_match
                 .active_color
-                .or(config.global_rule.active_color.clone());
+                .unwrap_or(config.global_rule.active_color.clone());
 
             let config_inactive = window_rule
                 .rule_match
                 .inactive_color
-                .or(config.global_rule.inactive_color.clone());
+                .unwrap_or(config.global_rule.inactive_color.clone());
 
             let border_colors = convert_config_colors(&config_active, &config_inactive);
+
             let animations = window_rule.rule_match.animations.unwrap_or(
                 config
                     .global_rule
                     .animations
                     .clone()
-                    .unwrap_or_default(),
+                    .unwrap_or_default()
+                    .merge_with_defaults(),
             );
 
             let dpi = unsafe { GetDpiForWindow(window_sent.0) } as f32;
@@ -592,11 +594,11 @@ fn convert_config_radius(
 }
 
 fn convert_config_colors(
-    color_active: &Option<ColorConfig>,
-    color_inactive: &Option<ColorConfig>,
+    color_active: &ColorConfig,
+    color_inactive: &ColorConfig,
 ) -> (Color, Color) {
     (
-        Color::from(color_active.as_ref(), Some(true)),
-        Color::from(color_inactive.as_ref(), Some(false)),
+        Color::from(color_active, Some(true)),
+        Color::from(color_inactive, Some(false)),
     )
 }

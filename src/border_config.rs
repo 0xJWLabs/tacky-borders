@@ -41,10 +41,10 @@ pub enum MatchStrategy {
     Contains,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Default)]
 pub struct MatchDetails {
     #[serde(rename = "kind")]
-    pub match_type: Option<MatchKind>,
+    pub match_kind: Option<MatchKind>,
     #[serde(rename = "value")]
     pub match_value: Option<String>,
     #[serde(rename = "strategy")]
@@ -55,12 +55,13 @@ pub struct MatchDetails {
     pub border_radius: Option<BorderRadius>,
     pub border_width: Option<f32>,
     pub border_offset: Option<i32>,
+    #[serde(rename = "enabled")]
     pub border_enabled: Option<bool>,
     pub init_delay: Option<u64>,
     pub unminimize_delay: Option<u64>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Default)]
 pub struct WindowRule {
     #[serde(rename = "match")]
     pub rule_match: MatchDetails,
@@ -71,8 +72,8 @@ pub struct GlobalRule {
     pub border_width: f32,
     pub border_offset: i32,
     pub border_radius: BorderRadius,
-    pub active_color: Option<ColorConfig>,
-    pub inactive_color: Option<ColorConfig>,
+    pub active_color: ColorConfig,
+    pub inactive_color: ColorConfig,
     pub animations: Option<Animations>,
     pub init_delay: Option<u64>,
     pub unminimize_delay: Option<u64>,
@@ -111,26 +112,5 @@ impl Config {
     }
     pub fn _get() -> Self {
         CONFIG.lock().unwrap().clone()
-    }
-}
-
-impl WindowRule {
-    pub fn default() -> Self {
-        WindowRule {
-            rule_match: MatchDetails {
-                match_type: None,
-                border_width: None,
-                border_radius: None,
-                border_offset: None,
-                active_color: None,
-                inactive_color: None,
-                animations: None,
-                match_value: None,
-                match_strategy: None,
-                border_enabled: None,
-                init_delay: None,
-                unminimize_delay: None,
-            },
-        }
     }
 }

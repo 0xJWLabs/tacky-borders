@@ -549,7 +549,7 @@ impl WindowBorder {
 
                 let anim_elapsed = last_anim_time.unwrap_or(time::Instant::now()).elapsed();
                 let render_elapsed = last_render_time.unwrap_or(time::Instant::now()).elapsed();
-
+                let animations_speed = self.animations.speed.unwrap();
                 let animations_list = if is_active {
                     self.animations.active.clone()
                 } else {
@@ -568,7 +568,7 @@ impl WindowBorder {
                         let center_y = (self.window_rect.bottom - self.window_rect.top) / 2;
                         self.brush_properties.transform = self.brush_properties.transform
                             * Matrix3x2::rotation(
-                                self.animations.speed.unwrap() * anim_elapsed.as_secs_f32(),
+                                animations_speed * anim_elapsed.as_secs_f32(),
                                 center_x as f32,
                                 center_y as f32,
                             );
@@ -589,7 +589,7 @@ impl WindowBorder {
                                     &active_solid.color,
                                     &inactive_solid.color,
                                     anim_elapsed.as_secs_f32(),
-                                    self.animations.speed.unwrap(),
+                                    animations_speed,
                                     &mut self.in_event_anim,
                                 );
 

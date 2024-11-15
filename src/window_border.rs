@@ -1,14 +1,17 @@
+use crate::colors::interpolate_d2d1_colors;
+use crate::colors::AnimationType;
+use crate::colors::Animations;
 use crate::colors::Color;
-use crate::windowsapi::Brush;
+use crate::colors::Solid;
 use crate::windowsapi::ErrorMsg;
 use crate::windowsapi::WindowsApi;
+use crate::windowsapi::WM_APP_EVENTANIM;
 use crate::windowsapi::WM_APP_HIDECLOAKED;
 use crate::windowsapi::WM_APP_LOCATIONCHANGE;
 use crate::windowsapi::WM_APP_MINIMIZEEND;
 use crate::windowsapi::WM_APP_MINIMIZESTART;
 use crate::windowsapi::WM_APP_REORDER;
 use crate::windowsapi::WM_APP_SHOWUNCLOAKED;
-use crate::windowsapi::SendHWND;
 
 use std::ptr;
 use std::sync::LazyLock;
@@ -16,20 +19,20 @@ use std::sync::OnceLock;
 use std::thread;
 use std::time;
 
-use windows::core::Result;
 use windows::core::w;
+use windows::core::Result;
 
 use windows::Foundation::Numerics::Matrix3x2;
 
+use windows::Win32::Foundation::COLORREF;
 use windows::Win32::Foundation::FALSE;
 use windows::Win32::Foundation::HINSTANCE;
 use windows::Win32::Foundation::HWND;
+use windows::Win32::Foundation::LPARAM;
+use windows::Win32::Foundation::LRESULT;
 use windows::Win32::Foundation::RECT;
 use windows::Win32::Foundation::TRUE;
-use windows::Win32::Foundation::COLORREF;
-use windows::Win32::Foundation::LPARAM;
 use windows::Win32::Foundation::WPARAM;
-use windows::Win32::Foundation::LRESULT;
 
 use windows::Win32::Graphics::Direct2D::Common::D2D1_ALPHA_MODE_PREMULTIPLIED;
 use windows::Win32::Graphics::Direct2D::Common::D2D1_PIXEL_FORMAT;
@@ -47,46 +50,44 @@ use windows::Win32::Graphics::Direct2D::D2D1_RENDER_TARGET_PROPERTIES;
 use windows::Win32::Graphics::Direct2D::D2D1_RENDER_TARGET_TYPE_DEFAULT;
 use windows::Win32::Graphics::Direct2D::D2D1_ROUNDED_RECT;
 
-use windows::Win32::Graphics::Dwm::DWM_BLURBEHIND;
-use windows::Win32::Graphics::Dwm::DWM_BB_ENABLE;
-use windows::Win32::Graphics::Dwm::DWM_BB_BLURREGION;
 use windows::Win32::Graphics::Dwm::DwmEnableBlurBehindWindow;
 use windows::Win32::Graphics::Dwm::DWMWA_EXTENDED_FRAME_BOUNDS;
+use windows::Win32::Graphics::Dwm::DWM_BB_BLURREGION;
+use windows::Win32::Graphics::Dwm::DWM_BB_ENABLE;
+use windows::Win32::Graphics::Dwm::DWM_BLURBEHIND;
 
-use windows::Win32::Graphics::Gdi::InvalidateRect;
-use windows::Win32::Graphics::Gdi::ValidateRect;
-use windows::Win32::Graphics::Gdi::CreateRectRgn;
 use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_UNKNOWN;
+use windows::Win32::Graphics::Gdi::CreateRectRgn;
+use windows::Win32::Graphics::Gdi::ValidateRect;
 
 use windows::Win32::UI::WindowsAndMessaging::CreateWindowExW;
 use windows::Win32::UI::WindowsAndMessaging::DefWindowProcW;
-use windows::Win32::UI::WindowsAndMessaging::GetMessageW;
-use windows::Win32::UI::WindowsAndMessaging::TranslateMessage;
 use windows::Win32::UI::WindowsAndMessaging::DispatchMessageW;
+use windows::Win32::UI::WindowsAndMessaging::GetMessageW;
 use windows::Win32::UI::WindowsAndMessaging::GetSystemMetrics;
+use windows::Win32::UI::WindowsAndMessaging::GetWindow;
 use windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW;
 use windows::Win32::UI::WindowsAndMessaging::PostQuitMessage;
 use windows::Win32::UI::WindowsAndMessaging::SetTimer;
 use windows::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW;
-use windows::Win32::UI::WindowsAndMessaging::ShowWindow;
-use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
-use windows::Win32::UI::WindowsAndMessaging::GetWindow;
 use windows::Win32::UI::WindowsAndMessaging::SetWindowPos;
-use windows::Win32::UI::WindowsAndMessaging::SET_WINDOW_POS_FLAGS;
+use windows::Win32::UI::WindowsAndMessaging::ShowWindow;
+use windows::Win32::UI::WindowsAndMessaging::TranslateMessage;
 use windows::Win32::UI::WindowsAndMessaging::CREATESTRUCTW;
-use windows::Win32::UI::WindowsAndMessaging::HWND_TOP;
 use windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA;
 use windows::Win32::UI::WindowsAndMessaging::GW_HWNDPREV;
-use windows::Win32::UI::WindowsAndMessaging::MSG;
+use windows::Win32::UI::WindowsAndMessaging::HWND_TOP;
 use windows::Win32::UI::WindowsAndMessaging::LWA_ALPHA;
 use windows::Win32::UI::WindowsAndMessaging::LWA_COLORKEY;
+use windows::Win32::UI::WindowsAndMessaging::MSG;
+use windows::Win32::UI::WindowsAndMessaging::SET_WINDOW_POS_FLAGS;
 use windows::Win32::UI::WindowsAndMessaging::SM_CXVIRTUALSCREEN;
+use windows::Win32::UI::WindowsAndMessaging::SWP_HIDEWINDOW;
 use windows::Win32::UI::WindowsAndMessaging::SWP_NOACTIVATE;
 use windows::Win32::UI::WindowsAndMessaging::SWP_NOREDRAW;
 use windows::Win32::UI::WindowsAndMessaging::SWP_NOSENDCHANGING;
 use windows::Win32::UI::WindowsAndMessaging::SWP_NOZORDER;
 use windows::Win32::UI::WindowsAndMessaging::SWP_SHOWWINDOW;
-use windows::Win32::UI::WindowsAndMessaging::SWP_HIDEWINDOW;
 use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
 use windows::Win32::UI::WindowsAndMessaging::WM_CREATE;
 use windows::Win32::UI::WindowsAndMessaging::WM_DESTROY;
@@ -119,18 +120,17 @@ pub struct WindowBorder {
     pub brush_properties: D2D1_BRUSH_PROPERTIES,
     pub render_target: OnceLock<ID2D1HwndRenderTarget>,
     pub rounded_rect: D2D1_ROUNDED_RECT,
+    pub animations: Animations,
     pub active_color: Color,
     pub inactive_color: Color,
     pub current_color: Color,
     pub unminimize_delay: u64,
     pub pause: bool,
-    pub active_gradient_angle: f32,
-    pub inactive_gradient_angle: f32,
+    pub last_animation_time_active: Option<std::time::Instant>,
+    pub last_animation_time_inactive: Option<std::time::Instant>,
     pub last_render_time_active: Option<std::time::Instant>,
     pub last_render_time_inactive: Option<std::time::Instant>,
-    pub use_active_animation: bool,
-    pub use_inactive_animation: bool,
-    pub timer_id: Option<i8>,
+    pub in_event_anim: i32,
 }
 
 impl WindowBorder {
@@ -157,6 +157,23 @@ impl WindowBorder {
 
     pub fn init(&mut self, init_delay: u64) -> Result<()> {
         thread::sleep(time::Duration::from_millis(init_delay));
+
+        if self
+            .animations
+            .active
+            .as_ref()
+            .is_some_and(|vec| !vec.is_empty())
+            || self
+                .animations
+                .inactive
+                .as_ref()
+                .is_some_and(|vec| !vec.is_empty())
+        {
+            let timer_duration = (1000 / self.animations.fps.unwrap_or(60)) as u32;
+            unsafe {
+                SetTimer(self.border_window, 1, timer_duration, None);
+            }
+        }
 
         unsafe {
             // Make the window border transparent
@@ -235,10 +252,6 @@ impl WindowBorder {
             pixelSize: Default::default(),
             presentOptions: D2D1_PRESENT_OPTIONS_IMMEDIATELY,
         };
-        self.active_gradient_angle = 0.0;
-        self.inactive_gradient_angle = 0.0;
-        self.last_render_time_active = Some(std::time::Instant::now());
-        self.last_render_time_inactive = Some(std::time::Instant::now());
         self.brush_properties = D2D1_BRUSH_PROPERTIES {
             opacity: 1.0,
             transform: Matrix3x2::identity(),
@@ -268,24 +281,6 @@ impl WindowBorder {
         let _ = self.update_color();
         let _ = self.update_window_rect();
         let _ = self.update_position(None);
-        let _ = self.create_animation_thread();
-
-        Ok(())
-    }
-
-    pub fn create_animation_thread(&self) -> Result<()> {
-        if self.use_active_animation || self.use_inactive_animation {
-            let window_sent: SendHWND = SendHWND(self.border_window);
-            std::thread::spawn(move || {
-                let window = window_sent;
-                if WindowsApi::is_window_visible(window.0) {
-                    unsafe {
-                        // Post initial WM_PAINT to start the rendering process
-                        let _ = PostMessageW(window.0, WM_PAINT, WPARAM(0), LPARAM(0));
-                    }
-                }
-            });
-        }
 
         Ok(())
     }
@@ -342,19 +337,35 @@ impl WindowBorder {
 
     pub fn update_color(&mut self) -> Result<()> {
         if WindowsApi::is_window_active(self.tracking_window) {
-            self.current_color = self.active_color.clone()
+            if let Some(active_animations) = &self.animations.active {
+                if active_animations.contains(&AnimationType::Fade) {
+                    return Ok(());
+                }
+            }
+            self.current_color = self.active_color.clone();
         } else {
-            self.current_color = self.inactive_color.clone()
-        };
+            if let Some(inactive_animations) = &self.animations.inactive {
+                if inactive_animations.contains(&AnimationType::Fade) {
+                    return Ok(());
+                }
+            }
+            self.current_color = self.inactive_color.clone();
+        }
 
         Ok(())
     }
 
     pub fn render(&mut self) -> Result<()> {
-        // Get the render target
-        let render_target = match self.render_target.get() {
-            Some(rt) => rt,
-            None => return Ok(()), // Return early if there is no render target
+        let is_active = WindowsApi::is_window_active(self.tracking_window);
+
+        if is_active {
+            self.last_render_time_active = Some(std::time::Instant::now());
+        } else {
+            self.last_animation_time_inactive = Some(std::time::Instant::now());
+        }
+
+        let Some(render_target) = self.render_target.get() else {
+            return Ok(());
         };
 
         let pixel_size = D2D_SIZE_U {
@@ -372,56 +383,15 @@ impl WindowBorder {
         };
 
         unsafe {
-            let _ = render_target.Resize(ptr::addr_of!(pixel_size));
+            let _ = render_target.Resize(&pixel_size);
 
-            let now = std::time::Instant::now();
-            let is_active = WindowsApi::is_window_active(self.tracking_window);
-            let last_render_time = if is_active {
-                self.last_render_time_active
-            } else {
-                self.last_render_time_inactive
+            let Some(brush) = self.current_color.create_brush(
+                render_target,
+                &self.window_rect,
+                &self.brush_properties,
+            ) else {
+                return Ok(());
             };
-            let elapsed = now
-                .duration_since(last_render_time.unwrap_or(now))
-                .as_secs_f32();
-            if self.use_active_animation && is_active {
-                self.last_render_time_active = Some(now);
-                self.active_gradient_angle += 180.0 * elapsed;
-                if self.active_gradient_angle > 360.0 {
-                    self.active_gradient_angle -= 360.0;
-                }
-            } else if self.use_inactive_animation && !is_active {
-                self.last_render_time_inactive = Some(now);
-                self.inactive_gradient_angle += 180.0 * elapsed;
-                if self.inactive_gradient_angle > 360.0 {
-                    self.inactive_gradient_angle -= 360.0;
-                }
-            }
-
-            // let brush = self.create_brush(self.current_color.clone()).unwrap();
-
-            let condition = if is_active {
-                self.use_active_animation
-            } else {
-                self.use_inactive_animation
-            };
-
-            let gradient_angle = if is_active {
-                self.active_gradient_angle
-            } else {
-                self.inactive_gradient_angle
-            };
-
-            let brush = Brush {
-                render_target: render_target.clone(),
-                color: self.current_color.clone(),
-                rect: self.window_rect,
-                use_animation: condition,
-                brush_properties: self.brush_properties,
-                gradient_angle: Some(gradient_angle),
-            }
-            .to_id2d1_brush()
-            .unwrap();
 
             render_target.BeginDraw();
             render_target.Clear(None);
@@ -432,7 +402,7 @@ impl WindowBorder {
                 None,
             );
             let _ = render_target.EndDraw(None, None);
-            let _ = InvalidateRect(self.border_window, None, false);
+            // let _ = InvalidateRect(self.border_window, None, false);
         }
 
         Ok(())
@@ -520,19 +490,14 @@ impl WindowBorder {
                 }
                 self.pause = false;
             }
-            // EVENT_OBJECT_HIDE / EVENT_OBJECT_CLOAKED
-            WM_APP_HIDECLOAKED => {
-                let _ = self.update_position(Some(SWP_HIDEWINDOW));
-                self.pause = true;
-            }
-            // EVENT_OBJECT_MINIMIZESTART
-            WM_APP_MINIMIZESTART => {
+            // EVENT_OBJECT_HIDE / EVENT_OBJECT_CLOAKED / EVENT_OBJECT_MINIMIZESTART
+            WM_APP_HIDECLOAKED | WM_APP_MINIMIZESTART => {
                 let _ = self.update_position(Some(SWP_HIDEWINDOW));
                 self.pause = true;
             }
             // EVENT_SYSTEM_MINIMIZEEND
             // When a window is about to be unminimized, hide the border and let the thread sleep
-            // for 200ms to wait for the window animation to finish, then show the border.
+            // to wait for the window animation to finish, then show the border.
             WM_APP_MINIMIZEEND => {
                 thread::sleep(time::Duration::from_millis(self.unminimize_delay));
 
@@ -544,17 +509,149 @@ impl WindowBorder {
                 }
                 self.pause = false;
             }
-            WM_PAINT => {
-                let _ = self.render();
-                let _ = ValidateRect(window, None);
+            WM_APP_EVENTANIM => match wparam.0 {
+                1 | 2 => {
+                    let is_active = WindowsApi::is_window_active(window);
+                    let animations_list = if is_active {
+                        self.animations.active.as_ref()
+                    } else {
+                        self.animations.inactive.as_ref()
+                    };
 
-                if self.timer_id.is_none() {
-                    let _ = SetTimer(window, 1, 16, None);
-                    self.timer_id = Some(1);
+                    if let Some(animations) = animations_list {
+                        if animations.contains(&AnimationType::Fade) {
+                            self.in_event_anim = wparam.0 as i32;
+                        }
+                    }
                 }
+                _ => {}
+            },
+            WM_PAINT => {
+                let _ = ValidateRect(window, None);
             }
             WM_TIMER => {
-                let _ = InvalidateRect(window, None, false);
+                if self.pause {
+                    return LRESULT(0);
+                }
+
+                let is_active = WindowsApi::is_window_active(self.tracking_window);
+                let (last_anim_time, last_render_time) = if is_active {
+                    (
+                        self.last_animation_time_active,
+                        self.last_render_time_active,
+                    )
+                } else {
+                    (
+                        self.last_animation_time_inactive,
+                        self.last_render_time_inactive,
+                    )
+                };
+
+                let anim_elapsed = last_anim_time.unwrap_or(time::Instant::now()).elapsed();
+                let render_elapsed = last_render_time.unwrap_or(time::Instant::now()).elapsed();
+
+                let animations_list = if is_active {
+                    self.animations.active.clone()
+                } else {
+                    self.animations.inactive.clone()
+                };
+
+                if is_active {
+                    self.last_animation_time_active = Some(time::Instant::now());
+                } else {
+                    self.last_animation_time_inactive = Some(time::Instant::now());
+                }
+
+                if let Some(animations) = animations_list {
+                    if animations.contains(&AnimationType::Spiral) {
+                        let center_x = (self.window_rect.right - self.window_rect.left) / 2;
+                        let center_y = (self.window_rect.bottom - self.window_rect.top) / 2;
+                        self.brush_properties.transform = self.brush_properties.transform
+                            * Matrix3x2::rotation(
+                                self.animations.speed.unwrap_or(30.0) * anim_elapsed.as_secs_f32(),
+                                center_x as f32,
+                                center_y as f32,
+                            );
+                    }
+                }
+
+                if self.in_event_anim != 0 {
+                    match self.active_color.clone() {
+                        Color::Solid(active_solid) => match self.inactive_color.clone() {
+                            Color::Solid(inactive_solid) => {
+                                let Color::Solid(current_solid) = self.current_color.clone()
+                                else {
+                                    return LRESULT(0);
+                                };
+
+                                let color = interpolate_d2d1_colors(
+                                    &current_solid.color,
+                                    &active_solid.color,
+                                    &inactive_solid.color,
+                                    anim_elapsed.as_secs_f32(),
+                                    self.animations.speed.unwrap(),
+                                    &mut self.in_event_anim,
+                                );
+
+                                self.current_color = Color::Solid(Solid {
+                                    color: color,
+                                })
+                            }
+                            Color::Gradient(_) => {}
+                        },
+                        Color::Gradient(_) => {}
+                        // Color::Gradient(active_gradient) => match self.inactive_color.clone() {
+                        //     Color::Solid(inactive_solid) => {
+                        //         let current_gradient = match self.current_color.clone() {
+                        //             Color::Solid(current_solid) => {
+                        //                 let mut solid_as_gradient = active_gradient.clone();
+                        //                 for i in 0..solid_as_gradient.gradient_stops.len() {
+                        //                     solid_as_gradient .gradient_stops[i].color = current_solid.color;
+                        //                 }
+                        //                 Color::Gradient(solid_as_gradient)
+                        //             }
+                        //             Color::Gradient(current_gradient) => Color::Gradient(current_gradient),
+                        //         };
+
+                        //         let Color::Gradient(current_gradient) = current_gradient.clone()
+                        //         else {
+                        //             return LRESULT(0);
+                        //         };
+
+                        //         let mut gradient_stops: Vec<D2D1_GRADIENT_STOP> = Vec::new();
+                        //         for i in 0..active_gradient.gradient_stops.len() {
+                        //             let color = interpolate_d2d1_colors(
+                        //                 &current_gradient.gradient_stops[i].color,
+                        //                 &active_gradient.gradient_stops[i].color,
+                        //                 &inactive_solid.color,
+                        //                 anim_elapsed.as_secs_f32(),
+                        //                 self.animations.speed.unwrap(),
+                        //                 &mut self.in_event_anim
+                        //             );
+                        //             let stop = D2D1_GRADIENT_STOP {
+                        //                 color,
+                        //                 position: active_gradient.gradient_stops[i].position
+                        //             };
+                        //             gradient_stops.push(stop);
+                        //         }
+
+                        //         self.current_color = Color::Gradient(Gradient {
+                        //             gradient_stops,
+                        //             direction: active_gradient.direction
+                        //         });
+                        //     }
+                        //     Color::Gradient(_) => {}
+                        // }
+                    }
+                }
+
+                if render_elapsed
+                    >= time::Duration::from_millis(
+                        (1000 / self.animations.fps.unwrap_or(60)) as u64,
+                    )
+                {
+                    let _ = self.render();
+                }
             }
             WM_DESTROY => {
                 SetWindowLongPtrW(window, GWLP_USERDATA, 0);

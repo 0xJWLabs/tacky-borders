@@ -15,6 +15,7 @@ use sp_log::LevelFilter;
 use sp_log::TermLogger;
 use sp_log::TerminalMode;
 use sp_log::WriteLogger;
+use windows::Win32::UI::WindowsAndMessaging::WM_CLOSE;
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -50,7 +51,6 @@ use windows::Win32::UI::WindowsAndMessaging::IDC_ARROW;
 use windows::Win32::UI::WindowsAndMessaging::MSG;
 use windows::Win32::UI::WindowsAndMessaging::WINEVENT_OUTOFCONTEXT;
 use windows::Win32::UI::WindowsAndMessaging::WINEVENT_SKIPOWNPROCESS;
-use windows::Win32::UI::WindowsAndMessaging::WM_DESTROY;
 use windows::Win32::UI::WindowsAndMessaging::WNDCLASSEXW;
 
 mod border_config;
@@ -163,16 +163,18 @@ pub fn set_event_hook() -> HWINEVENTHOOK {
 }
 
 pub fn restart_borders() {
-    let mutex = &*BORDERS;
-    let mut borders = mutex.lock().unwrap();
+    let mut borders = BORDERS.lock().unwrap();
     for value in borders.values() {
         let border_window = HWND(*value as _);
         unsafe {
-            let _ = PostMessageW(border_window, WM_DESTROY, WPARAM(0), LPARAM(0));
+            let _ = PostMessageW(border_window, WM_CLOSE, WPARAM(0), LPARAM(0));
         }
     }
     borders.clear();
     drop(borders);
+
+    INITIAL_WINDOWS.lock().unwrap().clear();
+
     let _ = WindowsApi::enum_windows();
 }
 

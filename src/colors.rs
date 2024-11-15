@@ -1,12 +1,22 @@
 use regex::Regex;
 use serde::Deserialize;
+use windows::Win32::Graphics::Direct2D::ID2D1Brush;
+use windows::Win32::Graphics::Direct2D::ID2D1HwndRenderTarget;
+use windows::Win32::Graphics::Direct2D::D2D1_BRUSH_PROPERTIES;
+use windows::Win32::Graphics::Direct2D::D2D1_EXTEND_MODE_CLAMP;
+use windows::Win32::Graphics::Direct2D::D2D1_GAMMA_2_2;
+use windows::Win32::Graphics::Direct2D::D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES;
 use std::sync::LazyLock;
 use std::sync::Mutex;
 use windows::Win32::Foundation::BOOL;
 use windows::Win32::Foundation::FALSE;
+use windows::Win32::Foundation::RECT;
 use windows::Win32::Graphics::Direct2D::Common::D2D1_COLOR_F;
+use windows::Win32::Graphics::Direct2D::Common::D2D_POINT_2F;
 use windows::Win32::Graphics::Direct2D::Common::D2D1_GRADIENT_STOP;
 use windows::Win32::Graphics::Dwm::DwmGetColorizationColor;
+
+use crate::windowsapi::WindowsApi;
 
 // Constants
 const COLOR_PATTERN: &str = r"(?i)#[0-9A-F]{3,8}|rgba?\([0-9]{1,3},\s*[0-9]{1,3},\s*[0-9]{1,3}(?:,\s*[0-9]*(?:\.[0-9]+)?)?\)|accent|transparent";
@@ -30,7 +40,7 @@ pub enum ColorConfig {
 
 #[derive(Debug, Clone)]
 pub enum Color {
-    Solid(D2D1_COLOR_F),
+    Solid(Solid),
     Gradient(Gradient),
 }
 // Structs
@@ -44,14 +54,50 @@ pub struct GradientDirectionCoordinates {
 pub struct GradientConfig {
     pub colors: Vec<String>,
     pub direction: GradientDirection,
-    pub animation: Option<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Solid {
+    pub color: D2D1_COLOR_F,
+}
+
+impl Default for Solid {
+    fn default() -> Self {
+        Self {
+            color: D2D1_COLOR_F::default()
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct Gradient {
-    pub direction: Option<Vec<f32>>,
-    pub gradient_stops: Vec<D2D1_GRADIENT_STOP>, // Array of gradient stops
-    pub animation: Option<bool>,
+    pub direction: GradientDirectionCoordinates,
+    pub gradient_stops: Vec<D2D1_GRADIENT_STOP>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct Animations {
+    pub active: Option<Vec<AnimationType>>,
+    pub inactive: Option<Vec<AnimationType>>,
+    pub fps: Option<i32>,
+    pub speed: Option<f32>,
+}
+
+impl Default for Animations {
+    fn default() -> Self {
+        Self {
+            active: Some(Vec::default()),
+            inactive: Some(Vec::default()),
+            fps: Some(30),
+            speed: Some(200.0)
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub enum AnimationType {
+    Spiral,
+    Fade,
 }
 
 // Traits
@@ -60,12 +106,12 @@ trait ToColor {
 }
 
 trait ToDirection {
-    fn to_direction(self) -> Vec<f32>;
+    fn to_direction(self) -> GradientDirectionCoordinates;
 }
 
 // Impl
 impl ToDirection for GradientDirection {
-    fn to_direction(self) -> Vec<f32> {
+    fn to_direction(self) -> GradientDirectionCoordinates {
         match self {
             GradientDirection::String(direction) => {
                 if let Some(degree) = direction
@@ -77,31 +123,26 @@ impl ToDirection for GradientDirection {
                     let (cos, sin) = (rad.cos(), rad.sin());
 
                     // Adjusting calculations based on the origin being (0.5, 0.5)
-                    return vec![
-                        0.5 - 0.5 * cos,
-                        0.5 - 0.5 * sin, // Start point (x1, y1) adjusted
-                        0.5 + 0.5 * cos,
-                        0.5 + 0.5 * sin, // End point (x2, y2) adjusted
-                    ];
+                    return GradientDirectionCoordinates {
+                        start: [0.5 - 0.5 * cos, 0.5 - 0.5 * sin],
+                        end: [0.5 + 0.5 * cos, 0.5 + 0.5 * sin]
+                    };
                 }
 
                 match direction.as_str() {
-                    "to right" => vec![0.0, 0.5, 1.0, 0.5],     // Left to right
-                    "to left" => vec![1.0, 0.5, 0.0, 0.5],      // Right to left
-                    "to top" => vec![0.5, 1.0, 0.5, 0.0],       // Bottom to top
-                    "to bottom" => vec![0.5, 0.0, 0.5, 1.0],    // Top to bottom
-                    "to top right" => vec![0.0, 1.0, 1.0, 0.0], // Bottom-left to top-right
-                    "to top left" => vec![1.0, 1.0, 0.0, 0.0],  // Bottom-right to top-left
-                    "to bottom right" => vec![0.0, 0.0, 1.0, 1.0], // Top-left to bottom-right
-                    "to bottom left" => vec![1.0, 0.0, 0.0, 1.0], // Top-right to bottom-left
-                    _ => vec![0.5, 1.0, 0.5, 0.0],              // Default to "to top"
+                    "to right" => GradientDirectionCoordinates { start: [0.0, 0.5], end: [1.0, 0.5] },     // Left to right
+                    "to left" => GradientDirectionCoordinates { start: [1.0, 0.5], end: [0.0, 0.5] },      // Right to left
+                    "to top" => GradientDirectionCoordinates { start: [0.5, 1.0], end: [0.5, 0.0] },       // Bottom to top
+                    "to bottom" => GradientDirectionCoordinates { start: [0.5, 0.0], end: [0.5, 1.0] },    // Top to bottom
+                    "to top right" => GradientDirectionCoordinates { start: [0.0, 1.0], end: [1.0, 0.0] }, // Bottom-left to top-right
+                    "to top left" => GradientDirectionCoordinates { start: [1.0, 1.0], end: [0.0, 0.0] },  // Bottom-right to top-left
+                    "to bottom right" => GradientDirectionCoordinates { start: [0.0, 0.0], end: [1.0, 1.0] }, // Top-left to bottom-right
+                    "to bottom left" => GradientDirectionCoordinates { start: [1.0, 0.0], end: [0.0, 1.0] }, // Top-right to bottom-left
+                    _ => GradientDirectionCoordinates { start: [0.5, 1.0], end: [0.5, 0.0] },              // Default to "to top"
                 }
             }
             GradientDirection::Map(gradient_struct) => {
-                let start_slice: &[f32] = &gradient_struct.start;
-                let end_slice: &[f32] = &gradient_struct.end;
-
-                [start_slice, end_slice].concat()
+                gradient_struct 
             }
         }
     }
@@ -131,7 +172,9 @@ impl From<String> for Color {
         drop(color_re);
 
         if color_matches.len() == 1 {
-            return Color::Solid(color_matches[0].to_string().to_color());
+            return Color::Solid(Solid {
+                color: color_matches[0].to_string().to_color()
+            });
         }
 
         let remaining_input = color[color.rfind(color_matches.last().unwrap()).unwrap()
@@ -146,7 +189,7 @@ impl From<String> for Color {
             })
             .collect();
 
-        let (mut animation, mut direction) = (false, None);
+        let mut direction = None;
         let colors: Vec<D2D1_COLOR_F> = color_matches
             .iter()
             .map(|&color| color.to_string().to_color())
@@ -154,8 +197,6 @@ impl From<String> for Color {
 
         for input in remaining_input_arr {
             match input.to_lowercase().as_str() {
-                "true" => animation = true,
-                "false" => animation = false,
                 _ if is_valid_direction(input) && direction.is_none() => {
                     direction = Some(input.to_string())
                 }
@@ -186,8 +227,7 @@ impl From<String> for Color {
         // Return the GradientColor
         Color::Gradient(Gradient {
             gradient_stops,
-            direction: Some(direction),
-            animation: Some(animation),
+            direction,
         })
     }
 }
@@ -196,7 +236,7 @@ impl From<GradientConfig> for Color {
     fn from(color: GradientConfig) -> Self {
         match color.colors.len() {
             0 => Color::Gradient(Gradient::default()),
-            1 => Color::Solid(color.colors[0].clone().to_color()),
+            1 => Color::Solid(Solid { color: color.colors[0].clone().to_color() }),
             _ => {
                 let gradient_stops: Vec<_> = color
                     .colors
@@ -210,8 +250,7 @@ impl From<GradientConfig> for Color {
 
                 Color::Gradient(Gradient {
                     gradient_stops,
-                    direction: Some(color.direction.to_direction()),
-                    animation: color.animation,
+                    direction: color.direction.to_direction(),
                 })
             }
         }
@@ -232,19 +271,14 @@ impl From<Option<&ColorConfig>> for Color {
 
 impl Default for Color {
     fn default() -> Self {
-        Color::Solid(D2D1_COLOR_F {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 1.0,
-        })
+        Color::Solid(Solid::default())
     }
 }
 
 impl Default for Gradient {
     fn default() -> Self {
         Gradient {
-            direction: None,
+            direction: GradientDirectionCoordinates { start: [0.0, 0.5], end: [1.0, 0.5] },
             gradient_stops: vec![
                 D2D1_GRADIENT_STOP {
                     position: 0.0,
@@ -265,7 +299,6 @@ impl Default for Gradient {
                     },
                 },
             ],
-            animation: Some(false),
         }
     }
 }
@@ -350,6 +383,60 @@ impl ToColor for String {
     }
 }
 
+impl Color {
+    pub fn create_brush(
+        &mut self,
+        render_target: &ID2D1HwndRenderTarget,
+        window_rect: &RECT,
+        brush_properties: &D2D1_BRUSH_PROPERTIES,
+    ) -> Option<ID2D1Brush> {
+        match self {
+            Color::Solid(solid) => unsafe {
+                let Ok(brush) =
+                    render_target.CreateSolidColorBrush(&solid.color, Some(brush_properties))
+                else {
+                    return None;
+                };
+                Some(brush.into())
+            },
+            Color::Gradient(gradient) => unsafe {
+                let width = WindowsApi::get_rect_width(*window_rect) as f32;
+                let height = WindowsApi::get_rect_height(*window_rect) as f32;
+
+                let gradient_properties = D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES {
+                    startPoint: D2D_POINT_2F {
+                        x: gradient.direction.start[0] * width,
+                        y: gradient.direction.start[1] * height,
+                    },
+                    endPoint: D2D_POINT_2F {
+                        x: gradient.direction.end[0] * width,
+                        y: gradient.direction.end[1] * height,
+                    },
+                };
+
+                let Ok(gradient_stop_collection) = render_target.CreateGradientStopCollection(
+                    &gradient.gradient_stops,
+                    D2D1_GAMMA_2_2,
+                    D2D1_EXTEND_MODE_CLAMP,
+                ) else {
+                    // TODO instead of panicking, I should just return a default value
+                    panic!("could not create gradient_stop_collection!");
+                };
+
+                let Ok(brush) = render_target.CreateLinearGradientBrush(
+                    &gradient_properties,
+                    Some(brush_properties),
+                    &gradient_stop_collection,
+                ) else {
+                    return None;
+                };
+
+                Some(brush.into())
+            }
+        }
+    }
+}
+
 // Functions
 fn is_valid_direction(direction: &str) -> bool {
     matches!(
@@ -366,4 +453,59 @@ fn is_valid_direction(direction: &str) -> bool {
         .strip_suffix("deg")
         .and_then(|angle| angle.parse::<f32>().ok())
         .is_some()
+}
+
+pub fn interpolate_d2d1_colors(
+    current_color: &D2D1_COLOR_F,
+    active_color: &D2D1_COLOR_F,
+    inactive_color: &D2D1_COLOR_F,
+    anim_elapsed: f32,
+    animation_speed: f32,
+    in_event_anim: &mut i32,
+) -> D2D1_COLOR_F {
+    let interpolation_speed = animation_speed / 50.0;
+    let r_step = (active_color.r - inactive_color.r) * anim_elapsed * interpolation_speed;
+    let g_step = (active_color.g - inactive_color.g) * anim_elapsed * interpolation_speed;
+    let b_step = (active_color.b - inactive_color.b) * anim_elapsed * interpolation_speed;
+
+    // D2D1_COLOR_F has the copy trait so we can just do this to create an implicit copy
+    let mut interpolated = *current_color;
+
+    match in_event_anim {
+        // fade inactive_color to active_color
+        1 => {
+            // TODO these assume that active_color is brighter than
+            // inactive_color in all three rgb values. Obviously this
+            // won't always be true so I need to find some other way to
+            // check whether we have reached the desired color.
+            if interpolated.r + r_step >= active_color.r
+                && interpolated.g + g_step >= active_color.g
+                && interpolated.b + b_step >= active_color.b
+            {
+                *in_event_anim = 0;
+                return *active_color;
+            }
+
+            interpolated.r += r_step;
+            interpolated.g += g_step;
+            interpolated.b += b_step;
+        }
+        // fade active_color to inactive_color
+        2 => {
+            if interpolated.r - r_step <= inactive_color.r
+                && interpolated.g - g_step <= inactive_color.g
+                && interpolated.b - b_step <= inactive_color.b
+            {
+                *in_event_anim = 0;
+                return *inactive_color;
+            }
+
+            interpolated.r -= r_step;
+            interpolated.g -= g_step;
+            interpolated.b -= b_step;
+        }
+        _ => {}
+    }
+
+    interpolated
 }

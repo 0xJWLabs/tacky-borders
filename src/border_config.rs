@@ -4,6 +4,7 @@ use std::fs;
 use std::sync::LazyLock;
 use std::sync::Mutex;
 
+use crate::colors::Animations;
 use crate::colors::ColorConfig;
 use crate::utils::get_config;
 
@@ -52,6 +53,7 @@ pub struct MatchDetails {
     pub match_strategy: Option<MatchStrategy>,
     pub active_color: Option<ColorConfig>,
     pub inactive_color: Option<ColorConfig>,
+    pub animations: Option<Animations>,
     pub border_radius: Option<BorderRadius>,
     pub border_width: Option<f32>,
     pub border_offset: Option<i32>,
@@ -73,6 +75,7 @@ pub struct GlobalRule {
     pub border_radius: BorderRadius,
     pub active_color: Option<ColorConfig>,
     pub inactive_color: Option<ColorConfig>,
+    pub animations: Option<Animations>,
     pub init_delay: Option<u64>,
     pub unminimize_delay: Option<u64>,
 }
@@ -123,6 +126,7 @@ impl WindowRule {
                 border_offset: None,
                 active_color: None,
                 inactive_color: None,
+                animations: None,
                 match_value: None,
                 match_strategy: None,
                 border_enabled: None,

@@ -13,14 +13,6 @@ use windows::Win32::Foundation::LPARAM;
 use windows::Win32::Foundation::RECT;
 use windows::Win32::Foundation::WPARAM;
 
-use windows::Win32::Graphics::Direct2D::Common::D2D_POINT_2F;
-use windows::Win32::Graphics::Direct2D::ID2D1Brush;
-use windows::Win32::Graphics::Direct2D::ID2D1HwndRenderTarget;
-use windows::Win32::Graphics::Direct2D::D2D1_BRUSH_PROPERTIES;
-use windows::Win32::Graphics::Direct2D::D2D1_EXTEND_MODE_CLAMP;
-use windows::Win32::Graphics::Direct2D::D2D1_GAMMA_2_2;
-use windows::Win32::Graphics::Direct2D::D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES;
-
 use windows::Win32::Graphics::Dwm::DwmGetWindowAttribute;
 use windows::Win32::Graphics::Dwm::DwmSetWindowAttribute;
 use windows::Win32::Graphics::Dwm::DWMWA_CLOAKED;
@@ -80,6 +72,7 @@ pub const WM_APP_SHOWUNCLOAKED: u32 = WM_APP + 2;
 pub const WM_APP_HIDECLOAKED: u32 = WM_APP + 3;
 pub const WM_APP_MINIMIZESTART: u32 = WM_APP + 4;
 pub const WM_APP_MINIMIZEEND: u32 = WM_APP + 5;
+pub const WM_APP_EVENTANIM: u32 = WM_APP + 6;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SendHWND(pub HWND);
@@ -92,104 +85,6 @@ where
 {
     Fn(F),
     String(String),
-}
-
-#[derive(Debug, Clone)]
-pub struct Brush {
-    pub render_target: ID2D1HwndRenderTarget,
-    pub color: Color,
-    pub rect: RECT,
-    pub brush_properties: D2D1_BRUSH_PROPERTIES,
-    pub use_animation: bool,
-    pub gradient_angle: Option<f32>,
-}
-
-impl Brush {
-    pub fn to_id2d1_brush(&self) -> Result<ID2D1Brush> {
-        let render_target = &self.render_target;
-        let brush_properties = &self.brush_properties;
-
-        match &self.color {
-            Color::Solid(color) => {
-                // Create Solid Color Brush
-                let solid_brush =
-                    unsafe { render_target.CreateSolidColorBrush(color, Some(brush_properties))? };
-                Ok(solid_brush.into()) // Convert to ID2D1Brush
-            }
-            Color::Gradient(gradient_color) => {
-                // Create Gradient Brush
-                let gradient_stops = gradient_color.gradient_stops.clone();
-                let gradient_stop_collection = unsafe {
-                    render_target.CreateGradientStopCollection(
-                        &gradient_stops,
-                        D2D1_GAMMA_2_2,
-                        D2D1_EXTEND_MODE_CLAMP,
-                    )?
-                };
-
-                // Calculate gradient points based on the animation flag and direction
-                let (start_point, end_point) = if self.use_animation {
-                    let width = WindowsApi::get_rect_width(self.rect) as f32;
-                    let height = WindowsApi::get_rect_height(self.rect) as f32;
-
-                    let center_x = width / 2.0;
-                    let center_y = height / 2.0;
-                    let radius = (center_x.powi(2) + center_y.powi(2)).sqrt();
-
-                    let gradient_angle = self.gradient_angle.unwrap_or(0.0);
-                    let angle_rad = gradient_angle.to_radians();
-                    let (sin, cos) = angle_rad.sin_cos();
-
-                    (
-                        D2D_POINT_2F {
-                            x: center_x - radius * cos,
-                            y: center_y - radius * sin,
-                        },
-                        D2D_POINT_2F {
-                            x: center_x + radius * cos,
-                            y: center_y + radius * sin,
-                        },
-                    )
-                } else {
-                    let width = WindowsApi::get_rect_width(self.rect) as f32;
-                    let height = WindowsApi::get_rect_height(self.rect) as f32;
-
-                    let (start_x, start_y, end_x, end_y) = match gradient_color.direction.clone() {
-                        Some(coords) => (
-                            coords[0] * width,
-                            coords[1] * height,
-                            coords[2] * width,
-                            coords[3] * height,
-                        ),
-                        None => (0.0, 0.0, width, height),
-                    };
-
-                    (
-                        D2D_POINT_2F {
-                            x: start_x,
-                            y: start_y,
-                        },
-                        D2D_POINT_2F { x: end_x, y: end_y },
-                    )
-                };
-
-                let gradient_properties = D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES {
-                    startPoint: start_point,
-                    endPoint: end_point,
-                };
-
-                let gradient_brush = unsafe {
-                    render_target.CreateLinearGradientBrush(
-                        &gradient_properties,
-                        Some(brush_properties),
-                        Some(&gradient_stop_collection),
-                    )?
-                };
-
-                Ok(gradient_brush.into()) // Convert to ID2D1Brush
-            }
-        }
-    }
 }
 
 pub struct WindowsApi;
@@ -534,20 +429,20 @@ impl WindowsApi {
                 .or(config.global_rule.inactive_color.clone());
 
             let border_colors = convert_config_colors(&config_active, &config_inactive);
-            let use_active_animation = match border_colors.0 {
-                Color::Gradient(ref color) => color.animation.unwrap_or(false),
-                _ => false,
-            };
-
-            let use_inactive_animation = match border_colors.1 {
-                Color::Gradient(ref color) => color.animation.unwrap_or(false),
-                _ => false,
-            };
+            let animations = window_rule.rule_match.animations.unwrap_or(
+                config
+                    .global_rule
+                    .animations
+                    .clone()
+                    .unwrap_or_default(),
+            );
 
             let dpi = unsafe { GetDpiForWindow(window_sent.0) } as f32;
             let border_width = (config_width * dpi / 96.0) as i32;
-            let border_radius = convert_config_radius(border_width, config_radius, window_sent.0, dpi);
-            let window_isize = window_sent.0.0 as isize;
+            let border_radius =
+                convert_config_radius(border_width, config_radius, window_sent.0, dpi);
+
+            let window_isize = window_sent.0 .0 as isize;
 
             let init_delay = if INITIAL_WINDOWS.lock().unwrap().contains(&window_isize) {
                 0
@@ -572,8 +467,7 @@ impl WindowsApi {
                 border_radius,
                 active_color: border_colors.0,
                 inactive_color: border_colors.1,
-                use_active_animation,
-                use_inactive_animation,
+                animations,
                 unminimize_delay,
                 ..Default::default()
             };
@@ -597,12 +491,13 @@ impl WindowsApi {
             drop(borders_hashmap);
             let _ = window_sent;
             let _ = window_rule;
-            let _ = config_radius;
+            let _ = config_width;
             let _ = border_offset;
             let _ = config_radius;
             let _ = config_active;
             let _ = config_inactive;
             let _ = border_colors;
+            let _ = animations;
             let _ = window_isize;
             let _ = hinstance;
 
@@ -655,7 +550,7 @@ fn convert_config_radius(
     config_width: i32,
     config_radius: BorderRadius,
     tracking_window: HWND,
-    dpi: f32
+    dpi: f32,
 ) -> f32 {
     let mut corner_preference = DWM_WINDOW_CORNER_PREFERENCE::default();
     let base_radius = (config_width as f32) / 2.0;

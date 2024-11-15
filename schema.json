@@ -43,6 +43,44 @@
             }
           ]
         },
+        "animations": {
+          "description": "Defines the animation settings for the border's visual effects, including different animations for both active and inactive states, speed, and frame rate.",
+          "type": "object",
+          "properties": {
+            "active": {
+              "type": "array",
+              "description": "A list of animations to apply when the border is in the active state. These animations will be applied when the window or component is focused or active.",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "Spiral",
+                  "Fade"
+                ]
+              }
+            },
+            "inactive": {
+              "type": "array",
+              "description": "A list of animations to apply when the border is in the inactive state. These animations will be applied when the window or component is not focused or inactive.",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "Spiral",
+                  "Fade"
+                ]
+              }
+            },
+            "speed": {
+              "type": "number",
+              "description": "Defines the speed of the animation. A higher value results in faster animations (default: 200)",
+              "format": "float"
+            },
+            "fps": {
+              "type": "integer",
+              "description": "Defines the frame rate of the animation, specifying how many frames are rendered per second. A higher value results in smoother animation (default: 60)",
+              "format": "int32"
+            }
+          }
+        },
         "active_color": {
           "description": "Color or gradient for active (focused) window borders. Can be a single color string, gradient string or a gradient object.",
           "oneOf": [
@@ -54,7 +92,7 @@
                 "rgb(137, 180, 250)",
                 "rgba(243, 139, 168, 1)",
                 "#89B4FA, #F5C2E7, to right",
-                "gradient(#89B4FA, #F5C2E7, to right, false)"
+                "gradient(#89B4FA, #F5C2E7, to right)"
               ]
             },
             {
@@ -125,10 +163,6 @@
                       ]
                     }
                   ]
-                },
-                "animation": {
-                  "type": "boolean",
-                  "description": "If true, enables animation for the gradient. (Default: false)"
                 }
               },
               "examples": [
@@ -174,7 +208,7 @@
                 "rgb(137, 180, 250)",
                 "rgba(243, 139, 168, 1)",
                 "#89B4FA, #F5C2E7, to right",
-                "gradient(#89B4FA, #F5C2E7, to right, false)"
+                "gradient(#89B4FA, #F5C2E7, to right)"
               ]
             },
             {
@@ -245,10 +279,6 @@
                       ]
                     }
                   ]
-                },
-                "animation": {
-                  "type": "boolean",
-                  "description": "If true, enables animation for the gradient. (Default: false)"
                 }
               },
               "examples": [
@@ -323,6 +353,44 @@
                   "Contains"
                 ]
               },
+              "animations": {
+                "description": "Defines the animation settings for the border's visual effects, including different animations for both active and inactive states, speed, and frame rate.",
+                "type": "object",
+                "properties": {
+                  "active": {
+                    "type": "array",
+                    "description": "A list of animations to apply when the border is in the active state. These animations will be applied when the window or component is focused or active.",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "Spiral",
+                        "Fade"
+                      ]
+                    }
+                  },
+                  "inactive": {
+                    "type": "array",
+                    "description": "A list of animations to apply when the border is in the inactive state. These animations will be applied when the window or component is not focused or inactive.",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "Spiral",
+                        "Fade"
+                      ]
+                    }
+                  },
+                  "speed": {
+                    "type": "number",
+                    "description": "Defines the speed of the animation. A higher value results in faster animations (default: 200)",
+                    "format": "float"
+                  },
+                  "fps": {
+                    "type": "integer",
+                    "description": "Defines the frame rate of the animation, specifying how many frames are rendered per second. A higher value results in smoother animation (default: 60)",
+                    "format": "int32"
+                  }
+                }
+              },
               "active_color": {
                 "description": "Color or gradient for active (focused) window borders. Can be a single color string, gradient string or a gradient object.",
                 "oneOf": [
@@ -334,7 +402,7 @@
                       "rgb(137, 180, 250)",
                       "rgba(243, 139, 168, 1)",
                       "#89B4FA, #F5C2E7, to right",
-                      "gradient(#89B4FA, #F5C2E7, to right, false)"
+                      "gradient(#89B4FA, #F5C2E7, to right)"
                     ]
                   },
                   {
@@ -405,10 +473,6 @@
                             ]
                           }
                         ]
-                      },
-                      "animation": {
-                        "type": "boolean",
-                        "description": "If true, enables animation for the gradient. (Default: false)"
                       }
                     },
                     "examples": [
@@ -454,7 +518,7 @@
                       "rgb(137, 180, 250)",
                       "rgba(243, 139, 168, 1)",
                       "#89B4FA, #F5C2E7, to right",
-                      "gradient(#89B4FA, #F5C2E7, to right, false)"
+                      "gradient(#89B4FA, #F5C2E7, to right)"
                     ]
                   },
                   {
@@ -525,10 +589,6 @@
                             ]
                           }
                         ]
-                      },
-                      "animation": {
-                        "type": "boolean",
-                        "description": "If true, enables animation for the gradient. (Default: false)"
                       }
                     },
                     "examples": [

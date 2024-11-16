@@ -16,6 +16,7 @@ regex = "1.11.1"
 serde_yml = "0.0.12"
 sp_log = "0.1.0"
 log = "0.4.22"
+serde_plain = "1.0.2"
 
 [dependencies.windows]
 version = "0.58.0"

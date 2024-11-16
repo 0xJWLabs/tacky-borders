@@ -21,36 +21,34 @@ where
 
     let mut result = HashMap::new();
     if let Some(entries) = map {
-        for (key, value) in entries {
-            let animation_type = match key.as_str() {
-                "Spiral" => AnimationType::Spiral,
-                "Fade" => AnimationType::Fade,
-                _ => continue, // Ignore unknown animation types
-            };
+        for (anim_type, anim_value) in entries {
+            let animation_type: Result<AnimationType, _> = serde_plain::from_str(&anim_type);
 
-            // Default speed is 100 if the value is missing or null
-            let speed = match value {
-                Value::Number(n) => {
-                    if n.is_f64() {
-                        n.as_f64().map(|f| f as f32)
-                    } else if n.is_i64() {
-                        n.as_i64().map(|i| i as f32)
-                    } else {
-                        None
+            if let Ok(animation_type) = animation_type {
+                // Default speed is 100 if the value is missing or null
+                let speed = match anim_value {
+                    Value::Number(n) => {
+                        if n.is_f64() {
+                            n.as_f64().map(|f| f as f32)
+                        } else if n.is_i64() {
+                            n.as_i64().map(|i| i as f32)
+                        } else {
+                            None
+                        }
                     }
-                }
-                Value::Null => None, // If the value is null, we will assign default speeds later
-                _ => None, // Handle invalid formats
-            };
+                    Value::Null => None, // If the value is null, we will assign default speeds later
+                    _ => None,           // Handle invalid formats
+                };
 
-            // Apply the default speed for each animation type if it's null or missing
-            let default_speed = match animation_type {
-                AnimationType::Spiral => 100.0,
-                AnimationType::Fade => 100.0,
-            };
+                // Apply the default speed for each animation type if it's null or missing
+                let default_speed = match animation_type {
+                    AnimationType::Spiral => 100.0,
+                    AnimationType::Fade => 100.0,
+                };
 
-            // If the speed is None (either null or missing), assign the default speed
-            result.insert(animation_type, speed.unwrap_or(default_speed));
+                // If the speed is None (either null or missing), assign the default speed
+                result.insert(animation_type, speed.unwrap_or(default_speed));
+            }
         }
     }
 

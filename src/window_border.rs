@@ -3,6 +3,7 @@ use crate::animations::Animations;
 use crate::animations::ANIM_FADE_TO_ACTIVE;
 use crate::animations::ANIM_FADE_TO_INACTIVE;
 use crate::animations::ANIM_NONE;
+// use crate::colors::adjust_gradient_stops;
 use crate::colors::interpolate_d2d1_colors;
 use crate::colors::interpolate_direction;
 use crate::colors::Color;
@@ -478,8 +479,10 @@ impl WindowBorder {
 
         let mut all_finished = true;
         let mut gradient_stops: Vec<D2D1_GRADIENT_STOP> = Vec::new();
-        for i in 0..current_gradient.gradient_stops.len() {
+
+        for i in 0..gradient_stops.len() {
             let mut current_finished = false;
+
 
             let active_color = match self.active_color.clone() {
                 Color::Gradient(gradient) => gradient.gradient_stops[i].color,

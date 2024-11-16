@@ -438,6 +438,8 @@ impl WindowsApi {
                     .unwrap_or_default()
             );
 
+            println!("{:?}", animations);
+
             let dpi = unsafe { GetDpiForWindow(window_sent.0) } as f32;
             let border_width = (config_width * dpi / 96.0) as i32;
             let border_radius =

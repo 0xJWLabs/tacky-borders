@@ -58,7 +58,7 @@ where
     Ok(result)
 }
 
-#[derive(Debug, Deserialize, PartialEq, Clone)]
+#[derive(Debug, Deserialize, PartialEq, Clone, Default)]
 pub struct Animations {
     #[serde(deserialize_with = "animation", default = "default_anim")]
     pub active: HashMap<AnimationType, f32>,
@@ -69,19 +69,9 @@ pub struct Animations {
 }
 
 fn default_fps() -> i32 {
-    30
+    60
 }
 
 fn default_anim() -> HashMap<AnimationType, f32> {
     HashMap::new()
-}
-
-impl Default for Animations {
-    fn default() -> Self {
-        Self {
-            active: HashMap::new(),
-            inactive: HashMap::new(),
-            fps: 30,
-        }
-    }
 }

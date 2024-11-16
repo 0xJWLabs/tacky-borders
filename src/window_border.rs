@@ -1,7 +1,12 @@
+use crate::animations::AnimationType;
+use crate::animations::Animations;
+use crate::animations::ANIM_FADE_TO_ACTIVE;
+use crate::animations::ANIM_FADE_TO_INACTIVE;
+use crate::animations::ANIM_NONE;
 use crate::colors::interpolate_d2d1_colors;
-use crate::colors::AnimationType;
-use crate::colors::Animations;
+use crate::colors::interpolate_direction;
 use crate::colors::Color;
+use crate::colors::Gradient;
 use crate::colors::Solid;
 use crate::windowsapi::ErrorMsg;
 use crate::windowsapi::WindowsApi;
@@ -35,6 +40,7 @@ use windows::Win32::Foundation::TRUE;
 use windows::Win32::Foundation::WPARAM;
 
 use windows::Win32::Graphics::Direct2D::Common::D2D1_ALPHA_MODE_PREMULTIPLIED;
+use windows::Win32::Graphics::Direct2D::Common::D2D1_GRADIENT_STOP;
 use windows::Win32::Graphics::Direct2D::Common::D2D1_PIXEL_FORMAT;
 use windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F;
 use windows::Win32::Graphics::Direct2D::Common::D2D_SIZE_U;
@@ -158,18 +164,8 @@ impl WindowBorder {
     pub fn init(&mut self, init_delay: u64) -> Result<()> {
         thread::sleep(time::Duration::from_millis(init_delay));
 
-        if self
-            .animations
-            .active
-            .as_ref()
-            .is_some_and(|vec| !vec.is_empty())
-            || self
-                .animations
-                .inactive
-                .as_ref()
-                .is_some_and(|vec| !vec.is_empty())
-        {
-            let timer_duration = (1000 / self.animations.fps.unwrap()) as u32;
+        if !self.animations.active.is_empty() || !self.animations.inactive.is_empty() {
+            let timer_duration = (1000 / self.animations.fps) as u32;
             unsafe {
                 SetTimer(self.border_window, 1, timer_duration, None);
             }
@@ -337,17 +333,13 @@ impl WindowBorder {
 
     pub fn update_color(&mut self) -> Result<()> {
         if WindowsApi::is_window_active(self.tracking_window) {
-            if let Some(active_animations) = &self.animations.active {
-                if active_animations.contains(&AnimationType::Fade) {
-                    return Ok(());
-                }
+            if self.animations.active.contains_key(&AnimationType::Fade) {
+                return Ok(());
             }
             self.current_color = self.active_color.clone();
         } else {
-            if let Some(inactive_animations) = &self.animations.inactive {
-                if inactive_animations.contains(&AnimationType::Fade) {
-                    return Ok(());
-                }
+            if self.animations.inactive.contains_key(&AnimationType::Fade) {
+                return Ok(());
             }
             self.current_color = self.inactive_color.clone();
         }
@@ -406,6 +398,165 @@ impl WindowBorder {
         }
 
         Ok(())
+    }
+
+    pub fn animate_fade(&mut self, anim_elapsed: &time::Duration, anim_speed: f32) {
+        if let Color::Solid(_) = self.active_color {
+            if let Color::Solid(_) = self.inactive_color {
+                // If both active and inactive color are solids, use interpolate_solids
+                self.interpolate_solids(anim_elapsed, anim_speed);
+            }
+        } else {
+            self.interpolate_gradients(anim_elapsed, anim_speed);
+        }
+    }
+
+    pub fn interpolate_solids(&mut self, anim_elapsed: &time::Duration, anim_speed: f32) {
+        //let before = std::time::Instant::now();
+        let Color::Solid(current_solid) = self.current_color.clone() else {
+            println!("an interpolation function failed pattern matching");
+            return;
+        };
+        let Color::Solid(active_solid) = self.active_color.clone() else {
+            println!("an interpolation function failed pattern matching");
+            return;
+        };
+        let Color::Solid(inactive_solid) = self.inactive_color.clone() else {
+            println!("an interpolation function failed pattern matching");
+            return;
+        };
+
+        let (start_color, end_color) = match self.in_event_anim {
+            ANIM_FADE_TO_ACTIVE => (&inactive_solid.color, &active_solid.color),
+            ANIM_FADE_TO_INACTIVE => (&active_solid.color, &inactive_solid.color),
+            _ => return,
+        };
+
+        let mut finished = false;
+        self.current_color = Color::Solid(Solid {
+            color: interpolate_d2d1_colors(
+                &current_solid.color,
+                start_color,
+                end_color,
+                anim_elapsed.as_secs_f32(),
+                anim_speed,
+                &mut finished,
+            ),
+        });
+
+        if finished {
+            self.in_event_anim = ANIM_NONE;
+        }
+        //println!("time elapsed: {:?}", before.elapsed());
+    }
+
+    pub fn interpolate_gradients(&mut self, anim_elapsed: &time::Duration, anim_speed: f32) {
+        //let before = time::Instant::now();
+        let current_gradient = match self.current_color.clone() {
+            Color::Gradient(gradient) => gradient,
+            Color::Solid(solid) => {
+                // If current_color is not a gradient, that means at least one of active or inactive
+                // color must be solid, so only one of these if let statements should evaluate true
+                let gradient = if let Color::Gradient(active_gradient) = self.active_color.clone() {
+                    active_gradient
+                } else if let Color::Gradient(inactive_gradient) = self.inactive_color.clone() {
+                    inactive_gradient
+                } else {
+                    println!("an interpolation function failed pattern matching");
+                    return;
+                };
+
+                // Convert current_color to a gradient
+                let mut solid_as_gradient = gradient.clone();
+                for i in 0..solid_as_gradient.gradient_stops.len() {
+                    solid_as_gradient.gradient_stops[i].color = solid.color;
+                }
+                solid_as_gradient
+            }
+        };
+        //println!("time elapsed: {:?}", before.elapsed());
+
+        let mut all_finished = true;
+        let mut gradient_stops: Vec<D2D1_GRADIENT_STOP> = Vec::new();
+        for i in 0..current_gradient.gradient_stops.len() {
+            let mut current_finished = false;
+
+            let active_color = match self.active_color.clone() {
+                Color::Gradient(gradient) => gradient.gradient_stops[i].color,
+                Color::Solid(solid) => solid.color,
+            };
+
+            let inactive_color = match self.inactive_color.clone() {
+                Color::Gradient(gradient) => gradient.gradient_stops[i].color,
+                Color::Solid(solid) => solid.color,
+            };
+
+            let (start_color, end_color) = match self.in_event_anim {
+                ANIM_FADE_TO_ACTIVE => (&inactive_color, &active_color),
+                ANIM_FADE_TO_INACTIVE => (&active_color, &inactive_color),
+                _ => return,
+            };
+
+            let color = interpolate_d2d1_colors(
+                &current_gradient.gradient_stops[i].color,
+                start_color,
+                end_color,
+                anim_elapsed.as_secs_f32(),
+                anim_speed,
+                &mut current_finished,
+            );
+
+            if !current_finished {
+                all_finished = false;
+            }
+
+            // TODO currently this works well because users cannot adjust the positions of the
+            // gradient stops, so both inactive and active gradients will have the same positions,
+            // but this might need to be interpolated if we add position configuration.
+            let position = current_gradient.gradient_stops[i].position;
+
+            let stop = D2D1_GRADIENT_STOP { color, position };
+            gradient_stops.push(stop);
+        }
+
+        let mut direction = current_gradient.direction;
+
+        // Interpolate direction if both active and inactive are gradients
+        if let Color::Gradient(inactive_gradient) = self.inactive_color.clone() {
+            if let Color::Gradient(active_gradient) = self.active_color.clone() {
+                let (start_direction, end_direction) = match self.in_event_anim {
+                    ANIM_FADE_TO_ACTIVE => {
+                        (&inactive_gradient.direction, &active_gradient.direction)
+                    }
+                    ANIM_FADE_TO_INACTIVE => {
+                        (&active_gradient.direction, &inactive_gradient.direction)
+                    }
+                    _ => return,
+                };
+
+                direction = interpolate_direction(
+                    &direction,
+                    start_direction,
+                    end_direction,
+                    anim_elapsed.as_secs_f32(),
+                    anim_speed,
+                );
+            }
+        }
+
+        if all_finished {
+            match self.in_event_anim {
+                ANIM_FADE_TO_ACTIVE => self.current_color = self.active_color.clone(),
+                ANIM_FADE_TO_INACTIVE => self.current_color = self.inactive_color.clone(),
+                _ => {}
+            }
+            self.in_event_anim = ANIM_NONE;
+        } else {
+            self.current_color = Color::Gradient(Gradient {
+                gradient_stops,
+                direction,
+            });
+        }
     }
 
     // When CreateWindowExW is called, we can optionally pass a value to its LPARAM field which will
@@ -509,19 +660,17 @@ impl WindowBorder {
                 }
                 self.pause = false;
             }
-            WM_APP_EVENTANIM => match wparam.0 {
-                1 | 2 => {
+            WM_APP_EVENTANIM => match wparam.0 as i32 {
+                ANIM_FADE_TO_ACTIVE | ANIM_FADE_TO_INACTIVE => {
                     let is_active = WindowsApi::is_window_active(window);
                     let animations_list = if is_active {
-                        self.animations.active.as_ref()
+                        self.animations.active.clone()
                     } else {
-                        self.animations.inactive.as_ref()
+                        self.animations.inactive.clone()
                     };
 
-                    if let Some(animations) = animations_list {
-                        if animations.contains(&AnimationType::Fade) {
-                            self.in_event_anim = wparam.0 as i32;
-                        }
+                    if animations_list.contains_key(&AnimationType::Fade) {
+                        self.in_event_anim = wparam.0 as i32;
                     }
                 }
                 _ => {}
@@ -546,10 +695,15 @@ impl WindowBorder {
                         self.last_render_time_inactive,
                     )
                 };
-
                 let anim_elapsed = last_anim_time.unwrap_or(time::Instant::now()).elapsed();
                 let render_elapsed = last_render_time.unwrap_or(time::Instant::now()).elapsed();
-                let animations_speed = self.animations.speed.unwrap();
+
+                if is_active {
+                    self.last_animation_time_active = Some(time::Instant::now());
+                } else {
+                    self.last_animation_time_inactive = Some(time::Instant::now());
+                }
+
                 let animations_list = if is_active {
                     self.animations.active.clone()
                 } else {
@@ -562,51 +716,32 @@ impl WindowBorder {
                     self.last_animation_time_inactive = Some(time::Instant::now());
                 }
 
-                if let Some(animations) = animations_list {
-                    if animations.contains(&AnimationType::Spiral) {
-                        let center_x = (self.window_rect.right - self.window_rect.left) / 2;
-                        let center_y = (self.window_rect.bottom - self.window_rect.top) / 2;
-                        self.brush_properties.transform = self.brush_properties.transform
-                            * Matrix3x2::rotation(
-                                animations_speed * anim_elapsed.as_secs_f32(),
-                                center_x as f32,
-                                center_y as f32,
-                            );
+                for (anim_type, anim_speed) in animations_list.iter() {
+                    match anim_type {
+                        AnimationType::Spiral => {
+                            let center_x = (self.window_rect.right - self.window_rect.left) / 2;
+                            let center_y = (self.window_rect.bottom - self.window_rect.top) / 2;
+                            self.brush_properties.transform = self.brush_properties.transform
+                                * Matrix3x2::rotation(
+                                    anim_speed * anim_elapsed.as_secs_f32(),
+                                    center_x as f32,
+                                    center_y as f32,
+                                );
+                        }
+                        AnimationType::Fade => {}
                     }
                 }
 
-                if self.in_event_anim != 0 {
-                    match self.active_color.clone() {
-                        Color::Solid(active_solid) => match self.inactive_color.clone() {
-                            Color::Solid(inactive_solid) => {
-                                let Color::Solid(current_solid) = self.current_color.clone()
-                                else {
-                                    return LRESULT(0);
-                                };
-
-                                let color = interpolate_d2d1_colors(
-                                    &current_solid.color,
-                                    &active_solid.color,
-                                    &inactive_solid.color,
-                                    anim_elapsed.as_secs_f32(),
-                                    animations_speed,
-                                    &mut self.in_event_anim,
-                                );
-
-                                self.current_color = Color::Solid(Solid {
-                                    color: color,
-                                })
-                            }
-                            Color::Gradient(_) => {}
-                        },
-                        Color::Gradient(_) => {}
+                match self.in_event_anim {
+                    ANIM_FADE_TO_ACTIVE | ANIM_FADE_TO_INACTIVE => {
+                        let anim_speed = animations_list.get(&AnimationType::Fade).unwrap();
+                        self.animate_fade(&anim_elapsed, *anim_speed / 50.0);
                     }
+                    _ => {}
                 }
 
                 if render_elapsed
-                    >= time::Duration::from_millis(
-                        (1000 / self.animations.fps.unwrap()) as u64,
-                    )
+                    >= time::Duration::from_millis((1000 / self.animations.fps) as u64)
                 {
                     let _ = self.render();
                 }

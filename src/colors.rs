@@ -68,20 +68,6 @@ pub struct Gradient {
     pub gradient_stops: Vec<D2D1_GRADIENT_STOP>,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-pub struct Animations {
-    pub active: Option<Vec<AnimationType>>,
-    pub inactive: Option<Vec<AnimationType>>,
-    pub fps: Option<i32>,
-    pub speed: Option<f32>,
-}
-
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-pub enum AnimationType {
-    Spiral,
-    Fade,
-}
-
 // Traits
 trait ToColor {
     fn to_d2d1_color(self, is_active: Option<bool>) -> D2D1_COLOR_F;
@@ -390,28 +376,6 @@ impl Color {
     }
 }
 
-impl Default for Animations {
-    fn default() -> Self {
-        Self {
-            active: None,
-            inactive: None,
-            fps: Some(60),
-            speed: Some(200.0),
-        }
-    }
-}
-
-impl Animations {
-    pub fn merge_with_defaults(mut self) -> Self {
-        let default = Self::default();
-        self.active = self.active.or(default.active);
-        self.inactive = self.inactive.or(default.inactive);
-        self.fps = self.fps.or(default.fps);
-        self.speed = self.speed.or(default.speed);
-        self
-    }
-}
-
 // Functions
 fn is_valid_direction(direction: &str) -> bool {
     matches!(
@@ -432,48 +396,67 @@ fn is_valid_direction(direction: &str) -> bool {
 
 pub fn interpolate_d2d1_colors(
     current_color: &D2D1_COLOR_F,
-    active_color: &D2D1_COLOR_F,
-    inactive_color: &D2D1_COLOR_F,
+    start_color: &D2D1_COLOR_F,
+    end_color: &D2D1_COLOR_F,
     anim_elapsed: f32,
-    animation_speed: f32,
-    in_event_anim: &mut i32,
+    anim_speed: f32,
+    finished: &mut bool,
 ) -> D2D1_COLOR_F {
-    let interpolation_speed = animation_speed / 50.0;
-    let r_step = (active_color.r - inactive_color.r) * anim_elapsed * interpolation_speed;
-    let g_step = (active_color.g - inactive_color.g) * anim_elapsed * interpolation_speed;
-    let b_step = (active_color.b - inactive_color.b) * anim_elapsed * interpolation_speed;
-
+    // D2D1_COLOR_F has the copy trait so we can just do this to create an implicit copy\
     let mut interpolated = *current_color;
 
-    match in_event_anim {
-        1 => {
-            if interpolated.r + r_step >= active_color.r
-                && interpolated.g + g_step >= active_color.g
-                && interpolated.b + b_step >= active_color.b
-            {
-                *in_event_anim = 0;
-                return *active_color;
-            }
+    let anim_step = anim_elapsed * anim_speed;
 
-            interpolated.r += r_step;
-            interpolated.g += g_step;
-            interpolated.b += b_step;
-        }
-        2 => {
-            if interpolated.r - r_step <= inactive_color.r
-                && interpolated.g - g_step <= inactive_color.g
-                && interpolated.b - b_step <= inactive_color.b
-            {
-                *in_event_anim = 0;
-                return *inactive_color;
-            }
+    let diff_r = end_color.r - start_color.r;
+    let diff_g = end_color.g - start_color.g;
+    let diff_b = end_color.b - start_color.b;
 
-            interpolated.r -= r_step;
-            interpolated.g -= g_step;
-            interpolated.b -= b_step;
-        }
-        _ => {}
+    let direction_r = diff_r.signum();
+    let direction_g = diff_g.signum();
+    let direction_b = diff_b.signum();
+
+    let r_step = diff_r * anim_step;
+    let g_step = diff_g * anim_step;
+    let b_step = diff_b * anim_step;
+
+    interpolated.r += r_step;
+    interpolated.g += g_step;
+    interpolated.b += b_step;
+
+    // Check if we have overshot the active_color
+    if (interpolated.r - end_color.r) * direction_r >= 0.0
+        && (interpolated.g - end_color.g) * direction_g >= 0.0
+        && (interpolated.b - end_color.b) * direction_b >= 0.0
+    {
+        *finished = true;
+        return *end_color;
+    } else {
+        *finished = false;
     }
+
+    interpolated
+}
+
+pub fn interpolate_direction(
+    current_direction: &GradientDirectionCoordinates,
+    start_direction: &GradientDirectionCoordinates,
+    end_direction: &GradientDirectionCoordinates,
+    anim_elapsed: f32,
+    anim_speed: f32,
+) -> GradientDirectionCoordinates {
+    let mut interpolated = (*current_direction).clone();
+
+    let x_start_step = end_direction.start[0] - start_direction.start[0];
+    let y_start_step = end_direction.start[1] - start_direction.start[1];
+    let x_end_step = end_direction.end[0] - start_direction.end[0];
+    let y_end_step = end_direction.end[1] - start_direction.end[1];
+
+    // Not gonna bother checking if we overshot the direction tbh
+    let anim_step = anim_elapsed * anim_speed;
+    interpolated.start[0] += x_start_step * anim_step;
+    interpolated.start[1] += y_start_step * anim_step;
+    interpolated.end[0] += x_end_step * anim_step;
+    interpolated.end[1] += y_end_step * anim_step;
 
     interpolated
 }

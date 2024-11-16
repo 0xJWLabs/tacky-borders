@@ -436,7 +436,6 @@ impl WindowsApi {
                     .animations
                     .clone()
                     .unwrap_or_default()
-                    .merge_with_defaults(),
             );
 
             let dpi = unsafe { GetDpiForWindow(window_sent.0) } as f32;

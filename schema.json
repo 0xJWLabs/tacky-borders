@@ -50,25 +50,31 @@
           "type": "object",
           "properties": {
             "active": {
-              "type": "array",
+              "type": "object",
               "description": "A list of animations to apply when the border is in the active state. These animations will be applied when the window or component is focused or active.",
-              "items": {
-                "type": "string",
+              "propertyNames": {
                 "enum": [
                   "Spiral",
                   "Fade"
                 ]
+              },
+              "additionalProperties": {
+                "type": "number",
+                "description": "The speed of the animation (a numeric value)."
               }
             },
             "inactive": {
-              "type": "array",
+              "type": "object",
               "description": "A list of animations to apply when the border is in the inactive state. These animations will be applied when the window or component is not focused or inactive.",
-              "items": {
-                "type": "string",
+              "propertyNames": {
                 "enum": [
                   "Spiral",
                   "Fade"
                 ]
+              },
+              "additionalProperties": {
+                "type": "number",
+                "description": "The speed of the animation (a numeric value)."
               }
             },
             "speed": {
@@ -360,31 +366,32 @@
                 "type": "object",
                 "properties": {
                   "active": {
-                    "type": "array",
+                    "type": "object",
                     "description": "A list of animations to apply when the border is in the active state. These animations will be applied when the window or component is focused or active.",
-                    "items": {
-                      "type": "string",
+                    "propertyNames": {
                       "enum": [
                         "Spiral",
                         "Fade"
                       ]
+                    },
+                    "additionalProperties": {
+                      "type": "number",
+                      "description": "The speed of the animation (a numeric value)."
                     }
                   },
                   "inactive": {
-                    "type": "array",
+                    "type": "object",
                     "description": "A list of animations to apply when the border is in the inactive state. These animations will be applied when the window or component is not focused or inactive.",
-                    "items": {
-                      "type": "string",
+                    "propertyNames": {
                       "enum": [
                         "Spiral",
                         "Fade"
                       ]
+                    },
+                    "additionalProperties": {
+                      "type": "number",
+                      "description": "The speed of the animation (a numeric value)."
                     }
-                  },
-                  "speed": {
-                    "type": "number",
-                    "description": "Defines the speed of the animation. A higher value results in faster animations (default: 200)",
-                    "format": "float"
                   },
                   "fps": {
                     "type": "integer",

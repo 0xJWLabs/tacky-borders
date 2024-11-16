@@ -58,6 +58,7 @@ mod colors;
 mod event_hook;
 mod sys_tray_icon;
 mod utils;
+mod animations;
 mod window_border;
 mod windowsapi;
 

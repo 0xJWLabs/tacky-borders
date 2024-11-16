@@ -4,7 +4,7 @@ use std::fs;
 use std::sync::LazyLock;
 use std::sync::Mutex;
 
-use crate::colors::Animations;
+use crate::animations::Animations;
 use crate::colors::ColorConfig;
 use crate::utils::get_config;
 

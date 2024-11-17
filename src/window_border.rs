@@ -3,6 +3,7 @@ use crate::animations::Animations;
 use crate::animations::ANIM_FADE_TO_ACTIVE;
 use crate::animations::ANIM_FADE_TO_INACTIVE;
 use crate::animations::ANIM_NONE;
+use crate::colors::adjust_gradient_stops;
 // use crate::colors::adjust_gradient_stops;
 use crate::colors::interpolate_d2d1_colors;
 use crate::colors::interpolate_direction;
@@ -470,15 +471,60 @@ impl WindowBorder {
 
         let mut all_finished = true;
         let mut gradient_stops: Vec<D2D1_GRADIENT_STOP> = Vec::new();
-        for i in 0..current_gradient.gradient_stops.len() {
+        let mut gradient_stops_current = current_gradient.gradient_stops.clone();
+
+        let target_stops_len = match self.in_event_anim {
+            ANIM_FADE_TO_ACTIVE => match self.active_color.clone() {
+                Color::Gradient(gradient) => gradient.gradient_stops.len(),
+                _ => 0,
+            },
+            ANIM_FADE_TO_INACTIVE => match self.inactive_color.clone() {
+                Color::Gradient(gradient) => gradient.gradient_stops.len(),
+                _ => 0,
+            },
+            _ => 0,
+        };
+
+        let mut active_colors: Color = self.active_color.clone();
+        let mut inactive_colors: Color = self.inactive_color.clone();
+
+        if target_stops_len != 0 {
+            gradient_stops_current =
+                adjust_gradient_stops(gradient_stops_current, target_stops_len);
+            active_colors = match active_colors {
+                Color::Gradient(gradient) => {
+                    let gradient_stops =
+                        adjust_gradient_stops(gradient.gradient_stops, target_stops_len);
+                    Color::Gradient(Gradient {
+                        gradient_stops,
+                        direction: gradient.direction,
+                    })
+                }
+                Color::Solid(color) => Color::Solid(color),
+            };
+
+            inactive_colors = match inactive_colors {
+                Color::Gradient(gradient) => {
+                    let gradient_stops =
+                        adjust_gradient_stops(gradient.gradient_stops, target_stops_len);
+                    Color::Gradient(Gradient {
+                        gradient_stops,
+                        direction: gradient.direction,
+                    })
+                }
+                Color::Solid(color) => Color::Solid(color),
+            };
+        };
+
+        for (i, _) in gradient_stops_current.iter().enumerate() {
             let mut current_finished = false;
 
-            let active_color = match self.active_color.clone() {
+            let active_color = match active_colors.clone() {
                 Color::Gradient(gradient) => gradient.gradient_stops[i].color,
                 Color::Solid(solid) => solid.color,
             };
 
-            let inactive_color = match self.inactive_color.clone() {
+            let inactive_color = match inactive_colors.clone() {
                 Color::Gradient(gradient) => gradient.gradient_stops[i].color,
                 Color::Solid(solid) => solid.color,
             };
@@ -490,7 +536,7 @@ impl WindowBorder {
             };
 
             let color = interpolate_d2d1_colors(
-                &current_gradient.gradient_stops[i].color,
+                &gradient_stops_current[i].color,
                 start_color,
                 end_color,
                 anim_elapsed.as_secs_f32(),
@@ -505,7 +551,7 @@ impl WindowBorder {
             // TODO currently this works well because users cannot adjust the positions of the
             // gradient stops, so both inactive and active gradients will have the same positions,
             // but this might need to be interpolated if we add position configuration.
-            let position = current_gradient.gradient_stops[i].position;
+            let position = gradient_stops_current[i].position;
 
             let stop = D2D1_GRADIENT_STOP { color, position };
             gradient_stops.push(stop);
@@ -696,11 +742,8 @@ impl WindowBorder {
 
                 self.last_animation_time = Some(time::Instant::now());
 
-                if animations_list.len() == 0 {
-                    self.brush_properties = D2D1_BRUSH_PROPERTIES {
-                        opacity: 1.0,
-                        transform: Matrix3x2::identity(),
-                    };
+                if animations_list.is_empty() {
+                    self.brush_properties.transform = Matrix3x2::identity();
                 } else {
                     for (anim_type, anim_speed) in animations_list.iter() {
                         match anim_type {
@@ -714,7 +757,7 @@ impl WindowBorder {
                                 let center_x = WindowsApi::get_rect_width(self.window_rect) / 2;
                                 let center_y = WindowsApi::get_rect_height(self.window_rect) / 2;
                                 self.brush_properties.transform = Matrix3x2::rotation(
-                                    self.spiral_anim_angle, 
+                                    self.spiral_anim_angle,
                                     center_x as f32,
                                     center_y as f32,
                                 );

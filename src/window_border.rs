@@ -133,10 +133,9 @@ pub struct WindowBorder {
     pub current_color: Color,
     pub unminimize_delay: u64,
     pub pause: bool,
-    pub last_animation_time_active: Option<std::time::Instant>,
-    pub last_animation_time_inactive: Option<std::time::Instant>,
-    pub last_render_time_active: Option<std::time::Instant>,
-    pub last_render_time_inactive: Option<std::time::Instant>,
+    pub last_animation_time: Option<std::time::Instant>,
+    pub last_render_time: Option<std::time::Instant>,
+    pub spiral_anim_angle: f32,
     pub in_event_anim: i32,
 }
 
@@ -211,9 +210,7 @@ impl WindowBorder {
                 // Sometimes, it doesn't show the window at first, so we wait 5ms and update it.
                 // This is very hacky and needs to be looked into. It may be related to the issue
                 // detailed in update_window_rect. TODO
-                while !WindowsApi::is_window_visible(self.tracking_window) {
-                    thread::sleep(std::time::Duration::from_millis(5))
-                }
+                thread::sleep(time::Duration::from_millis(5));
                 let _ = self.update_position(Some(SWP_SHOWWINDOW));
                 let _ = self.render();
             }
@@ -288,7 +285,7 @@ impl WindowBorder {
             DWMWA_EXTENDED_FRAME_BOUNDS,
             &mut self.window_rect,
             Some(ErrorMsg::Fn(|| {
-                error!("Error getting frame rect!");
+                error!("Error getting frame rect! This is normal for apps running with elevated privileges");
                 unsafe {
                     let _ = ShowWindow(self.border_window, SW_HIDE);
                 }
@@ -349,21 +346,15 @@ impl WindowBorder {
     }
 
     pub fn render(&mut self) -> Result<()> {
-        let is_active = WindowsApi::is_window_active(self.tracking_window);
-
-        if is_active {
-            self.last_render_time_active = Some(std::time::Instant::now());
-        } else {
-            self.last_animation_time_inactive = Some(std::time::Instant::now());
-        }
+        self.last_render_time = Some(std::time::Instant::now());
 
         let Some(render_target) = self.render_target.get() else {
             return Ok(());
         };
 
         let pixel_size = D2D_SIZE_U {
-            width: (self.window_rect.right - self.window_rect.left) as u32,
-            height: (self.window_rect.bottom - self.window_rect.top) as u32,
+            width: WindowsApi::get_rect_width(self.window_rect) as u32,
+            height: WindowsApi::get_rect_height(self.window_rect) as u32,
         };
 
         self.rounded_rect.rect = D2D_RECT_F {
@@ -479,10 +470,8 @@ impl WindowBorder {
 
         let mut all_finished = true;
         let mut gradient_stops: Vec<D2D1_GRADIENT_STOP> = Vec::new();
-
-        for i in 0..gradient_stops.len() {
+        for i in 0..current_gradient.gradient_stops.len() {
             let mut current_finished = false;
-
 
             let active_color = match self.active_color.clone() {
                 Color::Gradient(gradient) => gradient.gradient_stops[i].color,
@@ -636,12 +625,20 @@ impl WindowBorder {
             }
             // EVENT_OBJECT_SHOW / EVENT_OBJECT_UNCLOAKED
             WM_APP_SHOWUNCLOAKED => {
+                let old_rect = self.window_rect;
+
+                let _ = self.update_window_rect();
+                if !WindowsApi::is_rect_visible(&self.window_rect) {
+                    self.window_rect = old_rect;
+                    return LRESULT(0);
+                }
+
                 if WindowsApi::has_native_border(self.tracking_window) {
                     let _ = self.update_color();
-                    let _ = self.update_window_rect();
                     let _ = self.update_position(Some(SWP_SHOWWINDOW));
                     let _ = self.render();
                 }
+
                 self.pause = false;
             }
             // EVENT_OBJECT_HIDE / EVENT_OBJECT_CLOAKED / EVENT_OBJECT_MINIMIZESTART
@@ -665,8 +662,7 @@ impl WindowBorder {
             }
             WM_APP_EVENTANIM => match wparam.0 as i32 {
                 ANIM_FADE_TO_ACTIVE | ANIM_FADE_TO_INACTIVE => {
-                    let is_active = WindowsApi::is_window_active(window);
-                    let animations_list = if is_active {
+                    let animations_list = if WindowsApi::is_window_active(window) {
                         self.animations.active.clone()
                     } else {
                         self.animations.inactive.clone()
@@ -678,67 +674,60 @@ impl WindowBorder {
                 }
                 _ => {}
             },
-            WM_PAINT => {
-                let _ = ValidateRect(window, None);
-            }
             WM_TIMER => {
                 if self.pause {
                     return LRESULT(0);
                 }
 
-                let is_active = WindowsApi::is_window_active(self.tracking_window);
-                let (last_anim_time, last_render_time) = if is_active {
-                    (
-                        self.last_animation_time_active,
-                        self.last_render_time_active,
-                    )
-                } else {
-                    (
-                        self.last_animation_time_inactive,
-                        self.last_render_time_inactive,
-                    )
-                };
-                let anim_elapsed = last_anim_time.unwrap_or(time::Instant::now()).elapsed();
-                let render_elapsed = last_render_time.unwrap_or(time::Instant::now()).elapsed();
-
-                if is_active {
-                    self.last_animation_time_active = Some(time::Instant::now());
-                } else {
-                    self.last_animation_time_inactive = Some(time::Instant::now());
-                }
-
-                let animations_list = if is_active {
+                let animations_list = if WindowsApi::is_window_active(self.tracking_window) {
                     self.animations.active.clone()
                 } else {
                     self.animations.inactive.clone()
                 };
 
-                if is_active {
-                    self.last_animation_time_active = Some(time::Instant::now());
-                } else {
-                    self.last_animation_time_inactive = Some(time::Instant::now());
-                }
+                let anim_elapsed = self
+                    .last_animation_time
+                    .unwrap_or(time::Instant::now())
+                    .elapsed();
+                let render_elapsed = self
+                    .last_render_time
+                    .unwrap_or(time::Instant::now())
+                    .elapsed();
 
-                for (anim_type, anim_speed) in animations_list.iter() {
-                    match anim_type {
-                        AnimationType::Spiral => {
-                            let center_x = (self.window_rect.right - self.window_rect.left) / 2;
-                            let center_y = (self.window_rect.bottom - self.window_rect.top) / 2;
-                            self.brush_properties.transform = self.brush_properties.transform
-                                * Matrix3x2::rotation(
-                                    anim_speed * anim_elapsed.as_secs_f32(),
+                self.last_animation_time = Some(time::Instant::now());
+
+                if animations_list.len() == 0 {
+                    self.brush_properties = D2D1_BRUSH_PROPERTIES {
+                        opacity: 1.0,
+                        transform: Matrix3x2::identity(),
+                    };
+                } else {
+                    for (anim_type, anim_speed) in animations_list.iter() {
+                        match anim_type {
+                            AnimationType::Spiral => {
+                                if self.spiral_anim_angle >= 360.0 {
+                                    self.spiral_anim_angle -= 360.0;
+                                }
+                                self.spiral_anim_angle +=
+                                    (anim_elapsed.as_secs_f32() * anim_speed * 2.0).min(359.0);
+
+                                let center_x = WindowsApi::get_rect_width(self.window_rect) / 2;
+                                let center_y = WindowsApi::get_rect_height(self.window_rect) / 2;
+                                self.brush_properties.transform = Matrix3x2::rotation(
+                                    self.spiral_anim_angle, 
                                     center_x as f32,
                                     center_y as f32,
                                 );
+                            }
+                            AnimationType::Fade => {}
                         }
-                        AnimationType::Fade => {}
                     }
                 }
 
                 match self.in_event_anim {
                     ANIM_FADE_TO_ACTIVE | ANIM_FADE_TO_INACTIVE => {
                         let anim_speed = animations_list.get(&AnimationType::Fade).unwrap();
-                        self.animate_fade(&anim_elapsed, *anim_speed / 50.0);
+                        self.animate_fade(&anim_elapsed, *anim_speed / 15.0);
                     }
                     _ => {}
                 }
@@ -748,6 +737,9 @@ impl WindowBorder {
                 {
                     let _ = self.render();
                 }
+            }
+            WM_PAINT => {
+                let _ = ValidateRect(window, None);
             }
             WM_DESTROY => {
                 SetWindowLongPtrW(window, GWLP_USERDATA, 0);

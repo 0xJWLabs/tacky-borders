@@ -73,6 +73,7 @@ pub const WM_APP_HIDECLOAKED: u32 = WM_APP + 3;
 pub const WM_APP_MINIMIZESTART: u32 = WM_APP + 4;
 pub const WM_APP_MINIMIZEEND: u32 = WM_APP + 5;
 pub const WM_APP_EVENTANIM: u32 = WM_APP + 6;
+pub const WM_APP_TIMER: u32 = WM_APP + 7;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SendHWND(pub HWND);
@@ -430,13 +431,10 @@ impl WindowsApi {
 
             let border_colors = convert_config_colors(&config_active, &config_inactive);
 
-            let animations = window_rule.rule_match.animations.unwrap_or(
-                config
-                    .global_rule
-                    .animations
-                    .clone()
-                    .unwrap_or_default()
-            );
+            let animations = window_rule
+                .rule_match
+                .animations
+                .unwrap_or(config.global_rule.animations.clone().unwrap_or_default());
 
             let dpi = unsafe { GetDpiForWindow(window_sent.0) } as f32;
             let border_width = (config_width * dpi / 96.0) as i32;

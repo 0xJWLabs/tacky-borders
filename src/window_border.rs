@@ -4,12 +4,12 @@ use crate::animations::ANIM_FADE_TO_ACTIVE;
 use crate::animations::ANIM_FADE_TO_INACTIVE;
 use crate::animations::ANIM_NONE;
 use crate::colors::adjust_gradient_stops;
-// use crate::colors::adjust_gradient_stops;
 use crate::colors::interpolate_d2d1_colors;
 use crate::colors::interpolate_direction;
 use crate::colors::Color;
 use crate::colors::Gradient;
 use crate::colors::Solid;
+use crate::multimedia_timer::MultimediaTimer;
 use crate::windowsapi::ErrorMsg;
 use crate::windowsapi::WindowsApi;
 use crate::windowsapi::WM_APP_EVENTANIM;
@@ -19,6 +19,7 @@ use crate::windowsapi::WM_APP_MINIMIZEEND;
 use crate::windowsapi::WM_APP_MINIMIZESTART;
 use crate::windowsapi::WM_APP_REORDER;
 use crate::windowsapi::WM_APP_SHOWUNCLOAKED;
+use crate::windowsapi::WM_APP_TIMER;
 
 use std::ptr;
 use std::sync::LazyLock;
@@ -76,7 +77,6 @@ use windows::Win32::UI::WindowsAndMessaging::GetSystemMetrics;
 use windows::Win32::UI::WindowsAndMessaging::GetWindow;
 use windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW;
 use windows::Win32::UI::WindowsAndMessaging::PostQuitMessage;
-use windows::Win32::UI::WindowsAndMessaging::SetTimer;
 use windows::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW;
 use windows::Win32::UI::WindowsAndMessaging::SetWindowPos;
 use windows::Win32::UI::WindowsAndMessaging::ShowWindow;
@@ -100,7 +100,6 @@ use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
 use windows::Win32::UI::WindowsAndMessaging::WM_CREATE;
 use windows::Win32::UI::WindowsAndMessaging::WM_DESTROY;
 use windows::Win32::UI::WindowsAndMessaging::WM_PAINT;
-use windows::Win32::UI::WindowsAndMessaging::WM_TIMER;
 use windows::Win32::UI::WindowsAndMessaging::WM_WINDOWPOSCHANGED;
 use windows::Win32::UI::WindowsAndMessaging::WM_WINDOWPOSCHANGING;
 use windows::Win32::UI::WindowsAndMessaging::WS_DISABLED;
@@ -138,6 +137,7 @@ pub struct WindowBorder {
     pub last_render_time: Option<std::time::Instant>,
     pub spiral_anim_angle: f32,
     pub in_event_anim: i32,
+    pub timer: Option<MultimediaTimer>,
 }
 
 impl WindowBorder {
@@ -167,9 +167,8 @@ impl WindowBorder {
 
         if !self.animations.active.is_empty() || !self.animations.inactive.is_empty() {
             let timer_duration = (1000 / self.animations.fps) as u32;
-            unsafe {
-                SetTimer(self.border_window, 1, timer_duration, None);
-            }
+            let timer = MultimediaTimer::start(self.border_window, timer_duration);
+            self.timer = Some(timer);
         }
 
         unsafe {
@@ -720,7 +719,7 @@ impl WindowBorder {
                 }
                 _ => {}
             },
-            WM_TIMER => {
+            WM_APP_TIMER => {
                 if self.pause {
                     return LRESULT(0);
                 }
@@ -785,6 +784,9 @@ impl WindowBorder {
                 let _ = ValidateRect(window, None);
             }
             WM_DESTROY => {
+                if let Some(ref mut timer) = self.timer {
+                    timer.stop();
+                }
                 SetWindowLongPtrW(window, GWLP_USERDATA, 0);
                 PostQuitMessage(0);
             }

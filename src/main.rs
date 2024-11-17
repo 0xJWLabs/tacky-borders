@@ -15,50 +15,51 @@ use sp_log::LevelFilter;
 use sp_log::TermLogger;
 use sp_log::TerminalMode;
 use sp_log::WriteLogger;
-use windows::Win32::UI::WindowsAndMessaging::WM_CLOSE;
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::sync::LazyLock;
 use std::sync::Mutex;
 use std::thread;
 use utils::get_log;
+use windows::Win32::UI::WindowsAndMessaging::WM_CLOSE;
 use windowsapi::WindowsApi;
 
 use windows::core::w;
 use windows::core::Result;
-use windows::Win32::Foundation::HWND;
-use windows::Win32::Foundation::HINSTANCE;
 use windows::Win32::Foundation::GetLastError;
-use windows::Win32::Foundation::LPARAM;
-use windows::Win32::Foundation::WPARAM;
-use windows::Win32::Foundation::TRUE;
 use windows::Win32::Foundation::BOOL;
+use windows::Win32::Foundation::HINSTANCE;
+use windows::Win32::Foundation::HWND;
+use windows::Win32::Foundation::LPARAM;
+use windows::Win32::Foundation::TRUE;
+use windows::Win32::Foundation::WPARAM;
 use windows::Win32::System::SystemServices::IMAGE_DOS_HEADER;
 use windows::Win32::UI::Accessibility::SetWinEventHook;
 use windows::Win32::UI::Accessibility::HWINEVENTHOOK;
 use windows::Win32::UI::HiDpi::SetProcessDpiAwarenessContext;
 use windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2;
 use windows::Win32::UI::Input::Ime::ImmDisableIME;
-use windows::Win32::UI::WindowsAndMessaging::GetMessageW;
-use windows::Win32::UI::WindowsAndMessaging::TranslateMessage;
 use windows::Win32::UI::WindowsAndMessaging::DispatchMessageW;
+use windows::Win32::UI::WindowsAndMessaging::GetMessageW;
+use windows::Win32::UI::WindowsAndMessaging::LoadCursorW;
 use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
 use windows::Win32::UI::WindowsAndMessaging::RegisterClassExW;
-use windows::Win32::UI::WindowsAndMessaging::LoadCursorW;
-use windows::Win32::UI::WindowsAndMessaging::EVENT_MIN;
+use windows::Win32::UI::WindowsAndMessaging::TranslateMessage;
 use windows::Win32::UI::WindowsAndMessaging::EVENT_MAX;
+use windows::Win32::UI::WindowsAndMessaging::EVENT_MIN;
 use windows::Win32::UI::WindowsAndMessaging::IDC_ARROW;
 use windows::Win32::UI::WindowsAndMessaging::MSG;
 use windows::Win32::UI::WindowsAndMessaging::WINEVENT_OUTOFCONTEXT;
 use windows::Win32::UI::WindowsAndMessaging::WINEVENT_SKIPOWNPROCESS;
 use windows::Win32::UI::WindowsAndMessaging::WNDCLASSEXW;
 
+mod animations;
 mod border_config;
 mod colors;
 mod event_hook;
+mod multimedia_timer;
 mod sys_tray_icon;
 mod utils;
-mod animations;
 mod window_border;
 mod windowsapi;
 
@@ -74,12 +75,6 @@ pub static BORDERS: LazyLock<Mutex<HashMap<isize, isize>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub static INITIAL_WINDOWS: LazyLock<Mutex<Vec<isize>>> = LazyLock::new(|| Mutex::new(Vec::new()));
-
-// This shit supposedly unsafe af but it works so idgaf.
-// #[derive(Debug, PartialEq, Clone)]
-// pub struct SendHWND(HWND);
-// unsafe impl Send for SendHWND {}
-// unsafe impl Sync for SendHWND {}
 
 fn create_logger() {
     CombinedLogger::init(vec![

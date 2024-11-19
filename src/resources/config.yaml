@@ -47,19 +47,25 @@ global:
       end: [1.0, 0.0]
 
 # animations: Defines the animation properties for the border.
-#   - active: A list of animations to be applied to the active window border (e.g., "Spiral", "Fade").
-#   - inactive: A list of animations to be applied to the inactive window border (e.g., "Spiral", "Fade").
-#   - speed: Specifies the animation speed (default: 200).
-#   - fps: Defines the frames per second for the animation (default: 60).
+#   - active: Specifies animations for the active window border. Can be a map with optional speed values 
+#             (e.g., `{ Spiral, Fade: 20 }`) or a simple list (e.g., `{ Spiral, Fade }`).
+#   - inactive: Specifies animations for the inactive window border. Can be a map with optional speed values 
+#               (e.g., `{ Fade: 10 }`) or a simple list (e.g., `{ Fade }`).
+#   - fps: Defines the frames per second for the animations (default: 60).
   animations:
-    active: [Spiral]
-    inactive: []
-    speed: 200
-    fps: 30
+    active: { Spiral, Fade }
+    inactive: { Fade }
+    fps: 60
 
 # inactive_color: Defines the color of the inactive window border.
 #   - This can also be specified as a string or a gradient map, similar to active_color.
   inactive_color: "#d2d2d2"
+
+# init_delay: The initial delay (in milliseconds) before applying animations when the window is first rendered. 
+#             A reduced delay can be used to account for animations like fade, which take additional time.
+# unminimize_delay: The delay (in milliseconds) before applying animations when a minimized window is restored.
+init_delay: 150
+unminimize_delay: 100
 
 # window_rules: Defines specific window matching rules for borders.
 # Each rule can define custom properties for how borders are applied to matching windows.
@@ -91,16 +97,16 @@ window_rules:
       kind: "Class"                     # Matches based on the window's class name.
       value: "Windows.UI.Core.CoreWindow"
       strategy: "Contains"
-      border_enabled: false
+      enabled: false
 
   - match:
       kind: "Process"                   # Matches based on the process name.
       value: "(?i)^Flow.*"
       strategy: "Regex"
-      border_enabled: false
+      enabled: false
 
   - match:
       kind: "Title"                     # Matches based on the window title.
       value: "Zebar"
       strategy: "Equals"
-      border_enabled: false
+      enabled: false

@@ -207,6 +207,14 @@
             }
           ]
         },
+        "init_delay": {
+          "type": "integer",
+          "description": "The initial delay (in milliseconds) before applying animations when the window is first rendered. A reduced delay can be used to account for animations like fade, which take additional time.",
+        },
+        "unminimize_delay": {
+          "type": "integer",
+          "description": "The delay (in milliseconds) before applying animations when a minimized window is restored.",
+        },
         "inactive_color": {
           "description": "Color or gradient for inactive (unfocused) window borders. Similar to 'active_color' format.",
           "oneOf": [
@@ -635,6 +643,14 @@
                     ]
                   }
                 ]
+              },
+              "init_delay": {
+                "type": "integer",
+                "description": "The initial delay (in milliseconds) before applying animations when the window is first rendered. A reduced delay can be used to account for animations like fade, which take additional time.",
+              },
+              "unminimize_delay": {
+                "type": "integer",
+                "description": "The delay (in milliseconds) before applying animations when a minimized window is restored.",
               },
               "enabled": {
                 "description": "Enables or disables border for this rule. (default: true)",

@@ -1,12 +1,10 @@
 use dirs::home_dir;
-
-use std::fs::DirBuilder;
 use std::fs::exists;
+use std::fs::write;
+use std::fs::DirBuilder;
 use std::fs::File;
 use std::fs::OpenOptions;
-use std::fs::write;
 use std::path::PathBuf;
-
 use windows::core::Result;
 
 // Configuration
@@ -75,3 +73,4 @@ pub fn strip_string(input: String, prefixes: &[&str], suffix: char) -> String {
     // Remove suffix (if it exists)
     result.strip_suffix(suffix).unwrap_or(&result).to_string()
 }
+

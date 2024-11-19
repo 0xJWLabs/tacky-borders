@@ -55,6 +55,7 @@
               "propertyNames": {
                 "enum": [
                   "Spiral",
+                  "ReverseSpiral",
                   "Fade"
                 ]
               },
@@ -69,6 +70,7 @@
               "propertyNames": {
                 "enum": [
                   "Spiral",
+                  "ReverseSpiral",
                   "Fade"
                 ]
               },
@@ -371,6 +373,7 @@
                     "propertyNames": {
                       "enum": [
                         "Spiral",
+                        "ReverseSpiral",
                         "Fade"
                       ]
                     },
@@ -385,6 +388,7 @@
                     "propertyNames": {
                       "enum": [
                         "Spiral",
+                        "ReverseSpiral",
                         "Fade"
                       ]
                     },

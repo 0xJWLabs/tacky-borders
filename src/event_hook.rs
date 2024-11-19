@@ -18,8 +18,10 @@ use windows::Win32::UI::WindowsAndMessaging::EVENT_SYSTEM_MINIMIZESTART;
 use windows::Win32::UI::WindowsAndMessaging::GA_ROOT;
 use windows::Win32::UI::WindowsAndMessaging::OBJID_CURSOR;
 
+use crate::animations::ANIM_FADE_TO_ACTIVE;
+use crate::animations::ANIM_FADE_TO_INACTIVE;
 use crate::windowsapi::WindowsApi;
-use crate::windowsapi::WM_APP_EVENTANIM;
+use crate::windowsapi::WM_APP_FOCUS;
 use crate::windowsapi::WM_APP_LOCATIONCHANGE;
 use crate::windowsapi::WM_APP_MINIMIZEEND;
 use crate::windowsapi::WM_APP_MINIMIZESTART;
@@ -86,14 +88,14 @@ pub extern "system" fn handle_win_event(
                 if WindowsApi::is_window_visible(border_window) {
                     let wparam = if *key == parent.0 as isize {
                         // animate from inactive_color to active_color
-                        WPARAM(1)
+                        WPARAM(ANIM_FADE_TO_ACTIVE as _)
                     } else {
                         // animate from active_color to inactive_color
-                        WPARAM(2)
+                        WPARAM(ANIM_FADE_TO_INACTIVE as _)
                     };
 
                     unsafe {
-                        let _ = PostMessageW(border_window, WM_APP_EVENTANIM, wparam, LPARAM(0));
+                        let _ = PostMessageW(border_window, WM_APP_FOCUS, wparam, LPARAM(0));
                     }
                 }
             }
@@ -133,15 +135,8 @@ pub extern "system" fn handle_win_event(
         EVENT_OBJECT_DESTROY => {
             if !WindowsApi::has_filtered_style(_hwnd) {
                 let _ = WindowsApi::destroy_border_for_window(_hwnd);
-
-                // Use below to debug whether window borders are properly destroyed
-                /*let mutex = &*BORDERS;
-                let borders = mutex.lock().unwrap();
-                println!("borders after destroying window: {:?}", borders);
-                drop(borders);*/
             }
         }
         _ => {}
     }
 }
-

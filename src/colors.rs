@@ -21,8 +21,7 @@ use crate::windowsapi::WindowsApi;
 
 // Constants
 const COLOR_PATTERN: &str = r"(?i)#[0-9A-F]{3,8}|rgba?\([0-9]{1,3},\s*[0-9]{1,3},\s*[0-9]{1,3}(?:,\s*[0-9]*(?:\.[0-9]+)?)?\)|accent|transparent";
-static COLOR_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(COLOR_PATTERN).unwrap());
+static COLOR_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(COLOR_PATTERN).unwrap());
 
 // Enums
 #[derive(Debug, Clone, Deserialize)]
@@ -309,7 +308,9 @@ impl Color {
     pub fn from(color_definition: &ColorConfig, is_active: Option<bool>) -> Self {
         match color_definition {
             ColorConfig::String(s) => Self::from_string(s.clone(), is_active),
-            ColorConfig::Mapping(gradient_def) => Self::from_mapping(gradient_def.clone(), is_active),
+            ColorConfig::Mapping(gradient_def) => {
+                Self::from_mapping(gradient_def.clone(), is_active)
+            }
         }
     }
 }
@@ -437,6 +438,34 @@ pub fn interpolate_d2d1_colors(
     interpolated
 }
 
+pub fn interpolate_d2d1_alphas(
+    current_color: &D2D1_COLOR_F,
+    end_color: &D2D1_COLOR_F,
+    anim_elapsed: f32,
+    anim_speed: f32,
+    finished: &mut bool,
+) -> D2D1_COLOR_F {
+    let mut interpolated = *current_color;
+
+    let anim_step = anim_elapsed * anim_speed;
+
+    // Figure out which direction we should be interpolating
+    let diff = end_color.a - interpolated.a;
+    match diff.is_sign_positive() {
+        true => interpolated.a += anim_step,
+        false => interpolated.a -= anim_step,
+    }
+
+    if (interpolated.a - end_color.a) * diff.signum() >= 0.0 {
+        *finished = true;
+        return *end_color;
+    } else {
+        *finished = false;
+    }
+
+    interpolated
+}
+
 pub fn interpolate_direction(
     current_direction: &GradientDirectionCoordinates,
     start_direction: &GradientDirectionCoordinates,
@@ -466,11 +495,14 @@ fn interpolate_color(color1: D2D1_COLOR_F, color2: D2D1_COLOR_F, t: f32) -> D2D1
         r: color1.r + t * (color2.r - color1.r),
         g: color1.g + t * (color2.g - color1.g),
         b: color1.b + t * (color2.b - color1.b),
-        a: color1.a + t * (color2.a - color1.a)
+        a: color1.a + t * (color2.a - color1.a),
     }
 }
 
-pub fn adjust_gradient_stops(source_stops: Vec<D2D1_GRADIENT_STOP>, target_count: usize) -> Vec<D2D1_GRADIENT_STOP> {
+pub fn adjust_gradient_stops(
+    source_stops: Vec<D2D1_GRADIENT_STOP>,
+    target_count: usize,
+) -> Vec<D2D1_GRADIENT_STOP> {
     if source_stops.len() == target_count {
         return source_stops;
     }
@@ -480,7 +512,9 @@ pub fn adjust_gradient_stops(source_stops: Vec<D2D1_GRADIENT_STOP>, target_count
 
     for i in 0..target_count {
         let position = i as f32 * step;
-        let (prev_stop, next_stop) = match source_stops.windows(2).find(|w| w[0].position <= position && position <= w[1].position)
+        let (prev_stop, next_stop) = match source_stops
+            .windows(2)
+            .find(|w| w[0].position <= position && position <= w[1].position)
         {
             Some(pair) => (&pair[0], &pair[1]),
             None => {
@@ -505,3 +539,4 @@ pub fn adjust_gradient_stops(source_stops: Vec<D2D1_GRADIENT_STOP>, target_count
 
     adjusted_stops
 }
+

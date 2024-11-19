@@ -1,18 +1,20 @@
 use crate::animations::AnimationType;
-use crate::animations::Animations;
 use crate::animations::ANIM_FADE_TO_ACTIVE;
 use crate::animations::ANIM_FADE_TO_INACTIVE;
+use crate::animations::ANIM_FADE_TO_VISIBLE;
 use crate::animations::ANIM_NONE;
 use crate::colors::adjust_gradient_stops;
+use crate::colors::interpolate_d2d1_alphas;
 use crate::colors::interpolate_d2d1_colors;
 use crate::colors::interpolate_direction;
 use crate::colors::Color;
 use crate::colors::Gradient;
 use crate::colors::Solid;
-use crate::multimedia_timer::MultimediaTimer;
+use crate::timer::KillCustomTimer;
+use crate::timer::SetCustomTimer;
 use crate::windowsapi::ErrorMsg;
 use crate::windowsapi::WindowsApi;
-use crate::windowsapi::WM_APP_EVENTANIM;
+use crate::windowsapi::WM_APP_FOCUS;
 use crate::windowsapi::WM_APP_HIDECLOAKED;
 use crate::windowsapi::WM_APP_LOCATIONCHANGE;
 use crate::windowsapi::WM_APP_MINIMIZEEND;
@@ -21,6 +23,7 @@ use crate::windowsapi::WM_APP_REORDER;
 use crate::windowsapi::WM_APP_SHOWUNCLOAKED;
 use crate::windowsapi::WM_APP_TIMER;
 
+use std::collections::HashMap;
 use std::ptr;
 use std::sync::LazyLock;
 use std::sync::OnceLock;
@@ -127,7 +130,10 @@ pub struct WindowBorder {
     pub brush_properties: D2D1_BRUSH_PROPERTIES,
     pub render_target: OnceLock<ID2D1HwndRenderTarget>,
     pub rounded_rect: D2D1_ROUNDED_RECT,
-    pub animations: Animations,
+    pub active_animations: HashMap<AnimationType, f32>,
+    pub inactive_animations: HashMap<AnimationType, f32>,
+    pub current_animations: HashMap<AnimationType, f32>,
+    pub animations_fps: i32,
     pub active_color: Color,
     pub inactive_color: Color,
     pub current_color: Color,
@@ -137,7 +143,7 @@ pub struct WindowBorder {
     pub last_render_time: Option<std::time::Instant>,
     pub spiral_anim_angle: f32,
     pub in_event_anim: i32,
-    pub timer: Option<MultimediaTimer>,
+    pub timer_id: Option<usize>,
 }
 
 impl WindowBorder {
@@ -164,12 +170,6 @@ impl WindowBorder {
 
     pub fn init(&mut self, init_delay: u64) -> Result<()> {
         thread::sleep(time::Duration::from_millis(init_delay));
-
-        if !self.animations.active.is_empty() || !self.animations.inactive.is_empty() {
-            let timer_duration = (1000 / self.animations.fps) as u32;
-            let timer = MultimediaTimer::start(self.border_window, timer_duration);
-            self.timer = Some(timer);
-        }
 
         unsafe {
             // Make the window border transparent
@@ -203,6 +203,23 @@ impl WindowBorder {
             );
 
             let _ = self.create_render_targets();
+
+            self.current_animations = match WindowsApi::is_window_active(self.tracking_window) {
+                true => self.active_animations.clone(),
+                false => self.inactive_animations.clone(),
+            };
+
+            match self.current_animations.contains_key(&AnimationType::Fade) && init_delay != 0 {
+                true => {
+                    // Reset last_anim_time here to make interpolate_d2d1_alphas work correctly
+                    self.last_animation_time = Some(time::Instant::now());
+                    self.prepare_fade_to_visible();
+                }
+                false => {
+                    let _ = self.update_color();
+                }
+            }
+            let _ = self.update_window_rect();
             if WindowsApi::has_native_border(self.tracking_window) {
                 let _ = self.update_position(Some(SWP_SHOWWINDOW));
                 let _ = self.render();
@@ -214,6 +231,7 @@ impl WindowBorder {
                 let _ = self.update_position(Some(SWP_SHOWWINDOW));
                 let _ = self.render();
             }
+            self.set_anim_timer();
 
             let mut message = MSG::default();
 
@@ -257,6 +275,12 @@ impl WindowBorder {
             radiusY: self.border_radius,
         };
 
+        if WindowsApi::is_window_active(self.tracking_window) {
+            self.current_color = self.active_color.clone();
+        } else {
+            self.current_color = self.inactive_color.clone();
+        }
+
         // Initialize the actual border color assuming it is in focus
         unsafe {
             let factory = &*RENDER_FACTORY;
@@ -272,10 +296,6 @@ impl WindowBorder {
             render_target.SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
         }
 
-        let _ = self.update_color();
-        let _ = self.update_window_rect();
-        let _ = self.update_position(None);
-
         Ok(())
     }
 
@@ -288,6 +308,7 @@ impl WindowBorder {
                 error!("Error getting frame rect! This is normal for apps running with elevated privileges");
                 unsafe {
                     let _ = ShowWindow(self.border_window, SW_HIDE);
+                    self.pause = true;
                 }
             })),
         );
@@ -330,17 +351,15 @@ impl WindowBorder {
     }
 
     pub fn update_color(&mut self) -> Result<()> {
-        if WindowsApi::is_window_active(self.tracking_window) {
-            if self.animations.active.contains_key(&AnimationType::Fade) {
-                return Ok(());
-            }
-            self.current_color = self.active_color.clone();
-        } else {
-            if self.animations.inactive.contains_key(&AnimationType::Fade) {
-                return Ok(());
-            }
-            self.current_color = self.inactive_color.clone();
+        if self.current_animations.contains_key(&AnimationType::Fade) {
+            return Ok(());
         }
+
+        self.current_color = if WindowsApi::is_window_active(self.tracking_window) {
+            self.active_color.clone()
+        } else {
+            self.inactive_color.clone()
+        };
 
         Ok(())
     }
@@ -357,13 +376,14 @@ impl WindowBorder {
             height: WindowsApi::get_rect_height(self.window_rect) as u32,
         };
 
+        let width = self.border_width as f32;
+        let offset = self.border_offset as f32;
+
         self.rounded_rect.rect = D2D_RECT_F {
-            left: (self.border_width / 2 - self.border_offset) as f32,
-            top: (self.border_width / 2 - self.border_offset) as f32,
-            right: (self.window_rect.right - self.window_rect.left - self.border_width / 2
-                + self.border_offset) as f32,
-            bottom: (self.window_rect.bottom - self.window_rect.top - self.border_width / 2
-                + self.border_offset) as f32,
+            left: width / 2.0 - offset,
+            top: width / 2.0 - offset,
+            right: (self.window_rect.right - self.window_rect.left) as f32 - width / 2.0 + offset,
+            bottom: (self.window_rect.bottom - self.window_rect.top) as f32 - width / 2.0 + offset,
         };
 
         unsafe {
@@ -418,26 +438,45 @@ impl WindowBorder {
             return;
         };
 
-        let (start_color, end_color) = match self.in_event_anim {
-            ANIM_FADE_TO_ACTIVE => (&inactive_solid.color, &active_solid.color),
-            ANIM_FADE_TO_INACTIVE => (&active_solid.color, &inactive_solid.color),
+        let mut finished = false;
+        let color = match self.in_event_anim {
+            ANIM_FADE_TO_VISIBLE => {
+                let end_color = match WindowsApi::is_window_visible(self.tracking_window) {
+                    true => &active_solid.color,
+                    false => &inactive_solid.color,
+                };
+
+                interpolate_d2d1_alphas(
+                    &current_solid.color,
+                    end_color,
+                    anim_elapsed.as_secs_f32(),
+                    anim_speed,
+                    &mut finished,
+                )
+            }
+            ANIM_FADE_TO_ACTIVE | ANIM_FADE_TO_INACTIVE => {
+                let (start_color, end_color) = match self.in_event_anim {
+                    ANIM_FADE_TO_ACTIVE => (&inactive_solid.color, &active_solid.color),
+                    ANIM_FADE_TO_INACTIVE => (&active_solid.color, &inactive_solid.color),
+                    _ => return,
+                };
+
+                interpolate_d2d1_colors(
+                    &current_solid.color,
+                    start_color,
+                    end_color,
+                    anim_elapsed.as_secs_f32(),
+                    anim_speed,
+                    &mut finished,
+                )
+            }
             _ => return,
         };
 
-        let mut finished = false;
-        self.current_color = Color::Solid(Solid {
-            color: interpolate_d2d1_colors(
-                &current_solid.color,
-                start_color,
-                end_color,
-                anim_elapsed.as_secs_f32(),
-                anim_speed,
-                &mut finished,
-            ),
-        });
-
         if finished {
             self.in_event_anim = ANIM_NONE;
+        } else {
+            self.current_color = Color::Solid(Solid { color });
         }
         //println!("time elapsed: {:?}", before.elapsed());
     }
@@ -528,20 +567,39 @@ impl WindowBorder {
                 Color::Solid(solid) => solid.color,
             };
 
-            let (start_color, end_color) = match self.in_event_anim {
-                ANIM_FADE_TO_ACTIVE => (&inactive_color, &active_color),
-                ANIM_FADE_TO_INACTIVE => (&active_color, &inactive_color),
+            let color = match self.in_event_anim {
+                ANIM_FADE_TO_VISIBLE => {
+                    let end_color = match WindowsApi::is_window_visible(self.tracking_window) {
+                        true => &active_color,
+                        false => &inactive_color,
+                    };
+
+                    interpolate_d2d1_alphas(
+                        &current_gradient.gradient_stops[i].color,
+                        end_color,
+                        anim_elapsed.as_secs_f32(),
+                        anim_speed,
+                        &mut current_finished,
+                    )
+                }
+                ANIM_FADE_TO_ACTIVE | ANIM_FADE_TO_INACTIVE => {
+                    let (start_color, end_color) = match self.in_event_anim {
+                        ANIM_FADE_TO_ACTIVE => (&inactive_color, &active_color),
+                        ANIM_FADE_TO_INACTIVE => (&active_color, &inactive_color),
+                        _ => return,
+                    };
+
+                    interpolate_d2d1_colors(
+                        &current_gradient.gradient_stops[i].color,
+                        start_color,
+                        end_color,
+                        anim_elapsed.as_secs_f32(),
+                        anim_speed,
+                        &mut current_finished,
+                    )
+                }
                 _ => return,
             };
-
-            let color = interpolate_d2d1_colors(
-                &gradient_stops_current[i].color,
-                start_color,
-                end_color,
-                anim_elapsed.as_secs_f32(),
-                anim_speed,
-                &mut current_finished,
-            );
 
             if !current_finished {
                 all_finished = false;
@@ -559,25 +617,27 @@ impl WindowBorder {
         let mut direction = current_gradient.direction;
 
         // Interpolate direction if both active and inactive are gradients
-        if let Color::Gradient(inactive_gradient) = self.inactive_color.clone() {
-            if let Color::Gradient(active_gradient) = self.active_color.clone() {
-                let (start_direction, end_direction) = match self.in_event_anim {
-                    ANIM_FADE_TO_ACTIVE => {
-                        (&inactive_gradient.direction, &active_gradient.direction)
-                    }
-                    ANIM_FADE_TO_INACTIVE => {
-                        (&active_gradient.direction, &inactive_gradient.direction)
-                    }
-                    _ => return,
-                };
+        if self.in_event_anim != ANIM_FADE_TO_VISIBLE {
+            if let Color::Gradient(inactive_gradient) = self.inactive_color.clone() {
+                if let Color::Gradient(active_gradient) = self.active_color.clone() {
+                    let (start_direction, end_direction) = match self.in_event_anim {
+                        ANIM_FADE_TO_ACTIVE => {
+                            (&inactive_gradient.direction, &active_gradient.direction)
+                        }
+                        ANIM_FADE_TO_INACTIVE => {
+                            (&active_gradient.direction, &inactive_gradient.direction)
+                        }
+                        _ => return,
+                    };
 
-                direction = interpolate_direction(
-                    &direction,
-                    start_direction,
-                    end_direction,
-                    anim_elapsed.as_secs_f32(),
-                    anim_speed,
-                );
+                    direction = interpolate_direction(
+                        &direction,
+                        start_direction,
+                        end_direction,
+                        anim_elapsed.as_secs_f32(),
+                        anim_speed,
+                    );
+                }
             }
         }
 
@@ -585,6 +645,12 @@ impl WindowBorder {
             match self.in_event_anim {
                 ANIM_FADE_TO_ACTIVE => self.current_color = self.active_color.clone(),
                 ANIM_FADE_TO_INACTIVE => self.current_color = self.inactive_color.clone(),
+                ANIM_FADE_TO_VISIBLE => {
+                    self.current_color = match WindowsApi::is_window_active(self.tracking_window) {
+                        true => self.active_color.clone(),
+                        false => self.inactive_color.clone(),
+                    }
+                }
                 _ => {}
             }
             self.in_event_anim = ANIM_NONE;
@@ -593,6 +659,56 @@ impl WindowBorder {
                 gradient_stops,
                 direction,
             });
+        }
+    }
+
+    pub fn prepare_fade_to_visible(&mut self) {
+        self.current_color = if WindowsApi::is_window_active(self.tracking_window) {
+            self.active_color.clone()
+        } else {
+            self.inactive_color.clone()
+        };
+
+        if let Color::Gradient(mut current_gradient) = self.current_color.clone() {
+            let mut gradient_stops: Vec<D2D1_GRADIENT_STOP> = Vec::new();
+            for i in 0..current_gradient.gradient_stops.len() {
+                current_gradient.gradient_stops[i].color.a = 0.0;
+                let color = current_gradient.gradient_stops[i].color;
+                let position = current_gradient.gradient_stops[i].position;
+                gradient_stops.push(D2D1_GRADIENT_STOP { color, position });
+            }
+
+            let direction = current_gradient.direction;
+
+            self.current_color = Color::Gradient(Gradient {
+                gradient_stops,
+                direction,
+            })
+        } else if let Color::Solid(mut current_solid) = self.current_color.clone() {
+            current_solid.color.a = 0.0;
+            let color = current_solid.color;
+
+            self.current_color = Color::Solid(Solid { color });
+        }
+
+        self.in_event_anim = ANIM_FADE_TO_VISIBLE;
+    }
+
+    pub fn set_anim_timer(&mut self) {
+        if (!self.active_animations.is_empty() || !self.inactive_animations.is_empty())
+            && self.timer_id.is_none()
+        {
+            let timer_duration = (1000 / self.animations_fps) as u32;
+            unsafe {
+                self.timer_id = Some(SetCustomTimer(self.border_window, timer_duration));
+            }
+        }
+    }
+
+    pub fn destroy_anim_timer(&mut self) {
+        if let Some(timer_id) = self.timer_id {
+            KillCustomTimer(timer_id);
+            self.timer_id = None;
         }
     }
 
@@ -664,14 +780,37 @@ impl WindowBorder {
                     return LRESULT(0);
                 }
 
+                // For apps like firefox, when you hover over a tab, a popup window spawns that
+                // changes the z-order and causes the border to sit under the tracking window. To
+                // remedy that, we just re-update the position/z-order when windows are reordered.
+                let _ = self.update_position(None);
+            }
+            WM_APP_FOCUS => {
+                self.current_animations = match WindowsApi::is_window_active(self.tracking_window) {
+                    true => self.active_animations.clone(),
+                    false => self.inactive_animations.clone(),
+                };
+
+                // Update event_anim if current_animations contains the corresponding animation
+                match wparam.0 as i32 {
+                    ANIM_FADE_TO_ACTIVE | ANIM_FADE_TO_INACTIVE => {
+                        if self.current_animations.contains_key(&AnimationType::Fade) {
+                            self.in_event_anim = wparam.0 as i32;
+                        }
+                    }
+                    _ => {}
+                }
+
                 let _ = self.update_color();
                 let _ = self.update_position(None);
                 let _ = self.render();
             }
             // EVENT_OBJECT_SHOW / EVENT_OBJECT_UNCLOAKED
             WM_APP_SHOWUNCLOAKED => {
+                // With GlazeWM, if I switch to another workspace while a window is minimized and
+                // switch back, then we will receive this message even though the window is not yet
+                // visible. And, the window rect will be all weird. So, we apply the following fix.
                 let old_rect = self.window_rect;
-
                 let _ = self.update_window_rect();
                 if !WindowsApi::is_rect_visible(&self.window_rect) {
                     self.window_rect = old_rect;
@@ -684,11 +823,14 @@ impl WindowBorder {
                     let _ = self.render();
                 }
 
+                self.set_anim_timer();
+
                 self.pause = false;
             }
             // EVENT_OBJECT_HIDE / EVENT_OBJECT_CLOAKED / EVENT_OBJECT_MINIMIZESTART
             WM_APP_HIDECLOAKED | WM_APP_MINIMIZESTART => {
                 let _ = self.update_position(Some(SWP_HIDEWINDOW));
+                self.destroy_anim_timer();
                 self.pause = true;
             }
             // EVENT_SYSTEM_MINIMIZEEND
@@ -698,37 +840,32 @@ impl WindowBorder {
                 thread::sleep(time::Duration::from_millis(self.unminimize_delay));
 
                 if WindowsApi::has_native_border(self.tracking_window) {
-                    let _ = self.update_color();
+                    match self.current_animations.contains_key(&AnimationType::Fade)
+                        && self.unminimize_delay != 0
+                    {
+                        true => {
+                            // Reset last_anim_time here because otherwise, anim_elapsed will be
+                            // too large due to being paused and interpolation won't work correctly
+                            self.last_animation_time = Some(time::Instant::now());
+                            self.prepare_fade_to_visible();
+                        }
+                        false => {
+                            let _ = self.update_color();
+                        }
+                    }
                     let _ = self.update_window_rect();
                     let _ = self.update_position(Some(SWP_SHOWWINDOW));
                     let _ = self.render();
                 }
+
+                self.set_anim_timer();
+
                 self.pause = false;
             }
-            WM_APP_EVENTANIM => match wparam.0 as i32 {
-                ANIM_FADE_TO_ACTIVE | ANIM_FADE_TO_INACTIVE => {
-                    let animations_list = if WindowsApi::is_window_active(window) {
-                        self.animations.active.clone()
-                    } else {
-                        self.animations.inactive.clone()
-                    };
-
-                    if animations_list.contains_key(&AnimationType::Fade) {
-                        self.in_event_anim = wparam.0 as i32;
-                    }
-                }
-                _ => {}
-            },
             WM_APP_TIMER => {
                 if self.pause {
                     return LRESULT(0);
                 }
-
-                let animations_list = if WindowsApi::is_window_active(self.tracking_window) {
-                    self.animations.active.clone()
-                } else {
-                    self.animations.inactive.clone()
-                };
 
                 let anim_elapsed = self
                     .last_animation_time
@@ -739,12 +876,15 @@ impl WindowBorder {
                     .unwrap_or(time::Instant::now())
                     .elapsed();
 
-                self.last_animation_time = Some(time::Instant::now());
+                // println!("time since last anim: {}", render_elapsed.as_secs_f32());
 
-                if animations_list.is_empty() {
+                self.last_animation_time = Some(time::Instant::now());
+                let mut update = false;
+
+                if self.current_animations.is_empty() {
                     self.brush_properties.transform = Matrix3x2::identity();
                 } else {
-                    for (anim_type, anim_speed) in animations_list.iter() {
+                    for (anim_type, anim_speed) in self.current_animations.iter() {
                         match anim_type {
                             AnimationType::Spiral => {
                                 if self.spiral_anim_angle >= 360.0 {
@@ -760,6 +900,24 @@ impl WindowBorder {
                                     center_x as f32,
                                     center_y as f32,
                                 );
+                                update = true;
+                            }
+                            AnimationType::ReverseSpiral => {
+                                self.spiral_anim_angle %= 360.0;
+                                if self.spiral_anim_angle < 0.0 {
+                                    self.spiral_anim_angle += 360.0;
+                                }
+                                self.spiral_anim_angle -=
+                                    (anim_elapsed.as_secs_f32() * anim_speed * 2.0).min(359.0);
+
+                                let center_x = WindowsApi::get_rect_width(self.window_rect) / 2;
+                                let center_y = WindowsApi::get_rect_height(self.window_rect) / 2;
+                                self.brush_properties.transform = Matrix3x2::rotation(
+                                    self.spiral_anim_angle,
+                                    center_x as f32,
+                                    center_y as f32,
+                                );
+                                update = true;
                             }
                             AnimationType::Fade => {}
                         }
@@ -767,16 +925,17 @@ impl WindowBorder {
                 }
 
                 match self.in_event_anim {
-                    ANIM_FADE_TO_ACTIVE | ANIM_FADE_TO_INACTIVE => {
-                        let anim_speed = animations_list.get(&AnimationType::Fade).unwrap();
+                    ANIM_FADE_TO_ACTIVE | ANIM_FADE_TO_INACTIVE | ANIM_FADE_TO_VISIBLE => {
+                        let anim_speed = self.current_animations.get(&AnimationType::Fade).unwrap();
                         self.animate_fade(&anim_elapsed, *anim_speed / 15.0);
+                        update = true;
                     }
                     _ => {}
                 }
 
-                if render_elapsed
-                    >= time::Duration::from_millis((1000 / self.animations.fps) as u64)
-                {
+                let interval = 1.0 / self.animations_fps as f32;
+                let diff = render_elapsed.as_secs_f32() - interval;
+                if update && (diff.abs() <= 0.01 || diff >= 0.0) {
                     let _ = self.render();
                 }
             }
@@ -784,10 +943,9 @@ impl WindowBorder {
                 let _ = ValidateRect(window, None);
             }
             WM_DESTROY => {
-                if let Some(ref mut timer) = self.timer {
-                    timer.stop();
-                }
-                SetWindowLongPtrW(window, GWLP_USERDATA, 0);
+                self.destroy_anim_timer();
+
+                SetWindowLongPtrW(window, GWLP_USERDATA, 2);
                 PostQuitMessage(0);
             }
             // Ignore these window position messages

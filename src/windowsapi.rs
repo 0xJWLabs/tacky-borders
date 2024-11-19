@@ -72,8 +72,8 @@ pub const WM_APP_SHOWUNCLOAKED: u32 = WM_APP + 2;
 pub const WM_APP_HIDECLOAKED: u32 = WM_APP + 3;
 pub const WM_APP_MINIMIZESTART: u32 = WM_APP + 4;
 pub const WM_APP_MINIMIZEEND: u32 = WM_APP + 5;
-pub const WM_APP_EVENTANIM: u32 = WM_APP + 6;
-pub const WM_APP_TIMER: u32 = WM_APP + 7;
+pub const WM_APP_TIMER: u32 = WM_APP + 6;
+pub const WM_APP_FOCUS: u32 = WM_APP + 7;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SendHWND(pub HWND);
@@ -466,7 +466,9 @@ impl WindowsApi {
                 border_radius,
                 active_color: border_colors.0,
                 inactive_color: border_colors.1,
-                animations,
+                active_animations: animations.active,
+                inactive_animations: animations.inactive,
+                animations_fps: animations.fps,
                 unminimize_delay,
                 ..Default::default()
             };

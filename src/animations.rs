@@ -6,11 +6,13 @@ use std::collections::HashMap;
 pub const ANIM_NONE: i32 = 0;
 pub const ANIM_FADE_TO_ACTIVE: i32 = 1;
 pub const ANIM_FADE_TO_INACTIVE: i32 = 2;
+pub const ANIM_FADE_TO_VISIBLE: i32 = 3;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
 pub enum AnimationType {
     Spiral,
     Fade,
+    ReverseSpiral,
 }
 
 fn animation<'de, D>(deserializer: D) -> Result<HashMap<AnimationType, f32>, D::Error>
@@ -44,6 +46,7 @@ where
                 let default_speed = match animation_type {
                     AnimationType::Spiral => 100.0,
                     AnimationType::Fade => 100.0,
+                    AnimationType::ReverseSpiral => 100.0,
                 };
 
                 // If the speed is None (either null or missing), assign the default speed

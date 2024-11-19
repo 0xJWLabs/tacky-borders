@@ -56,6 +56,7 @@ use windows::Win32::UI::WindowsAndMessaging::WNDCLASSEXW;
 mod animations;
 mod border_config;
 mod colors;
+mod deserializer;
 mod event_hook;
 mod sys_tray_icon;
 mod timer;

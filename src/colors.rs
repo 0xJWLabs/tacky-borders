@@ -82,8 +82,7 @@ impl ToColor for String {
                 unsafe { DwmGetColorizationColor(&mut pcr_colorization, &mut pf_opaqueblend) };
 
             if result.is_err() {
-                error!("Error getting windows accent color!");
-                return D2D1_COLOR_F::default();
+                error!("could not retrieve Windows accent color!");
             }
 
             let r = ((pcr_colorization & 0x00FF0000) >> 16) as f32 / 255.0;
@@ -253,18 +252,19 @@ impl Color {
             .collect();
 
         let num_colors = colors.len();
-        let gradient_stops: Vec<D2D1_GRADIENT_STOP> = colors
+        let step = 1.0 / (num_colors - 1) as f32;
+
+        let gradient_stops = colors
             .into_iter()
             .enumerate()
             .map(|(i, color)| D2D1_GRADIENT_STOP {
-                position: i as f32 / (num_colors - 1) as f32,
+                position: i as f32 * step,
                 color,
             })
             .collect();
 
         let direction = GradientDirectionCoordinates::from(&direction);
 
-        // Return the GradientColor
         Self::Gradient(Gradient {
             gradient_stops,
             direction,
@@ -280,12 +280,14 @@ impl Color {
                 color: color.colors[0].clone().to_d2d1_color(is_active),
             }),
             _ => {
-                let gradient_stops: Vec<_> = color
+                let num_colors = color.colors.len();
+                let step = 1.0 / (num_colors - 1) as f32;
+                let gradient_stops: Vec<D2D1_GRADIENT_STOP> = color
                     .colors
                     .iter()
                     .enumerate()
                     .map(|(i, hex)| D2D1_GRADIENT_STOP {
-                        position: i as f32 / (color.colors.len() - 1) as f32,
+                        position: i as f32 * step,
                         color: hex.to_string().to_d2d1_color(is_active),
                     })
                     .collect();
@@ -403,7 +405,7 @@ pub fn interpolate_d2d1_colors(
     anim_speed: f32,
     finished: &mut bool,
 ) -> D2D1_COLOR_F {
-    // D2D1_COLOR_F has the copy trait so we can just do this to create an implicit copy\
+    // D2D1_COLOR_F has the copy trait so we can just do this to create an implicit copy
     let mut interpolated = *current_color;
 
     let anim_step = anim_elapsed * anim_speed;
@@ -411,23 +413,19 @@ pub fn interpolate_d2d1_colors(
     let diff_r = end_color.r - start_color.r;
     let diff_g = end_color.g - start_color.g;
     let diff_b = end_color.b - start_color.b;
+    let diff_a = end_color.a - start_color.a;
 
-    let direction_r = diff_r.signum();
-    let direction_g = diff_g.signum();
-    let direction_b = diff_b.signum();
-
-    let r_step = diff_r * anim_step;
-    let g_step = diff_g * anim_step;
-    let b_step = diff_b * anim_step;
-
-    interpolated.r += r_step;
-    interpolated.g += g_step;
-    interpolated.b += b_step;
+    interpolated.r += diff_r * anim_step;
+    interpolated.g += diff_g * anim_step;
+    interpolated.b += diff_b * anim_step;
+    interpolated.a += diff_a * anim_step;
 
     // Check if we have overshot the active_color
-    if (interpolated.r - end_color.r) * direction_r >= 0.0
-        && (interpolated.g - end_color.g) * direction_g >= 0.0
-        && (interpolated.b - end_color.b) * direction_b >= 0.0
+    // TODO if I also check the alpha here, then things start to break when opening windows, not
+    // sure why. Might be some sort of conflict with interpoalte_d2d1_to_visible().
+    if (interpolated.r - end_color.r) * diff_r.signum() >= 0.0
+        && (interpolated.g - end_color.g) * diff_g.signum() >= 0.0
+        && (interpolated.b - end_color.b) * diff_b.signum() >= 0.0
     {
         *finished = true;
         return *end_color;
@@ -438,7 +436,7 @@ pub fn interpolate_d2d1_colors(
     interpolated
 }
 
-pub fn interpolate_d2d1_alphas(
+pub fn interpolate_d2d1_to_visible(
     current_color: &D2D1_COLOR_F,
     end_color: &D2D1_COLOR_F,
     anim_elapsed: f32,
@@ -539,4 +537,3 @@ pub fn adjust_gradient_stops(
 
     adjusted_stops
 }
-

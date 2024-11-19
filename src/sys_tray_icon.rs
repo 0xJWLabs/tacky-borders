@@ -1,31 +1,29 @@
+use crate::border_config::Config;
+use crate::reload_borders;
+use crate::utils::get_config;
+use crate::EVENT_HOOK;
+use std::process::exit;
 use tray_icon::menu::Menu;
 use tray_icon::menu::MenuEvent;
 use tray_icon::menu::MenuItem;
 use tray_icon::Icon;
 use tray_icon::TrayIcon;
 use tray_icon::TrayIconBuilder;
-
 use windows::Win32::System::Threading::ExitProcess;
 use windows::Win32::UI::Accessibility::UnhookWinEvent;
-
-use crate::border_config::Config;
-use crate::restart_borders;
-use crate::EVENT_HOOK;
-use crate::utils::get_config;
 
 pub fn create_tray_icon() -> Result<TrayIcon, tray_icon::Error> {
     let icon = match Icon::from_resource(1, Some((64, 64))) {
         Ok(icon) => icon,
-        Err(err) => {
-            error!("Failed to create icon");
-            debug!("{}", &format!("{:?}", err));
-            std::process::exit(1);
+        Err(_) => {
+            error!("could not retrieve tray icon!");
+            exit(1);
         }
     };
 
     let tray_menu = Menu::new();
     let _ = tray_menu.append(&MenuItem::with_id("0", "Open Config", true, None));
-    let _ = tray_menu.append(&MenuItem::with_id("1", "Reload Config", true, None));
+    let _ = tray_menu.append(&MenuItem::with_id("1", "Reload", true, None));
     let _ = tray_menu.append(&MenuItem::with_id("2", "Close", true, None));
 
     let tray_icon = TrayIconBuilder::new()
@@ -42,20 +40,16 @@ pub fn create_tray_icon() -> Result<TrayIcon, tray_icon::Error> {
         }
         "1" => {
             Config::reload();
-            restart_borders();
+            reload_borders();
         }
-        "2" => {
-            let event_hook = EVENT_HOOK.get();
-            unsafe {
-                let result = UnhookWinEvent(event_hook);
-                if result.as_bool() {
-                    debug!("Exiting tacky-borders!");
-                    ExitProcess(0);
-                } else {
-                    error!("Could not unhook win event hook");
-                }
+        "2" => unsafe {
+            if UnhookWinEvent(EVENT_HOOK.get()).as_bool() {
+                debug!("exiting tacky-borders!");
+                ExitProcess(0);
+            } else {
+                error!("could not unhook win event hook");
             }
-        }
+        },
         _ => {}
     }));
 

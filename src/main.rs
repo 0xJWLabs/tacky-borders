@@ -17,9 +17,9 @@ use sp_log::TerminalMode;
 use sp_log::WriteLogger;
 use std::cell::Cell;
 use std::collections::HashMap;
+use std::mem::transmute;
 use std::sync::LazyLock;
 use std::sync::Mutex;
-use std::thread;
 use utils::get_log;
 use windows::Win32::UI::WindowsAndMessaging::WM_CLOSE;
 use windowsapi::WindowsApi;
@@ -80,51 +80,56 @@ pub static INITIAL_WINDOWS: LazyLock<Mutex<Vec<isize>>> = LazyLock::new(|| Mutex
 fn create_logger() {
     CombinedLogger::init(vec![
         TermLogger::new(
-            LevelFilter::Info,
+            LevelFilter::Warn,
             Config::default(),
             TerminalMode::Mixed,
             ColorChoice::Auto,
         ),
-        WriteLogger::new(LevelFilter::Warn, Config::default(), get_log().unwrap()),
+        TermLogger::new(
+            LevelFilter::Debug,
+            Config::default(),
+            TerminalMode::Mixed,
+            ColorChoice::Auto,
+        ),
+        WriteLogger::new(LevelFilter::Info, Config::default(), get_log().unwrap()),
     ])
     .unwrap();
 }
 
 fn main() {
     create_logger();
-    if unsafe { !ImmDisableIME(std::mem::transmute::<i32, u32>(-1)).as_bool() } {
-        println!("Could not disable IME!");
+    if unsafe { !ImmDisableIME(transmute::<i32, u32>(-1)).as_bool() } {
+        error!("could not disable IME!");
     }
 
     if unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2).is_err() }
     {
-        println!("Failed to make process DPI aware");
+        error!("failed to make process DPI aware");
     }
 
     let tray_icon_option = sys_tray_icon::create_tray_icon();
     if tray_icon_option.is_err() {
-        error!("Failed to build tray icon");
+        error!("failed to build tray icon");
     }
 
     EVENT_HOOK.replace(set_event_hook());
     let _ = register_window_class();
     let _ = WindowsApi::enum_windows();
     unsafe {
-        debug!("Entering message loop!");
+        debug!("entering message loop!");
         let mut message = MSG::default();
         while GetMessageW(&mut message, HWND::default(), 0, 0).into() {
             let _ = TranslateMessage(&message);
             DispatchMessageW(&message);
-            thread::sleep(std::time::Duration::from_millis(16))
         }
-        debug!("MESSSAGE LOOP IN MAIN.RS EXITED. THIS SHOULD NOT HAPPEN");
+        error!("MESSSAGE LOOP IN MAIN.RS EXITED. THIS SHOULD NOT HAPPEN");
     }
 }
 
 pub fn register_window_class() -> Result<()> {
     unsafe {
         let window_class = w!("tacky-border");
-        let hinstance: HINSTANCE = std::mem::transmute(&__ImageBase);
+        let hinstance: HINSTANCE = transmute(&__ImageBase);
 
         let wcex = WNDCLASSEXW {
             cbSize: size_of::<WNDCLASSEXW>() as u32,
@@ -138,7 +143,7 @@ pub fn register_window_class() -> Result<()> {
 
         if result == 0 {
             let last_error = GetLastError();
-            println!("ERROR: RegisterClassExW(&wcex): {:?}", last_error);
+            error!("ERROR: RegisterClassExW(&wcex): {:?}", last_error);
         }
     }
 
@@ -159,7 +164,7 @@ pub fn set_event_hook() -> HWINEVENTHOOK {
     }
 }
 
-pub fn restart_borders() {
+pub fn reload_borders() {
     let mut borders = BORDERS.lock().unwrap();
     for value in borders.values() {
         let border_window = HWND(*value as _);
@@ -175,8 +180,8 @@ pub fn restart_borders() {
     let _ = WindowsApi::enum_windows();
 }
 
-// Might use it to remove native border
-// fn _remove_border() {
+// Might use it to hide native border
+// fn hide_native_border() {
 //     let visible_windows = WindowsApi::enum_windows();
 //
 //     for hwnd in visible_windows.unwrap() {
@@ -197,9 +202,6 @@ unsafe extern "system" fn enum_windows_callback(_hwnd: HWND, _lparam: LPARAM) ->
 
         INITIAL_WINDOWS.lock().unwrap().push(_hwnd.0 as isize);
     }
-
-    // let visible_windows: &mut Vec<HWND> = std::mem::transmute(_lparam.0);
-    // visible_windows.push(_hwnd);
 
     TRUE
 }

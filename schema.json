@@ -207,7 +207,7 @@
             }
           ]
         },
-        "init_delay": {
+        "initialize_delay": {
           "type": "integer",
           "description": "The initial delay (in milliseconds) before applying animations when the window is first rendered. A reduced delay can be used to account for animations like fade, which take additional time."
         },
@@ -644,7 +644,7 @@
                   }
                 ]
               },
-              "init_delay": {
+              "initialize_delay": {
                 "type": "integer",
                 "description": "The initial delay (in milliseconds) before applying animations when the window is first rendered. A reduced delay can be used to account for animations like fade, which take additional time."
               },

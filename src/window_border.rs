@@ -47,7 +47,7 @@ use windows::Win32::Graphics::Direct2D::Common::D2D1_PIXEL_FORMAT;
 use windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F;
 use windows::Win32::Graphics::Direct2D::Common::D2D_SIZE_U;
 use windows::Win32::Graphics::Direct2D::D2D1CreateFactory;
-use windows::Win32::Graphics::Direct2D::ID2D1Factory;
+use windows::Win32::Graphics::Direct2D::ID2D1Factory8;
 use windows::Win32::Graphics::Direct2D::ID2D1HwndRenderTarget;
 use windows::Win32::Graphics::Direct2D::D2D1_ANTIALIAS_MODE_PER_PRIMITIVE;
 use windows::Win32::Graphics::Direct2D::D2D1_BRUSH_PROPERTIES;
@@ -109,9 +109,9 @@ use windows::Win32::UI::WindowsAndMessaging::WS_EX_TOPMOST;
 use windows::Win32::UI::WindowsAndMessaging::WS_EX_TRANSPARENT;
 use windows::Win32::UI::WindowsAndMessaging::WS_POPUP;
 
-pub static RENDER_FACTORY: LazyLock<ID2D1Factory> = unsafe {
+pub static RENDER_FACTORY: LazyLock<ID2D1Factory8> = unsafe {
     LazyLock::new(|| {
-        D2D1CreateFactory::<ID2D1Factory>(D2D1_FACTORY_TYPE_MULTI_THREADED, None)
+        D2D1CreateFactory::<ID2D1Factory8>(D2D1_FACTORY_TYPE_MULTI_THREADED, None)
             .expect("creating RENDER_FACTORY failed")
     })
 };
@@ -130,7 +130,7 @@ pub struct WindowBorder {
     pub active_animations: HashMap<AnimationType, f32>,
     pub inactive_animations: HashMap<AnimationType, f32>,
     pub current_animations: HashMap<AnimationType, f32>,
-    pub animations_fps: i32,
+    pub animation_fps: i32,
     pub active_color: Color,
     pub inactive_color: Color,
     pub current_color: Color,
@@ -165,8 +165,8 @@ impl WindowBorder {
         Ok(())
     }
 
-    pub fn init(&mut self, init_delay: u64) -> Result<()> {
-        thread::sleep(time::Duration::from_millis(init_delay));
+    pub fn init(&mut self, initialize_delay: u64) -> Result<()> {
+        thread::sleep(time::Duration::from_millis(initialize_delay));
 
         unsafe {
             // Make the window border transparent
@@ -206,10 +206,10 @@ impl WindowBorder {
                 false => self.inactive_animations.clone(),
             };
 
-            match self.current_animations.contains_key(&AnimationType::Fade) && init_delay != 0 {
+            match self.current_animations.contains_key(&AnimationType::Fade)
+                && initialize_delay != 0
+            {
                 true => {
-                    // Reset last_anim_time here to make interpolate_d2d1_alphas work correctly
-                    self.last_animation_time = Some(time::Instant::now());
                     animate_fade_to_visible(self);
                 }
                 false => {
@@ -217,17 +217,16 @@ impl WindowBorder {
                 }
             }
             let _ = self.update_window_rect();
+
             if WindowsApi::has_native_border(self.tracking_window) {
                 let _ = self.update_position(Some(SWP_SHOWWINDOW));
                 let _ = self.render();
 
-                // Sometimes, it doesn't show the window at first, so we wait 5ms and update it.
-                // This is very hacky and needs to be looked into. It may be related to the issue
-                // detailed in update_window_rect. TODO
                 thread::sleep(time::Duration::from_millis(5));
                 let _ = self.update_position(Some(SWP_SHOWWINDOW));
                 let _ = self.render();
             }
+
             self.set_anim_timer();
 
             let mut message = MSG::default();
@@ -364,9 +363,12 @@ impl WindowBorder {
             return Ok(());
         };
 
+        let rect_width = WindowsApi::get_rect_width(self.window_rect) as f32;
+        let rect_height = WindowsApi::get_rect_height(self.window_rect) as f32;
+
         let pixel_size = D2D_SIZE_U {
-            width: WindowsApi::get_rect_width(self.window_rect) as u32,
-            height: WindowsApi::get_rect_height(self.window_rect) as u32,
+            width: rect_width as u32,
+            height: rect_height as u32,
         };
 
         let width = self.border_width as f32;
@@ -374,8 +376,8 @@ impl WindowBorder {
         self.rounded_rect.rect = D2D_RECT_F {
             left: width / 2.0 - offset,
             top: width / 2.0 - offset,
-            right: WindowsApi::get_rect_width(self.window_rect) as f32 - width / 2.0 + offset,
-            bottom: WindowsApi::get_rect_height(self.window_rect) as f32 - width / 2.0 + offset,
+            right: rect_width - width / 2.0 + offset,
+            bottom: rect_height - width / 2.0 + offset,
         };
 
         unsafe {
@@ -391,7 +393,6 @@ impl WindowBorder {
 
             render_target.BeginDraw();
             render_target.Clear(None);
-
             match self.border_radius {
                 0.0 => render_target.DrawRectangle(
                     &self.rounded_rect.rect,
@@ -417,7 +418,7 @@ impl WindowBorder {
         if (!self.active_animations.is_empty() || !self.inactive_animations.is_empty())
             && self.timer_id.is_none()
         {
-            let timer_duration = (1000 / self.animations_fps) as u32;
+            let timer_duration = (1000 / self.animation_fps) as u32;
             unsafe {
                 self.timer_id = Some(SetCustomTimer(self.border_window, timer_duration));
             }
@@ -503,19 +504,17 @@ impl WindowBorder {
                 let _ = self.update_position(None);
             }
             WM_APP_FOCUS => {
-                self.current_animations = match WindowsApi::is_window_active(self.tracking_window) {
+                let is_active = WindowsApi::is_window_active(self.tracking_window);
+                self.current_animations = match is_active {
                     true => self.active_animations.clone(),
                     false => self.inactive_animations.clone(),
                 };
 
-                // Update event_anim if current_animations contains the corresponding animation
-                match wparam.0 as i32 {
-                    ANIM_FADE_TO_ACTIVE | ANIM_FADE_TO_INACTIVE => {
-                        if self.current_animations.contains_key(&AnimationType::Fade) {
-                            self.event_anim = wparam.0 as i32;
-                        }
+                if self.current_animations.contains_key(&AnimationType::Fade) {
+                    self.event_anim = match is_active {
+                        true => ANIM_FADE_TO_ACTIVE,
+                        false => ANIM_FADE_TO_INACTIVE,
                     }
-                    _ => {}
                 }
 
                 let _ = self.update_color();
@@ -592,41 +591,42 @@ impl WindowBorder {
                     .unwrap_or(time::Instant::now())
                     .elapsed();
 
-                // println!("time since last anim: {}", render_elapsed.as_secs_f32());
-
                 self.last_animation_time = Some(time::Instant::now());
-                let mut update = false;
 
-                if self.current_animations.is_empty() {
+                let mut animations_updated = if self.current_animations.is_empty() {
                     self.brush_properties.transform = Matrix3x2::identity();
+                    false
                 } else {
-                    for (anim_type, anim_speed) in self.current_animations.clone().iter() {
-                        match anim_type {
+                    self.current_animations
+                        .clone()
+                        .iter()
+                        .any(|(anim_type, anim_speed)| match anim_type {
                             AnimationType::Spiral => {
                                 animate_spiral(self, &anim_elapsed, *anim_speed * 2.0);
-                                update = true;
+                                true
                             }
                             AnimationType::ReverseSpiral => {
                                 animate_reverse_spiral(self, &anim_elapsed, *anim_speed * 2.0);
-                                update = true;
+                                true
                             }
-                            AnimationType::Fade => {}
-                        }
-                    }
+                            AnimationType::Fade => false,
+                        })
+                };
+
+                if matches!(
+                    self.event_anim,
+                    ANIM_FADE_TO_ACTIVE | ANIM_FADE_TO_INACTIVE | ANIM_FADE_TO_VISIBLE
+                ) {
+                    let anim_speed = self.current_animations.get(&AnimationType::Fade).unwrap();
+                    animate_fade_colors(self, &anim_elapsed, *anim_speed / 15.0);
+                    animations_updated = true;
                 }
 
-                match self.event_anim {
-                    ANIM_FADE_TO_ACTIVE | ANIM_FADE_TO_INACTIVE | ANIM_FADE_TO_VISIBLE => {
-                        let anim_speed = self.current_animations.get(&AnimationType::Fade).unwrap();
-                        animate_fade_colors(self, &anim_elapsed, *anim_speed / 15.0);
-                        update = true;
-                    }
-                    _ => {}
-                }
+                // println!("time since last anim: {}", render_elapsed.as_secs_f32());
 
-                let interval = 1.0 / self.animations_fps as f32;
+                let interval = 1.0 / self.animation_fps as f32;
                 let diff = render_elapsed.as_secs_f32() - interval;
-                if update && (diff.abs() <= 0.01 || diff >= 0.0) {
+                if animations_updated && (diff.abs() <= 0.01 || diff >= 0.0) {
                     let _ = self.render();
                 }
             }
@@ -636,7 +636,7 @@ impl WindowBorder {
             WM_DESTROY => {
                 self.destroy_anim_timer();
 
-                SetWindowLongPtrW(window, GWLP_USERDATA, 2);
+                SetWindowLongPtrW(window, GWLP_USERDATA, 0);
                 PostQuitMessage(0);
             }
             // Ignore these window position messages

@@ -29,7 +29,7 @@ pub enum AnimationType {
     ReverseSpiral,
 }
 
-fn animation<'de, D>(deserializer: D) -> Result<HashMap<AnimationType, f32>, D::Error>
+pub fn animation<'de, D>(deserializer: D) -> Result<HashMap<AnimationType, f32>, D::Error>
 where
     D: Deserializer<'de>,
 {

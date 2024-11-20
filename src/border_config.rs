@@ -17,14 +17,14 @@ pub enum BorderRadiusOption {
     Round,
     Square,
     SmallRound,
-    Auto
+    Auto,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
 #[serde(untagged)]
 pub enum BorderRadius {
     String(BorderRadiusOption),
-    Float(f32)
+    Float(f32),
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
@@ -57,7 +57,7 @@ pub struct MatchDetails {
     pub border_offset: Option<i32>,
     #[serde(rename = "enabled")]
     pub border_enabled: Option<bool>,
-    pub init_delay: Option<u64>,
+    pub initialize_delay: Option<u64>,
     pub unminimize_delay: Option<u64>,
 }
 
@@ -75,7 +75,7 @@ pub struct GlobalRule {
     pub active_color: ColorConfig,
     pub inactive_color: ColorConfig,
     pub animations: Option<Animations>,
-    pub init_delay: Option<u64>,
+    pub initialize_delay: Option<u64>,
     pub unminimize_delay: Option<u64>,
 }
 
@@ -114,3 +114,4 @@ impl Config {
         CONFIG.lock().unwrap().clone()
     }
 }
+

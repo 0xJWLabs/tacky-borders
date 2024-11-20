@@ -1,3 +1,10 @@
+use crate::windowsapi::WindowsApi;
+use crate::windowsapi::WM_APP_FOCUS;
+use crate::windowsapi::WM_APP_LOCATIONCHANGE;
+use crate::windowsapi::WM_APP_MINIMIZEEND;
+use crate::windowsapi::WM_APP_MINIMIZESTART;
+use crate::windowsapi::WM_APP_REORDER;
+use crate::BORDERS;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Foundation::LPARAM;
 use windows::Win32::Foundation::WPARAM;
@@ -17,16 +24,6 @@ use windows::Win32::UI::WindowsAndMessaging::EVENT_SYSTEM_MINIMIZEEND;
 use windows::Win32::UI::WindowsAndMessaging::EVENT_SYSTEM_MINIMIZESTART;
 use windows::Win32::UI::WindowsAndMessaging::GA_ROOT;
 use windows::Win32::UI::WindowsAndMessaging::OBJID_CURSOR;
-
-use crate::animations::ANIM_FADE_TO_ACTIVE;
-use crate::animations::ANIM_FADE_TO_INACTIVE;
-use crate::windowsapi::WindowsApi;
-use crate::windowsapi::WM_APP_FOCUS;
-use crate::windowsapi::WM_APP_LOCATIONCHANGE;
-use crate::windowsapi::WM_APP_MINIMIZEEND;
-use crate::windowsapi::WM_APP_MINIMIZESTART;
-use crate::windowsapi::WM_APP_REORDER;
-use crate::BORDERS;
 
 pub extern "system" fn handle_win_event(
     _h_win_event_hook: HWINEVENTHOOK,
@@ -81,26 +78,14 @@ pub extern "system" fn handle_win_event(
                 return;
             }
 
-            let borders = BORDERS.lock().unwrap();
-
-            for (key, val) in borders.iter() {
+            for val in BORDERS.lock().unwrap().values() {
                 let border_window: HWND = HWND(*val as _);
                 if WindowsApi::is_window_visible(border_window) {
-                    let wparam = if *key == parent.0 as isize {
-                        // animate from inactive_color to active_color
-                        WPARAM(ANIM_FADE_TO_ACTIVE as _)
-                    } else {
-                        // animate from active_color to inactive_color
-                        WPARAM(ANIM_FADE_TO_INACTIVE as _)
-                    };
-
                     unsafe {
-                        let _ = PostMessageW(border_window, WM_APP_FOCUS, wparam, LPARAM(0));
+                        let _ = PostMessageW(border_window, WM_APP_FOCUS, WPARAM(0), LPARAM(0));
                     }
                 }
             }
-
-            drop(borders);
         }
         EVENT_OBJECT_SHOW | EVENT_OBJECT_UNCLOAKED => {
             WindowsApi::show_border_for_window(_hwnd);

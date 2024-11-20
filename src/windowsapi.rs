@@ -443,13 +443,13 @@ impl WindowsApi {
 
             let window_isize = window_sent.0 .0 as isize;
 
-            let init_delay = if INITIAL_WINDOWS.lock().unwrap().contains(&window_isize) {
+            let initialize_delay = if INITIAL_WINDOWS.lock().unwrap().contains(&window_isize) {
                 0
             } else {
                 window_rule
                     .rule_match
-                    .init_delay
-                    .unwrap_or(config.global_rule.init_delay.unwrap_or(250))
+                    .initialize_delay
+                    .unwrap_or(config.global_rule.initialize_delay.unwrap_or(250))
             };
 
             let unminimize_delay = window_rule
@@ -468,7 +468,7 @@ impl WindowsApi {
                 inactive_color: border_colors.1,
                 active_animations: animations.active,
                 inactive_animations: animations.inactive,
-                animations_fps: animations.fps,
+                animation_fps: animations.fps,
                 unminimize_delay,
                 ..Default::default()
             };
@@ -502,7 +502,7 @@ impl WindowsApi {
             let _ = window_isize;
             let _ = hinstance;
 
-            let _ = border.init(init_delay);
+            let _ = border.init(initialize_delay);
 
             drop(border);
         });

@@ -115,6 +115,7 @@ fn main() {
     EVENT_HOOK.replace(set_event_hook());
     let _ = register_window_class();
     let _ = WindowsApi::enum_windows();
+
     unsafe {
         debug!("entering message loop!");
         let mut message = MSG::default();

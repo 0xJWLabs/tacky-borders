@@ -328,7 +328,7 @@ impl Default for Color {
 impl Color {
     pub fn create_brush(
         &mut self,
-        render_target: &ID2D1HwndRenderTarget,
+        render_target: &ID2D1HwndRenderTarget, //&ID2D1HwndRenderTarget,
         window_rect: &RECT,
         brush_properties: &D2D1_BRUSH_PROPERTIES,
     ) -> Option<ID2D1Brush> {
@@ -505,7 +505,7 @@ pub fn adjust_gradient_stops(
         return source_stops;
     }
 
-    let mut adjusted_stops = Vec::new();
+    let mut adjusted_stops = Vec::with_capacity(target_count);
     let step = 1.0 / (target_count - 1).max(1) as f32;
 
     for i in 0..target_count {

@@ -2,12 +2,14 @@ use super::gradient::Gradient;
 use super::gradient::GradientConfig;
 use super::gradient::GradientCoordinates;
 use super::gradient::GradientDirection;
+use super::utils::darken;
+use super::utils::lighten;
 use super::ToColor;
 use super::ANSI_COLORS;
 use super::COLOR_REGEX;
 use super::DARKEN_LIGHTEN_REGEX;
 use crate::utils::strip_string;
-use crate::windowsapi::WindowsApi;
+use crate::windows_api::WindowsApi;
 use serde::Deserialize;
 use windows::Win32::Foundation::BOOL;
 use windows::Win32::Foundation::FALSE;
@@ -23,7 +25,7 @@ use windows::Win32::Graphics::Direct2D::D2D1_GAMMA_2_2;
 use windows::Win32::Graphics::Direct2D::D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES;
 use windows::Win32::Graphics::Dwm::DwmGetColorizationColor;
 
-use super::is_valid_direction;
+use super::utils::is_valid_direction;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Solid {
@@ -136,8 +138,8 @@ impl ToColor for String {
                 let percentage = &caps[3].parse::<f32>().unwrap_or(10.0);
                 let color = color_str.to_string().to_d2d1_color(is_active_color);
                 let color_res = match dark_or_lighten {
-                    "darken" => Color::darken(color, *percentage),
-                    "lighten" => Color::lighten(color, *percentage),
+                    "darken" => darken(color, *percentage),
+                    "lighten" => lighten(color, *percentage),
                     _ => color,
                 };
 
@@ -156,86 +158,6 @@ impl ToColor for String {
 }
 
 impl Color {
-    fn d2d1_to_hsl(color: D2D1_COLOR_F) -> (f32, f32, f32) {
-        let r = color.r;
-        let g = color.g;
-        let b = color.b;
-        let max = r.max(g).max(b);
-        let min = r.min(g).min(b);
-        let delta = max - min;
-
-        let mut h = 0.0;
-        let mut s = 0.0;
-        let l = (max + min) / 2.0;
-
-        if delta != 0.0 {
-            if max == r {
-                h = (g - b) / delta;
-            } else if max == g {
-                h = (b - r) / delta + 2.0;
-            } else {
-                h = (r - g) / delta + 4.0;
-            }
-
-            s = if l == 0.0 || l == 1.0 {
-                0.0
-            } else {
-                delta / (1.0 - (2.0 * l - 1.0).abs())
-            };
-
-            h *= 60.0;
-            if h < 0.0 {
-                h += 360.0;
-            }
-        }
-
-        s *= 100.0;
-        let lightness = l * 100.0;
-
-        (h, s, lightness)
-    }
-
-    fn hsla_to_d2d1(h: f32, s: f32, l: f32, a: f32) -> D2D1_COLOR_F {
-        let s = s / 100.0;
-        let l = l / 100.0;
-        let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
-        let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
-        let m = l - c / 2.0;
-
-        let (r, g, b) = if h < 60.0 {
-            (c, x, 0.0)
-        } else if h < 120.0 {
-            (x, c, 0.0)
-        } else if h < 180.0 {
-            (0.0, c, x)
-        } else if h < 240.0 {
-            (0.0, x, c)
-        } else if h < 300.0 {
-            (x, 0.0, c)
-        } else {
-            (c, 0.0, x)
-        };
-
-        D2D1_COLOR_F {
-            r: (r + m).clamp(0.0, 1.0),
-            g: (g + m).clamp(0.0, 1.0),
-            b: (b + m).clamp(0.0, 1.0),
-            a,
-        }
-    }
-
-    pub fn darken(color: D2D1_COLOR_F, percentage: f32) -> D2D1_COLOR_F {
-        let (h, s, mut l) = Self::d2d1_to_hsl(color);
-        l -= l * percentage / 100.0;
-        Self::hsla_to_d2d1(h, s, l, color.a)
-    }
-
-    pub fn lighten(color: D2D1_COLOR_F, percentage: f32) -> D2D1_COLOR_F {
-        let (h, s, mut l) = Self::d2d1_to_hsl(color);
-        l += l * percentage / 100.0;
-        Self::hsla_to_d2d1(h, s, l, color.a)
-    }
-
     fn from_string(color: String, is_active: Option<bool>) -> Self {
         if color.starts_with("gradient(") && color.ends_with(")") {
             return Self::from_string(strip_string(color, &["gradient("], ')'), is_active);
@@ -342,8 +264,8 @@ impl Color {
         }
     }
 
-    pub fn create_brush(
-        &mut self,
+    pub fn to_brush(
+        &self,
         render_target: &ID2D1HwndRenderTarget, //&ID2D1HwndRenderTarget,
         window_rect: &RECT,
         brush_properties: &D2D1_BRUSH_PROPERTIES,

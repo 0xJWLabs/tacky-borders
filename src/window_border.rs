@@ -1,26 +1,23 @@
-use crate::animations::animate_fade_colors;
-use crate::animations::animate_fade_to_visible;
-use crate::animations::animate_reverse_spiral;
-use crate::animations::animate_spiral;
+use crate::animations::Animation;
 use crate::animations::AnimationType;
+use crate::animations::VecAnimation;
 use crate::animations::ANIM_FADE_TO_ACTIVE;
 use crate::animations::ANIM_FADE_TO_INACTIVE;
 use crate::animations::ANIM_FADE_TO_VISIBLE;
 use crate::colors::color::Color;
 use crate::timer::KillCustomTimer;
 use crate::timer::SetCustomTimer;
-use crate::windowsapi::ErrorMsg;
-use crate::windowsapi::WindowsApi;
-use crate::windowsapi::WM_APP_FOCUS;
-use crate::windowsapi::WM_APP_HIDECLOAKED;
-use crate::windowsapi::WM_APP_LOCATIONCHANGE;
-use crate::windowsapi::WM_APP_MINIMIZEEND;
-use crate::windowsapi::WM_APP_MINIMIZESTART;
-use crate::windowsapi::WM_APP_REORDER;
-use crate::windowsapi::WM_APP_SHOWUNCLOAKED;
-use crate::windowsapi::WM_APP_TIMER;
+use crate::windows_api::ErrorMsg;
+use crate::windows_api::WindowsApi;
+use crate::windows_api::WM_APP_FOCUS;
+use crate::windows_api::WM_APP_HIDECLOAKED;
+use crate::windows_api::WM_APP_LOCATIONCHANGE;
+use crate::windows_api::WM_APP_MINIMIZEEND;
+use crate::windows_api::WM_APP_MINIMIZESTART;
+use crate::windows_api::WM_APP_REORDER;
+use crate::windows_api::WM_APP_SHOWUNCLOAKED;
+use crate::windows_api::WM_APP_TIMER;
 
-use std::collections::HashMap;
 use std::ptr;
 use std::sync::LazyLock;
 use std::sync::OnceLock;
@@ -127,9 +124,9 @@ pub struct WindowBorder {
     pub brush_properties: D2D1_BRUSH_PROPERTIES,
     pub render_target: OnceLock<ID2D1HwndRenderTarget>,
     pub rounded_rect: D2D1_ROUNDED_RECT,
-    pub active_animations: HashMap<AnimationType, f32>,
-    pub inactive_animations: HashMap<AnimationType, f32>,
-    pub current_animations: HashMap<AnimationType, f32>,
+    pub active_animations: Vec<Animation>,
+    pub inactive_animations: Vec<Animation>,
+    pub current_animations: Vec<Animation>,
     pub animation_fps: i32,
     pub active_color: Color,
     pub inactive_color: Color,
@@ -205,16 +202,16 @@ impl WindowBorder {
                 false => self.inactive_animations.clone(),
             };
 
-            match self.current_animations.contains_key(&AnimationType::Fade)
-                && initialize_delay != 0
-            {
-                true => {
-                    animate_fade_to_visible(self);
-                }
-                false => {
+            if let Some(animation) = self.current_animations.fetch(&AnimationType::Fade) {
+                if initialize_delay != 0 {
+                    animation.clone().play(self, None, None);
+                } else {
                     let _ = self.update_color();
                 }
+            } else {
+                let _ = self.update_color();
             }
+
             let _ = self.update_window_rect();
 
             if WindowsApi::has_native_border(self.tracking_window) {
@@ -342,9 +339,13 @@ impl WindowBorder {
     }
 
     pub fn update_color(&mut self) -> Result<()> {
-        if self.current_animations.contains_key(&AnimationType::Fade) {
+        if self
+            .current_animations
+            .fetch(&AnimationType::Fade)
+            .is_some()
+        {
             return Ok(());
-        }
+        };
 
         self.current_color = if WindowsApi::is_window_active(self.tracking_window) {
             self.active_color.clone()
@@ -382,7 +383,7 @@ impl WindowBorder {
         unsafe {
             let _ = render_target.Resize(&pixel_size);
 
-            let Some(brush) = self.current_color.create_brush(
+            let Some(brush) = self.current_color.to_brush(
                 render_target,
                 &self.window_rect,
                 &self.brush_properties,
@@ -504,7 +505,7 @@ impl WindowBorder {
                     false => self.inactive_animations.clone(),
                 };
 
-                if self.current_animations.contains_key(&AnimationType::Fade) {
+                if self.current_animations.has(&AnimationType::Fade) {
                     self.event_anim = match is_active {
                         true => ANIM_FADE_TO_ACTIVE,
                         false => ANIM_FADE_TO_INACTIVE,
@@ -552,16 +553,16 @@ impl WindowBorder {
                 thread::sleep(time::Duration::from_millis(self.unminimize_delay));
 
                 if WindowsApi::has_native_border(self.tracking_window) {
-                    match self.current_animations.contains_key(&AnimationType::Fade)
-                        && self.unminimize_delay != 0
-                    {
-                        true => {
-                            animate_fade_to_visible(self);
-                        }
-                        false => {
+                    if let Some(animation) = self.current_animations.fetch(&AnimationType::Fade) {
+                        if self.unminimize_delay != 0 {
+                            animation.clone().play(self, None, None);
+                        } else {
                             let _ = self.update_color();
                         }
-                    }
+                    } else {
+                        let _ = self.update_color();
+                    };
+
                     let _ = self.update_window_rect();
                     let _ = self.update_position(Some(SWP_SHOWWINDOW));
                     let _ = self.render();
@@ -591,28 +592,25 @@ impl WindowBorder {
                     self.brush_properties.transform = Matrix3x2::identity();
                     false
                 } else {
-                    self.current_animations
-                        .clone()
-                        .iter()
-                        .any(|(anim_type, anim_speed)| match anim_type {
-                            AnimationType::Spiral => {
-                                animate_spiral(self, &anim_elapsed, *anim_speed * 2.0);
-                                true
-                            }
-                            AnimationType::ReverseSpiral => {
-                                animate_reverse_spiral(self, &anim_elapsed, *anim_speed * 2.0);
+                    self.current_animations.clone().iter().any(|animation| {
+                        match animation.animation_type {
+                            AnimationType::Spiral | AnimationType::ReverseSpiral => {
+                                let anim_speed = animation.speed;
+                                animation.play(self, Some(&anim_elapsed), Some(anim_speed * 2.0));
                                 true
                             }
                             AnimationType::Fade => false,
-                        })
+                        }
+                    })
                 };
 
                 if matches!(
                     self.event_anim,
                     ANIM_FADE_TO_ACTIVE | ANIM_FADE_TO_INACTIVE | ANIM_FADE_TO_VISIBLE
                 ) {
-                    let anim_speed = self.current_animations.get(&AnimationType::Fade).unwrap();
-                    animate_fade_colors(self, &anim_elapsed, *anim_speed / 15.0);
+                    let anim = self.current_animations.fetch(&AnimationType::Fade).unwrap();
+                    let animation = anim.clone();
+                    animation.play(self, Some(&anim_elapsed), Some(animation.speed / 15.0));
                     animations_updated = true;
                 }
 

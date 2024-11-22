@@ -1,9 +1,9 @@
-use crate::windowsapi::WindowsApi;
-use crate::windowsapi::WM_APP_FOCUS;
-use crate::windowsapi::WM_APP_LOCATIONCHANGE;
-use crate::windowsapi::WM_APP_MINIMIZEEND;
-use crate::windowsapi::WM_APP_MINIMIZESTART;
-use crate::windowsapi::WM_APP_REORDER;
+use crate::windows_api::WindowsApi;
+use crate::windows_api::WM_APP_FOCUS;
+use crate::windows_api::WM_APP_LOCATIONCHANGE;
+use crate::windows_api::WM_APP_MINIMIZEEND;
+use crate::windows_api::WM_APP_MINIMIZESTART;
+use crate::windows_api::WM_APP_REORDER;
 use crate::BORDERS;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Foundation::LPARAM;

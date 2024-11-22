@@ -1,13 +1,13 @@
 use crate::colors::color::Color;
 use crate::colors::color::Solid;
-use crate::colors::gradient::adjust_gradient_stops;
 use crate::colors::gradient::Gradient;
-use crate::colors::interpolate_d2d1_colors;
-use crate::colors::interpolate_d2d1_to_visible;
-use crate::colors::interpolate_direction;
+use crate::colors::utils::adjust_gradient_stops;
+use crate::colors::utils::interpolate_d2d1_colors;
+use crate::colors::utils::interpolate_d2d1_to_visible;
+use crate::colors::utils::interpolate_direction;
 use crate::deserializer::from_str;
 use crate::window_border::WindowBorder;
-use crate::windowsapi::WindowsApi;
+use crate::windows_api::WindowsApi;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde_yml::Value;
@@ -29,13 +29,33 @@ pub enum AnimationType {
     ReverseSpiral,
 }
 
-pub fn animation<'de, D>(deserializer: D) -> Result<HashMap<AnimationType, f32>, D::Error>
+#[derive(Debug, Deserialize, PartialEq, Clone)]
+pub struct Animation {
+    pub animation_type: AnimationType,
+    pub speed: f32,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Clone, Default)]
+pub struct Animations {
+    #[serde(deserialize_with = "animation", default)]
+    pub active: Vec<Animation>,
+    #[serde(deserialize_with = "animation", default)]
+    pub inactive: Vec<Animation>,
+    #[serde(default = "default_fps")]
+    pub fps: i32,
+}
+
+fn default_fps() -> i32 {
+    60
+}
+
+pub fn animation<'de, D>(deserializer: D) -> Result<Vec<Animation>, D::Error>
 where
     D: Deserializer<'de>,
 {
     let map: Option<HashMap<String, Value>> = Option::deserialize(deserializer)?;
 
-    let mut result = HashMap::new();
+    let mut result: Vec<Animation> = Vec::new();
 
     if let Some(entries) = map {
         for (anim_type, anim_value) in entries {
@@ -52,7 +72,10 @@ where
                     AnimationType::Fade => 200.0,
                 };
 
-                result.insert(animation_type, speed.unwrap_or(default_speed));
+                result.add(Animation {
+                    animation_type,
+                    speed: speed.unwrap_or(default_speed),
+                });
             }
         }
     }
@@ -60,48 +83,100 @@ where
     Ok(result)
 }
 
-#[derive(Debug, Deserialize, PartialEq, Clone, Default)]
-pub struct Animations {
-    #[serde(deserialize_with = "animation", default)]
-    pub active: HashMap<AnimationType, f32>,
-    #[serde(deserialize_with = "animation", default)]
-    pub inactive: HashMap<AnimationType, f32>,
-    #[serde(default = "default_fps")]
-    pub fps: i32,
+#[allow(unused)]
+pub trait VecAnimation {
+    fn add(&mut self, animation: Animation);
+    fn fetch(&self, animation_type: &AnimationType) -> Option<&Animation>;
+    fn remove(&mut self, animation_type: &AnimationType) -> Option<Animation>;
+    fn has(&self, animation_type: &AnimationType) -> bool;
 }
 
-fn default_fps() -> i32 {
-    60
-}
-
-pub fn animate_spiral(border: &mut WindowBorder, anim_elapsed: &Duration, anim_speed: f32) {
-    if border.spiral_anim_angle >= 360.0 {
-        border.spiral_anim_angle -= 360.0;
+impl VecAnimation for Vec<Animation> {
+    fn add(&mut self, animation: Animation) {
+        // Check if the animation type already exists, and replace it if found
+        if let Some(existing_index) = self
+            .iter()
+            .position(|a| a.animation_type == animation.animation_type)
+        {
+            self[existing_index] = animation;
+        } else {
+            self.push(animation);
+        }
     }
-    border.spiral_anim_angle += (anim_elapsed.as_secs_f32() * anim_speed).min(359.0);
 
-    let center_x = WindowsApi::get_rect_width(border.window_rect) / 2;
-    let center_y = WindowsApi::get_rect_height(border.window_rect) / 2;
-
-    border.brush_properties.transform =
-        Matrix3x2::rotation(border.spiral_anim_angle, center_x as f32, center_y as f32);
-}
-
-pub fn animate_reverse_spiral(border: &mut WindowBorder, anim_elapsed: &Duration, anim_speed: f32) {
-    border.spiral_anim_angle %= 360.0;
-    if border.spiral_anim_angle < 0.0 {
-        border.spiral_anim_angle += 360.0;
+    fn fetch(&self, animation_type: &AnimationType) -> Option<&Animation> {
+        self.iter().find(|a| &a.animation_type == animation_type)
     }
-    border.spiral_anim_angle -= (anim_elapsed.as_secs_f32() * anim_speed).min(359.0);
 
-    let center_x = WindowsApi::get_rect_width(border.window_rect) / 2;
-    let center_y = WindowsApi::get_rect_height(border.window_rect) / 2;
+    fn remove(&mut self, animation_type: &AnimationType) -> Option<Animation> {
+        self.iter()
+            .position(|a| &a.animation_type == animation_type)
+            .map(|index| self.swap_remove(index))
+    }
 
-    border.brush_properties.transform =
-        Matrix3x2::rotation(border.spiral_anim_angle, center_x as f32, center_y as f32);
+    fn has(&self, animation_type: &AnimationType) -> bool {
+        self.iter().any(|a| &a.animation_type == animation_type)
+    }
 }
 
-pub fn animate_fade_to_visible(border: &mut WindowBorder) {
+impl Animation {
+    pub fn play(
+        &self,
+        border: &mut WindowBorder,
+        anim_elapsed: Option<&Duration>,
+        anim_speed: Option<f32>,
+    ) {
+        match self.animation_type {
+            AnimationType::Spiral => {
+                if let (Some(anim_elapsed), Some(anim_speed)) = (anim_elapsed, anim_speed) {
+                    if border.spiral_anim_angle >= 360.0 {
+                        border.spiral_anim_angle -= 360.0;
+                    }
+                    border.spiral_anim_angle +=
+                        (anim_elapsed.as_secs_f32() * anim_speed).min(359.0);
+
+                    let center_x = WindowsApi::get_rect_width(border.window_rect) / 2;
+                    let center_y = WindowsApi::get_rect_height(border.window_rect) / 2;
+
+                    border.brush_properties.transform = Matrix3x2::rotation(
+                        border.spiral_anim_angle,
+                        center_x as f32,
+                        center_y as f32,
+                    );
+                }
+            }
+            AnimationType::ReverseSpiral => {
+                if let (Some(anim_elapsed), Some(anim_speed)) = (anim_elapsed, anim_speed) {
+                    border.spiral_anim_angle %= 360.0;
+                    if border.spiral_anim_angle < 0.0 {
+                        border.spiral_anim_angle += 360.0;
+                    }
+                    border.spiral_anim_angle -=
+                        (anim_elapsed.as_secs_f32() * anim_speed).min(359.0);
+
+                    let center_x = WindowsApi::get_rect_width(border.window_rect) / 2;
+                    let center_y = WindowsApi::get_rect_height(border.window_rect) / 2;
+
+                    border.brush_properties.transform = Matrix3x2::rotation(
+                        border.spiral_anim_angle,
+                        center_x as f32,
+                        center_y as f32,
+                    );
+                }
+            }
+            AnimationType::Fade => match (anim_elapsed, anim_speed) {
+                (Some(anim_elapsed), Some(anim_speed)) => {
+                    animate_fade_colors(border, anim_elapsed, anim_speed);
+                }
+                _ => {
+                    animate_fade_to_visible(border);
+                }
+            },
+        }
+    }
+}
+
+fn animate_fade_to_visible(border: &mut WindowBorder) {
     // Reset last_anim_time here because otherwise, anim_elapsed will be
     // too large due to being paused and interpolation won't work correctly
     border.last_animation_time = Some(Instant::now());
@@ -140,7 +215,7 @@ pub fn animate_fade_to_visible(border: &mut WindowBorder) {
     border.event_anim = ANIM_FADE_TO_VISIBLE;
 }
 
-pub fn animate_fade_colors(border: &mut WindowBorder, anim_elapsed: &Duration, anim_speed: f32) {
+fn animate_fade_colors(border: &mut WindowBorder, anim_elapsed: &Duration, anim_speed: f32) {
     if let Color::Solid(_) = border.active_color {
         if let Color::Solid(_) = border.inactive_color {
             // If both active and inactive color are solids, use interpolate_solids
@@ -154,15 +229,15 @@ pub fn animate_fade_colors(border: &mut WindowBorder, anim_elapsed: &Duration, a
 pub fn interpolate_solids(border: &mut WindowBorder, anim_elapsed: &Duration, anim_speed: f32) {
     //let before = std::time::Instant::now();
     let Color::Solid(current_solid) = border.current_color.clone() else {
-        println!("an interpolation function failed pattern matching");
+        debug!("an interpolation function failed pattern matching");
         return;
     };
     let Color::Solid(active_solid) = border.active_color.clone() else {
-        println!("an interpolation function failed pattern matching");
+        debug!("an interpolation function failed pattern matching");
         return;
     };
     let Color::Solid(inactive_solid) = border.inactive_color.clone() else {
-        println!("an interpolation function failed pattern matching");
+        debug!("an interpolation function failed pattern matching");
         return;
     };
 
@@ -220,7 +295,7 @@ pub fn interpolate_gradients(border: &mut WindowBorder, anim_elapsed: &Duration,
             } else if let Color::Gradient(inactive_gradient) = border.inactive_color.clone() {
                 inactive_gradient
             } else {
-                println!("an interpolation function failed pattern matching");
+                debug!("an interpolation function failed pattern matching");
                 return;
             };
 
@@ -232,7 +307,7 @@ pub fn interpolate_gradients(border: &mut WindowBorder, anim_elapsed: &Duration,
             solid_as_gradient
         }
     };
-    //println!("time elapsed: {:?}", before.elapsed());
+    //debug!("time elapsed: {:?}", before.elapsed());
 
     let mut all_finished = true;
     let mut gradient_stops: Vec<D2D1_GRADIENT_STOP> = Vec::new();

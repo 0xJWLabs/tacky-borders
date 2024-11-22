@@ -1,6 +1,5 @@
 use serde::Deserialize;
 use std::f32::consts::PI;
-use windows::Win32::Graphics::Direct2D::Common::D2D1_COLOR_F;
 use windows::Win32::Graphics::Direct2D::Common::D2D1_GRADIENT_STOP;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -126,54 +125,4 @@ impl From<&String> for GradientCoordinates {
             },
         }
     }
-}
-
-fn interpolate_color(color1: D2D1_COLOR_F, color2: D2D1_COLOR_F, t: f32) -> D2D1_COLOR_F {
-    D2D1_COLOR_F {
-        r: color1.r + t * (color2.r - color1.r),
-        g: color1.g + t * (color2.g - color1.g),
-        b: color1.b + t * (color2.b - color1.b),
-        a: color1.a + t * (color2.a - color1.a),
-    }
-}
-
-pub fn adjust_gradient_stops(
-    source_stops: Vec<D2D1_GRADIENT_STOP>,
-    target_count: usize,
-) -> Vec<D2D1_GRADIENT_STOP> {
-    if source_stops.len() == target_count {
-        return source_stops;
-    }
-
-    let mut adjusted_stops = Vec::with_capacity(target_count);
-    let step = 1.0 / (target_count - 1).max(1) as f32;
-
-    for i in 0..target_count {
-        let position = i as f32 * step;
-        let (prev_stop, next_stop) = match source_stops
-            .windows(2)
-            .find(|w| w[0].position <= position && position <= w[1].position)
-        {
-            Some(pair) => (&pair[0], &pair[1]),
-            None => {
-                if position <= source_stops[0].position {
-                    (&source_stops[0], &source_stops[0])
-                } else {
-                    let last = source_stops.last().unwrap();
-                    (last, last)
-                }
-            }
-        };
-
-        let t = if prev_stop.position == next_stop.position {
-            0.0
-        } else {
-            (position - prev_stop.position) / (next_stop.position - prev_stop.position)
-        };
-
-        let color = interpolate_color(prev_stop.color, next_stop.color, t);
-        adjusted_stops.push(D2D1_GRADIENT_STOP { color, position });
-    }
-
-    adjusted_stops
 }

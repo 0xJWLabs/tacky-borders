@@ -22,7 +22,7 @@ use std::sync::LazyLock;
 use std::sync::Mutex;
 use utils::get_log;
 use windows::Win32::UI::WindowsAndMessaging::WM_CLOSE;
-use windowsapi::WindowsApi;
+use windows_api::WindowsApi;
 
 use windows::core::w;
 use windows::core::Result;
@@ -62,7 +62,7 @@ mod sys_tray_icon;
 mod timer;
 mod utils;
 mod window_border;
-mod windowsapi;
+mod windows_api;
 
 extern "C" {
     pub static __ImageBase: IMAGE_DOS_HEADER;

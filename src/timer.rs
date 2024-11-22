@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
-use crate::windowsapi::SendHWND;
-use crate::windowsapi::WM_APP_TIMER;
+use crate::windows_api::SendHWND;
+use crate::windows_api::WM_APP_TIMER;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::sync::Mutex;

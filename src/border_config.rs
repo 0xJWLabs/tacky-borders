@@ -5,7 +5,7 @@ use std::sync::LazyLock;
 use std::sync::Mutex;
 
 use crate::animations::Animations;
-use crate::colors::ColorConfig;
+use crate::colors::color::ColorConfig;
 use crate::utils::get_config;
 
 const DEFAULT_CONFIG: &str = include_str!("resources/config.yaml");
@@ -114,4 +114,3 @@ impl Config {
         CONFIG.lock().unwrap().clone()
     }
 }
-

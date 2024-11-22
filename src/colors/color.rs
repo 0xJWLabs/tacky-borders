@@ -1,7 +1,14 @@
-use regex::Regex;
+use super::gradient::Gradient;
+use super::gradient::GradientConfig;
+use super::gradient::GradientCoordinates;
+use super::gradient::GradientDirection;
+use super::ToColor;
+use super::ANSI_COLORS;
+use super::COLOR_REGEX;
+use super::DARKEN_LIGHTEN_REGEX;
+use crate::utils::strip_string;
+use crate::windowsapi::WindowsApi;
 use serde::Deserialize;
-use std::f32::consts::PI;
-use std::sync::LazyLock;
 use windows::Win32::Foundation::BOOL;
 use windows::Win32::Foundation::FALSE;
 use windows::Win32::Foundation::RECT;
@@ -16,19 +23,11 @@ use windows::Win32::Graphics::Direct2D::D2D1_GAMMA_2_2;
 use windows::Win32::Graphics::Direct2D::D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES;
 use windows::Win32::Graphics::Dwm::DwmGetColorizationColor;
 
-use crate::utils::strip_string;
-use crate::windowsapi::WindowsApi;
+use super::is_valid_direction;
 
-// Constants
-const COLOR_PATTERN: &str = r"(?i)#[0-9A-F]{3,8}|rgba?\([0-9]{1,3},\s*[0-9]{1,3},\s*[0-9]{1,3}(?:,\s*[0-9]*(?:\.[0-9]+)?)?\)|accent|transparent";
-static COLOR_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(COLOR_PATTERN).unwrap());
-
-// Enums
-#[derive(Debug, Clone, Deserialize)]
-#[serde(untagged)]
-pub enum GradientDirection {
-    String(String),
-    Coordinates(GradientDirectionCoordinates),
+#[derive(Debug, Clone, PartialEq)]
+pub struct Solid {
+    pub color: D2D1_COLOR_F,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -43,36 +42,15 @@ pub enum Color {
     Solid(Solid),
     Gradient(Gradient),
 }
-// Structs
-#[derive(Debug, Clone, Deserialize)]
-pub struct GradientDirectionCoordinates {
-    pub start: [f32; 2],
-    pub end: [f32; 2],
+
+impl Default for Color {
+    fn default() -> Self {
+        Color::Solid(Solid {
+            color: D2D1_COLOR_F::default(),
+        })
+    }
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct GradientConfig {
-    pub colors: Vec<String>,
-    pub direction: GradientDirection,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Solid {
-    pub color: D2D1_COLOR_F,
-}
-
-#[derive(Debug, Clone)]
-pub struct Gradient {
-    pub direction: GradientDirectionCoordinates,
-    pub gradient_stops: Vec<D2D1_GRADIENT_STOP>,
-}
-
-// Traits
-trait ToColor {
-    fn to_d2d1_color(self, is_active: Option<bool>) -> D2D1_COLOR_F;
-}
-
-// Implementations
 impl ToColor for String {
     fn to_d2d1_color(self, is_active_color: Option<bool>) -> D2D1_COLOR_F {
         if self == "accent" {
@@ -146,70 +124,118 @@ impl ToColor for String {
             }
 
             return D2D1_COLOR_F::default();
+        } else if self.starts_with("darken(") || self.starts_with("lighten(") {
+            let darken_lighten_re = &DARKEN_LIGHTEN_REGEX;
+
+            if let Some(caps) = darken_lighten_re.captures(self.as_str()) {
+                if caps.len() != 4 {
+                    return D2D1_COLOR_F::default();
+                }
+                let dark_or_lighten = &caps[1];
+                let color_str = &caps[2];
+                let percentage = &caps[3].parse::<f32>().unwrap_or(10.0);
+                let color = color_str.to_string().to_d2d1_color(is_active_color);
+                let color_res = match dark_or_lighten {
+                    "darken" => Color::darken(color, *percentage),
+                    "lighten" => Color::lighten(color, *percentage),
+                    _ => color,
+                };
+
+                return color_res;
+            }
+
+            return D2D1_COLOR_F::default();
+        } else if let Some(&(_, color_value)) =
+            ANSI_COLORS.iter().find(|&&(key, _)| key == self.as_str())
+        {
+            return color_value;
         }
 
         D2D1_COLOR_F::default()
     }
 }
 
-impl From<&String> for GradientDirectionCoordinates {
-    fn from(value: &String) -> Self {
-        if let Some(degree) = value
-            .strip_suffix("deg")
-            .and_then(|d| d.trim().parse::<f32>().ok())
-        {
-            let rad = (degree - 90.0) * PI / 180.0;
-            let (cos, sin) = (rad.cos(), rad.sin());
+impl Color {
+    fn d2d1_to_hsl(color: D2D1_COLOR_F) -> (f32, f32, f32) {
+        let r = color.r;
+        let g = color.g;
+        let b = color.b;
+        let max = r.max(g).max(b);
+        let min = r.min(g).min(b);
+        let delta = max - min;
 
-            // Adjusting calculations based on the origin being (0.5, 0.5)
-            return GradientDirectionCoordinates {
-                start: [0.5 - 0.5 * cos, 0.5 - 0.5 * sin],
-                end: [0.5 + 0.5 * cos, 0.5 + 0.5 * sin],
+        let mut h = 0.0;
+        let mut s = 0.0;
+        let l = (max + min) / 2.0;
+
+        if delta != 0.0 {
+            if max == r {
+                h = (g - b) / delta;
+            } else if max == g {
+                h = (b - r) / delta + 2.0;
+            } else {
+                h = (r - g) / delta + 4.0;
+            }
+
+            s = if l == 0.0 || l == 1.0 {
+                0.0
+            } else {
+                delta / (1.0 - (2.0 * l - 1.0).abs())
             };
+
+            h *= 60.0;
+            if h < 0.0 {
+                h += 360.0;
+            }
         }
 
-        match value.as_str() {
-            "to right" => GradientDirectionCoordinates {
-                start: [0.0, 0.5],
-                end: [1.0, 0.5],
-            },
-            "to left" => GradientDirectionCoordinates {
-                start: [1.0, 0.5],
-                end: [0.0, 0.5],
-            },
-            "to top" => GradientDirectionCoordinates {
-                start: [0.5, 1.0],
-                end: [0.5, 0.0],
-            },
-            "to bottom" => GradientDirectionCoordinates {
-                start: [0.5, 0.0],
-                end: [0.5, 1.0],
-            },
-            "to top right" => GradientDirectionCoordinates {
-                start: [0.0, 1.0],
-                end: [1.0, 0.0],
-            },
-            "to top left" => GradientDirectionCoordinates {
-                start: [1.0, 1.0],
-                end: [0.0, 0.0],
-            },
-            "to bottom right" => GradientDirectionCoordinates {
-                start: [0.0, 0.0],
-                end: [1.0, 1.0],
-            },
-            "to bottom left" => GradientDirectionCoordinates {
-                start: [1.0, 0.0],
-                end: [0.0, 1.0],
-            },
-            _ => GradientDirectionCoordinates {
-                start: [0.5, 1.0],
-                end: [0.5, 0.0],
-            },
+        s *= 100.0;
+        let lightness = l * 100.0;
+
+        (h, s, lightness)
+    }
+
+    fn hsla_to_d2d1(h: f32, s: f32, l: f32, a: f32) -> D2D1_COLOR_F {
+        let s = s / 100.0;
+        let l = l / 100.0;
+        let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
+        let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
+        let m = l - c / 2.0;
+
+        let (r, g, b) = if h < 60.0 {
+            (c, x, 0.0)
+        } else if h < 120.0 {
+            (x, c, 0.0)
+        } else if h < 180.0 {
+            (0.0, c, x)
+        } else if h < 240.0 {
+            (0.0, x, c)
+        } else if h < 300.0 {
+            (x, 0.0, c)
+        } else {
+            (c, 0.0, x)
+        };
+
+        D2D1_COLOR_F {
+            r: (r + m).clamp(0.0, 1.0),
+            g: (g + m).clamp(0.0, 1.0),
+            b: (b + m).clamp(0.0, 1.0),
+            a,
         }
     }
-}
 
-impl Color {
+    pub fn darken(color: D2D1_COLOR_F, percentage: f32) -> D2D1_COLOR_F {
+        let (h, s, mut l) = Self::d2d1_to_hsl(color);
+        l -= l * percentage / 100.0;
+        Self::hsla_to_d2d1(h, s, l, color.a)
+    }
+
+    pub fn lighten(color: D2D1_COLOR_F, percentage: f32) -> D2D1_COLOR_F {
+        let (h, s, mut l) = Self::d2d1_to_hsl(color);
+        l += l * percentage / 100.0;
+        Self::hsla_to_d2d1(h, s, l, color.a)
+    }
+
     fn from_string(color: String, is_active: Option<bool>) -> Self {
         if color.starts_with("gradient(") && color.ends_with(")") {
             return Self::from_string(strip_string(color, &["gradient("], ')'), is_active);
@@ -263,7 +289,7 @@ impl Color {
             })
             .collect();
 
-        let direction = GradientDirectionCoordinates::from(&direction);
+        let direction = GradientCoordinates::from(&direction);
 
         Self::Gradient(Gradient {
             gradient_stops,
@@ -293,8 +319,8 @@ impl Color {
                     .collect();
 
                 let direction = match color.direction {
-                    GradientDirection::String(direction) => {
-                        GradientDirectionCoordinates::from(&direction)
+                    GradientDirection::Direction(direction) => {
+                        GradientCoordinates::from(&direction)
                     }
                     GradientDirection::Coordinates(direction) => direction,
                 };
@@ -315,17 +341,7 @@ impl Color {
             }
         }
     }
-}
 
-impl Default for Color {
-    fn default() -> Self {
-        Color::Solid(Solid {
-            color: D2D1_COLOR_F::default(),
-        })
-    }
-}
-
-impl Color {
     pub fn create_brush(
         &mut self,
         render_target: &ID2D1HwndRenderTarget, //&ID2D1HwndRenderTarget,
@@ -377,163 +393,4 @@ impl Color {
             },
         }
     }
-}
-
-// Functions
-fn is_valid_direction(direction: &str) -> bool {
-    matches!(
-        direction,
-        "to right"
-            | "to left"
-            | "to top"
-            | "to bottom"
-            | "to top right"
-            | "to top left"
-            | "to bottom right"
-            | "to bottom left"
-    ) || direction
-        .strip_suffix("deg")
-        .and_then(|angle| angle.parse::<f32>().ok())
-        .is_some()
-}
-
-pub fn interpolate_d2d1_colors(
-    current_color: &D2D1_COLOR_F,
-    start_color: &D2D1_COLOR_F,
-    end_color: &D2D1_COLOR_F,
-    anim_elapsed: f32,
-    anim_speed: f32,
-    finished: &mut bool,
-) -> D2D1_COLOR_F {
-    // D2D1_COLOR_F has the copy trait so we can just do this to create an implicit copy
-    let mut interpolated = *current_color;
-
-    let anim_step = anim_elapsed * anim_speed;
-
-    let diff_r = end_color.r - start_color.r;
-    let diff_g = end_color.g - start_color.g;
-    let diff_b = end_color.b - start_color.b;
-    let diff_a = end_color.a - start_color.a;
-
-    interpolated.r += diff_r * anim_step;
-    interpolated.g += diff_g * anim_step;
-    interpolated.b += diff_b * anim_step;
-    interpolated.a += diff_a * anim_step;
-
-    // Check if we have overshot the active_color
-    // TODO if I also check the alpha here, then things start to break when opening windows, not
-    // sure why. Might be some sort of conflict with interpoalte_d2d1_to_visible().
-    if (interpolated.r - end_color.r) * diff_r.signum() >= 0.0
-        && (interpolated.g - end_color.g) * diff_g.signum() >= 0.0
-        && (interpolated.b - end_color.b) * diff_b.signum() >= 0.0
-    {
-        *finished = true;
-        return *end_color;
-    } else {
-        *finished = false;
-    }
-
-    interpolated
-}
-
-pub fn interpolate_d2d1_to_visible(
-    current_color: &D2D1_COLOR_F,
-    end_color: &D2D1_COLOR_F,
-    anim_elapsed: f32,
-    anim_speed: f32,
-    finished: &mut bool,
-) -> D2D1_COLOR_F {
-    let mut interpolated = *current_color;
-
-    let anim_step = anim_elapsed * anim_speed;
-
-    // Figure out which direction we should be interpolating
-    let diff = end_color.a - interpolated.a;
-    match diff.is_sign_positive() {
-        true => interpolated.a += anim_step,
-        false => interpolated.a -= anim_step,
-    }
-
-    if (interpolated.a - end_color.a) * diff.signum() >= 0.0 {
-        *finished = true;
-        return *end_color;
-    } else {
-        *finished = false;
-    }
-
-    interpolated
-}
-
-pub fn interpolate_direction(
-    current_direction: &GradientDirectionCoordinates,
-    start_direction: &GradientDirectionCoordinates,
-    end_direction: &GradientDirectionCoordinates,
-    anim_elapsed: f32,
-    anim_speed: f32,
-) -> GradientDirectionCoordinates {
-    let mut interpolated = (*current_direction).clone();
-
-    let x_start_step = end_direction.start[0] - start_direction.start[0];
-    let y_start_step = end_direction.start[1] - start_direction.start[1];
-    let x_end_step = end_direction.end[0] - start_direction.end[0];
-    let y_end_step = end_direction.end[1] - start_direction.end[1];
-
-    // Not gonna bother checking if we overshot the direction tbh
-    let anim_step = anim_elapsed * anim_speed;
-    interpolated.start[0] += x_start_step * anim_step;
-    interpolated.start[1] += y_start_step * anim_step;
-    interpolated.end[0] += x_end_step * anim_step;
-    interpolated.end[1] += y_end_step * anim_step;
-
-    interpolated
-}
-
-fn interpolate_color(color1: D2D1_COLOR_F, color2: D2D1_COLOR_F, t: f32) -> D2D1_COLOR_F {
-    D2D1_COLOR_F {
-        r: color1.r + t * (color2.r - color1.r),
-        g: color1.g + t * (color2.g - color1.g),
-        b: color1.b + t * (color2.b - color1.b),
-        a: color1.a + t * (color2.a - color1.a),
-    }
-}
-
-pub fn adjust_gradient_stops(
-    source_stops: Vec<D2D1_GRADIENT_STOP>,
-    target_count: usize,
-) -> Vec<D2D1_GRADIENT_STOP> {
-    if source_stops.len() == target_count {
-        return source_stops;
-    }
-
-    let mut adjusted_stops = Vec::with_capacity(target_count);
-    let step = 1.0 / (target_count - 1).max(1) as f32;
-
-    for i in 0..target_count {
-        let position = i as f32 * step;
-        let (prev_stop, next_stop) = match source_stops
-            .windows(2)
-            .find(|w| w[0].position <= position && position <= w[1].position)
-        {
-            Some(pair) => (&pair[0], &pair[1]),
-            None => {
-                if position <= source_stops[0].position {
-                    (&source_stops[0], &source_stops[0])
-                } else {
-                    let last = source_stops.last().unwrap();
-                    (last, last)
-                }
-            }
-        };
-
-        let t = if prev_stop.position == next_stop.position {
-            0.0
-        } else {
-            (position - prev_stop.position) / (next_stop.position - prev_stop.position)
-        };
-
-        let color = interpolate_color(prev_stop.color, next_stop.color, t);
-        adjusted_stops.push(D2D1_GRADIENT_STOP { color, position });
-    }
-
-    adjusted_stops
 }

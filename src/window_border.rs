@@ -6,7 +6,7 @@ use crate::animations::AnimationType;
 use crate::animations::ANIM_FADE_TO_ACTIVE;
 use crate::animations::ANIM_FADE_TO_INACTIVE;
 use crate::animations::ANIM_FADE_TO_VISIBLE;
-use crate::colors::Color;
+use crate::colors::color::Color;
 use crate::timer::KillCustomTimer;
 use crate::timer::SetCustomTimer;
 use crate::windowsapi::ErrorMsg;
@@ -140,7 +140,6 @@ pub struct WindowBorder {
     pub last_render_time: Option<std::time::Instant>,
     pub spiral_anim_angle: f32,
     pub event_anim: i32,
-    pub timer_id: Option<usize>,
 }
 
 impl WindowBorder {
@@ -415,21 +414,16 @@ impl WindowBorder {
     }
 
     pub fn set_anim_timer(&mut self) {
-        if (!self.active_animations.is_empty() || !self.inactive_animations.is_empty())
-            && self.timer_id.is_none()
-        {
+        if !self.active_animations.is_empty() || !self.inactive_animations.is_empty() {
             let timer_duration = (1000 / self.animation_fps) as u32;
             unsafe {
-                self.timer_id = Some(SetCustomTimer(self.border_window, timer_duration));
+                let _ = SetCustomTimer(self.border_window, 1, timer_duration);
             }
         }
     }
 
     pub fn destroy_anim_timer(&mut self) {
-        if let Some(timer_id) = self.timer_id {
-            KillCustomTimer(timer_id);
-            self.timer_id = None;
-        }
+        KillCustomTimer(self.border_window, 1);
     }
 
     // When CreateWindowExW is called, we can optionally pass a value to its LPARAM field which will

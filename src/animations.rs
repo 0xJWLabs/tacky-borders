@@ -1,10 +1,10 @@
-use crate::colors::adjust_gradient_stops;
+use crate::colors::color::Color;
+use crate::colors::color::Solid;
+use crate::colors::gradient::adjust_gradient_stops;
+use crate::colors::gradient::Gradient;
 use crate::colors::interpolate_d2d1_colors;
 use crate::colors::interpolate_d2d1_to_visible;
 use crate::colors::interpolate_direction;
-use crate::colors::Color;
-use crate::colors::Gradient;
-use crate::colors::Solid;
 use crate::deserializer::from_str;
 use crate::window_border::WindowBorder;
 use crate::windowsapi::WindowsApi;

@@ -8,7 +8,7 @@ use crate::animations::Animations;
 use crate::colors::color::ColorConfig;
 use crate::utils::get_config;
 
-const DEFAULT_CONFIG: &str = include_str!("resources/config.yaml");
+const DEFAULT_CONFIG: &str = include_str!("../resources/config.yaml");
 
 pub static CONFIG: LazyLock<Mutex<Config>> = LazyLock::new(|| Mutex::new(Config::new()));
 

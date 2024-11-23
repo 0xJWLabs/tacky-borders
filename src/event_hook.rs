@@ -24,6 +24,7 @@ use windows::Win32::UI::WindowsAndMessaging::EVENT_SYSTEM_MINIMIZEEND;
 use windows::Win32::UI::WindowsAndMessaging::EVENT_SYSTEM_MINIMIZESTART;
 use windows::Win32::UI::WindowsAndMessaging::GA_ROOT;
 use windows::Win32::UI::WindowsAndMessaging::OBJID_CURSOR;
+use windows::Win32::UI::WindowsAndMessaging::OBJID_WINDOW;
 
 pub extern "system" fn handle_win_event(
     _h_win_event_hook: HWINEVENTHOOK,
@@ -118,7 +119,7 @@ pub extern "system" fn handle_win_event(
         }
         // TODO this is called an unnecessary number of times which may hurt performance?
         EVENT_OBJECT_DESTROY => {
-            if !WindowsApi::has_filtered_style(_hwnd) {
+            if _id_object == OBJID_WINDOW.0 && !WindowsApi::has_filtered_style(_hwnd) {
                 let _ = WindowsApi::destroy_border_for_window(_hwnd);
             }
         }

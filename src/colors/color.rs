@@ -158,6 +158,13 @@ impl ToColor for String {
 }
 
 impl Color {
+    pub fn gradient_stops_len(&self) -> usize {
+        match self {
+            Self::Gradient(gradient) => gradient.gradient_stops.len(),
+            _ => 0,
+        }
+    }
+
     fn from_string(color: String, is_active: Option<bool>) -> Self {
         if color.starts_with("gradient(") && color.ends_with(")") {
             return Self::from_string(strip_string(color, &["gradient("], ')'), is_active);

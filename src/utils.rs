@@ -1,11 +1,21 @@
 use dirs::home_dir;
+use std::fs;
 use std::fs::exists;
 use std::fs::write;
 use std::fs::DirBuilder;
 use std::fs::File;
 use std::fs::OpenOptions;
+use std::path::Path;
 use std::path::PathBuf;
 use windows::core::Result;
+
+#[derive(Debug)]
+#[allow(dead_code)] // Suppress the dead code warning
+pub struct RustVersion {
+    pub major: u32,
+    pub minor: u32,
+    pub patch: u32,
+}
 
 // Configuration
 pub fn get_config() -> PathBuf {
@@ -74,3 +84,54 @@ pub fn strip_string(input: String, prefixes: &[&str], suffix: char) -> String {
     result.strip_suffix(suffix).unwrap_or(&result).to_string()
 }
 
+pub fn get_rust_version() -> RustVersion {
+    let cmd = std::env::var_os("RUSTC").unwrap_or_else(|| std::ffi::OsString::from("rustc"));
+    let out = std::process::Command::new(cmd)
+        .arg("--version")
+        .output()
+        .unwrap();
+    let v = out.stdout;
+    let v_len = v.len();
+    let v = if v_len > 0 && v[v_len - 1] == b'\n' {
+        &v[0..v_len - 1]
+    } else {
+        &v[0..v_len]
+    };
+    let mut version = String::from_utf8(v.to_vec()).unwrap();
+    version = version.split_whitespace().nth(1).unwrap_or("").to_string();
+
+    let version_parts: Vec<&str> = version.split('.').collect();
+    if version_parts.len() == 3 {
+        let major = version_parts[0].parse::<u32>().unwrap_or(0);
+        let minor = version_parts[1].parse::<u32>().unwrap_or(0);
+        let patch = version_parts[2].parse::<u32>().unwrap_or(0);
+
+        return RustVersion {
+            major,
+            minor,
+            patch,
+        };
+    }
+
+    RustVersion {
+        major: 0,
+        minor: 0,
+        patch: 0,
+    }
+}
+
+pub fn has_config_file<P>(path: P) -> bool
+where
+    P: AsRef<Path>,
+{
+    let rust_version = get_rust_version();
+
+    if rust_version.minor < 8 {
+        return path
+            .as_ref()
+            .try_exists()
+            .expect("Couldn't check if config path exists");
+    }
+
+    fs::exists(path.as_ref()).expect("Couldn't check if config path exists")
+}

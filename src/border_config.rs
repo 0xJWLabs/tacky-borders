@@ -7,6 +7,7 @@ use std::sync::Mutex;
 use crate::animations::Animations;
 use crate::colors::color::ColorConfig;
 use crate::utils::get_config;
+use crate::utils::has_config_file;
 
 const DEFAULT_CONFIG: &str = include_str!("../resources/config.yaml");
 
@@ -90,8 +91,8 @@ impl Config {
     fn new() -> Self {
         let config_dir = get_config();
         let config_path = config_dir.join("config.yaml");
-
-        if !fs::exists(&config_path).expect("Couldn't check if config path exists") {
+        if !has_config_file(&config_path) {
+            println!("Yes");
             std::fs::write(&config_path, DEFAULT_CONFIG.as_bytes())
                 .expect("could not generate default config.yaml");
         }

@@ -285,51 +285,46 @@ pub fn interpolate_solids(border: &mut WindowBorder, anim_elapsed: &Duration, an
 
 pub fn interpolate_gradients(border: &mut WindowBorder, anim_elapsed: &Duration, anim_speed: f32) {
     //let before = time::Instant::now();
-    let current_gradient = match border.current_color.clone() {
-        Color::Gradient(gradient) => gradient,
+    let current_gradient = match &border.current_color {
+        Color::Gradient(gradient) => gradient.clone(),
         Color::Solid(solid) => {
             // If current_color is not a gradient, that means at least one of active or inactive
             // color must be solid, so only one of these if let statements should evaluate true
-            let gradient = if let Color::Gradient(active_gradient) = border.active_color.clone() {
-                active_gradient
-            } else if let Color::Gradient(inactive_gradient) = border.inactive_color.clone() {
-                inactive_gradient
-            } else {
-                debug!("an interpolation function failed pattern matching");
-                return;
+            let reference_gradient = match (&border.active_color, &border.inactive_color) {
+                (Color::Gradient(active), _) => active,
+                (_, Color::Gradient(inactive)) => inactive,
+                _ => {
+                    debug!("an interpolation function failed pattern matching");
+                    return;
+                }
             };
 
             // Convert current_color to a gradient
-            let mut solid_as_gradient = gradient.clone();
-            for i in 0..solid_as_gradient.gradient_stops.len() {
-                solid_as_gradient.gradient_stops[i].color = solid.color;
+            let mut solid_as_gradient = reference_gradient.clone();
+            for stop in &mut solid_as_gradient.gradient_stops {
+                stop.color = solid.color;
             }
             solid_as_gradient
         }
     };
     //debug!("time elapsed: {:?}", before.elapsed());
 
-    let mut all_finished = true;
-    let mut gradient_stops: Vec<D2D1_GRADIENT_STOP> = Vec::new();
-    let mut gradient_stops_current = current_gradient.gradient_stops.clone();
-
     let target_stops_len = match border.event_anim {
-        ANIM_FADE_TO_ACTIVE => match border.active_color.clone() {
-            Color::Gradient(gradient) => gradient.gradient_stops.len(),
-            _ => 0,
-        },
-        ANIM_FADE_TO_INACTIVE => match border.inactive_color.clone() {
-            Color::Gradient(gradient) => gradient.gradient_stops.len(),
-            _ => 0,
-        },
-        _ => 0,
+        ANIM_FADE_TO_ACTIVE => border.active_color.gradient_stops_len(),
+        ANIM_FADE_TO_INACTIVE => border.inactive_color.gradient_stops_len(),
+        _ => current_gradient.gradient_stops.len(),
     };
+
+    let mut gradient_stops: Vec<D2D1_GRADIENT_STOP> = Vec::with_capacity(target_stops_len);
 
     let mut active_colors: Color = border.active_color.clone();
     let mut inactive_colors: Color = border.inactive_color.clone();
+    let mut current_gradient_stops = current_gradient.gradient_stops.clone();
+
+    let mut all_finished = true;
 
     if target_stops_len != 0 {
-        gradient_stops_current = adjust_gradient_stops(gradient_stops_current, target_stops_len);
+        current_gradient_stops = adjust_gradient_stops(current_gradient_stops, target_stops_len);
         active_colors = match active_colors {
             Color::Gradient(gradient) => {
                 let gradient_stops =
@@ -355,15 +350,15 @@ pub fn interpolate_gradients(border: &mut WindowBorder, anim_elapsed: &Duration,
         };
     };
 
-    for (i, _) in gradient_stops_current.iter().enumerate() {
+    for (i, _) in current_gradient_stops.iter().enumerate() {
         let mut current_finished = false;
 
-        let active_color = match active_colors.clone() {
+        let active_color = match &active_colors {
             Color::Gradient(gradient) => gradient.gradient_stops[i].color,
             Color::Solid(solid) => solid.color,
         };
 
-        let inactive_color = match inactive_colors.clone() {
+        let inactive_color = match &inactive_colors {
             Color::Gradient(gradient) => gradient.gradient_stops[i].color,
             Color::Solid(solid) => solid.color,
         };
@@ -376,7 +371,7 @@ pub fn interpolate_gradients(border: &mut WindowBorder, anim_elapsed: &Duration,
                 };
 
                 interpolate_d2d1_to_visible(
-                    &current_gradient.gradient_stops[i].color,
+                    &current_gradient_stops[i].color,
                     end_color,
                     anim_elapsed.as_secs_f32(),
                     anim_speed,
@@ -391,7 +386,7 @@ pub fn interpolate_gradients(border: &mut WindowBorder, anim_elapsed: &Duration,
                 };
 
                 interpolate_d2d1_colors(
-                    &current_gradient.gradient_stops[i].color,
+                    &current_gradient_stops[i].color,
                     start_color,
                     end_color,
                     anim_elapsed.as_secs_f32(),
@@ -409,7 +404,7 @@ pub fn interpolate_gradients(border: &mut WindowBorder, anim_elapsed: &Duration,
         // TODO currently this works well because users cannot adjust the positions of the
         // gradient stops, so both inactive and active gradients will have the same positions,
         // but this might need to be interpolated if we add position configuration.
-        let position = gradient_stops_current[i].position;
+        let position = current_gradient_stops[i].position;
 
         let stop = D2D1_GRADIENT_STOP { color, position };
         gradient_stops.push(stop);
@@ -419,8 +414,8 @@ pub fn interpolate_gradients(border: &mut WindowBorder, anim_elapsed: &Duration,
 
     // Interpolate direction if both active and inactive are gradients
     if border.event_anim != ANIM_FADE_TO_VISIBLE {
-        if let Color::Gradient(inactive_gradient) = border.inactive_color.clone() {
-            if let Color::Gradient(active_gradient) = border.active_color.clone() {
+        if let Color::Gradient(inactive_gradient) = inactive_colors {
+            if let Color::Gradient(active_gradient) = active_colors {
                 let (start_direction, end_direction) = match border.event_anim {
                     ANIM_FADE_TO_ACTIVE => {
                         (&inactive_gradient.direction, &active_gradient.direction)

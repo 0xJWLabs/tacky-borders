@@ -1,3 +1,5 @@
+use core::f32;
+
 use super::gradient::GradientCoordinates;
 use windows::Win32::Graphics::Direct2D::Common::{D2D1_COLOR_F, D2D1_GRADIENT_STOP};
 
@@ -114,24 +116,29 @@ pub fn adjust_gradient_stops(
     let mut adjusted_stops = Vec::with_capacity(target_count);
     let step = 1.0 / (target_count - 1).max(1) as f32;
 
-    for i in 0..target_count {
-        let position = i as f32 * step;
-        let (prev_stop, next_stop) = match source_stops
-            .windows(2)
-            .find(|w| w[0].position <= position && position <= w[1].position)
-        {
-            Some(pair) => (&pair[0], &pair[1]),
-            None => {
-                if position <= source_stops[0].position {
+    for position in (0..target_count).map(|i| i as f32 * step) {
+        let (prev_stop, next_stop) = match source_stops.binary_search_by(|stop| {
+            stop.position
+                .partial_cmp(&position)
+                .expect("comparison doesn't work")
+        }) {
+            Ok(idx) => {
+                let stop = &source_stops[idx];
+                (stop, stop)
+            }
+            Err(idx) => {
+                if idx == 0 {
                     (&source_stops[0], &source_stops[0])
-                } else {
+                } else if idx >= source_stops.len() {
                     let last = source_stops.last().unwrap();
                     (last, last)
+                } else {
+                    (&source_stops[idx - 1], &source_stops[idx])
                 }
             }
         };
 
-        let t = if prev_stop.position == next_stop.position {
+        let t = if (next_stop.position - prev_stop.position).abs() <= f32::EPSILON {
             0.0
         } else {
             (position - prev_stop.position) / (next_stop.position - prev_stop.position)

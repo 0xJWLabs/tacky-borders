@@ -1,8 +1,8 @@
 use core::f32;
 
-use super::gradient::GradientCoordinates;
 use windows::Win32::Graphics::Direct2D::Common::{D2D1_COLOR_F, D2D1_GRADIENT_STOP};
 
+#[derive(Debug, Clone)]
 pub struct Hsla {
     h: f32,
     s: f32,
@@ -96,12 +96,28 @@ pub fn lighten(color: D2D1_COLOR_F, percentage: f32) -> D2D1_COLOR_F {
     hsla_to_d2d1(hsla)
 }
 
-fn interpolate_color(color1: D2D1_COLOR_F, color2: D2D1_COLOR_F, t: f32) -> D2D1_COLOR_F {
-    D2D1_COLOR_F {
-        r: color1.r + t * (color2.r - color1.r),
-        g: color1.g + t * (color2.g - color1.g),
-        b: color1.b + t * (color2.b - color1.b),
-        a: color1.a + t * (color2.a - color1.a),
+fn interpolate_color_hsl(color1: D2D1_COLOR_F, color2: D2D1_COLOR_F, t: f32) -> D2D1_COLOR_F {
+    // Convert colors from D2D1_COLOR_F to HSL
+    let hsla1 = d2d1_to_hsla(color1);
+    let hsla2 = d2d1_to_hsla(color2);
+
+    // Interpolate each component
+    let h = interpolate_hue_normal(hsla1.h, hsla2.h, t);
+    let s = hsla1.s + t * (hsla2.s - hsla1.s);
+    let l = hsla1.l + t * (hsla2.l - hsla1.l);
+    let a = hsla1.a + t * (hsla2.a - hsla1.a);
+
+    // Convert back to D2D1_COLOR_F
+    hsla_to_d2d1(Hsla { h, s, l, a })
+}
+
+fn interpolate_hue_normal(h1: f32, h2: f32, t: f32) -> f32 {
+    // Ensure shortest path for hue interpolation
+    let delta = ((h2 - h1 + 360.0) % 360.0).min((h1 - h2 + 360.0) % 360.0);
+    if (h2 - h1 + 360.0) % 360.0 == delta {
+        (h1 + t * delta) % 360.0
+    } else {
+        (h1 - t * delta + 360.0) % 360.0
     }
 }
 
@@ -144,7 +160,7 @@ pub fn adjust_gradient_stops(
             (position - prev_stop.position) / (next_stop.position - prev_stop.position)
         };
 
-        let color = interpolate_color(prev_stop.color, next_stop.color, t);
+        let color = interpolate_color_hsl(prev_stop.color, next_stop.color, t);
         adjusted_stops.push(D2D1_GRADIENT_STOP { color, position });
     }
 
@@ -168,45 +184,6 @@ pub fn is_valid_direction(direction: &str) -> bool {
         .is_some()
 }
 
-pub fn interpolate_d2d1_colors(
-    current_color: &D2D1_COLOR_F,
-    start_color: &D2D1_COLOR_F,
-    end_color: &D2D1_COLOR_F,
-    anim_elapsed: f32,
-    anim_speed: f32,
-    finished: &mut bool,
-) -> D2D1_COLOR_F {
-    // D2D1_COLOR_F has the copy trait so we can just do this to create an implicit copy
-    let mut interpolated = *current_color;
-
-    let anim_step = anim_elapsed * anim_speed;
-
-    let diff_r = end_color.r - start_color.r;
-    let diff_g = end_color.g - start_color.g;
-    let diff_b = end_color.b - start_color.b;
-    let diff_a = end_color.a - start_color.a;
-
-    interpolated.r += diff_r * anim_step;
-    interpolated.g += diff_g * anim_step;
-    interpolated.b += diff_b * anim_step;
-    interpolated.a += diff_a * anim_step;
-
-    // Check if we have overshot the active_color
-    // TODO if I also check the alpha here, then things start to break when opening windows, not
-    // sure why. Might be some sort of conflict with interpoalte_d2d1_to_visible().
-    if (interpolated.r - end_color.r) * diff_r.signum() >= 0.0
-        && (interpolated.g - end_color.g) * diff_g.signum() >= 0.0
-        && (interpolated.b - end_color.b) * diff_b.signum() >= 0.0
-    {
-        *finished = true;
-        return *end_color;
-    } else {
-        *finished = false;
-    }
-
-    interpolated
-}
-
 pub fn interpolate_d2d1_to_visible(
     current_color: &D2D1_COLOR_F,
     end_color: &D2D1_COLOR_F,
@@ -224,6 +201,7 @@ pub fn interpolate_d2d1_to_visible(
         true => interpolated.a += anim_step,
         false => interpolated.a -= anim_step,
     }
+    println!("{}", interpolated.a);
 
     if (interpolated.a - end_color.a) * diff.signum() >= 0.0 {
         *finished = true;
@@ -231,30 +209,6 @@ pub fn interpolate_d2d1_to_visible(
     } else {
         *finished = false;
     }
-
-    interpolated
-}
-
-pub fn interpolate_direction(
-    current_direction: &GradientCoordinates,
-    start_direction: &GradientCoordinates,
-    end_direction: &GradientCoordinates,
-    anim_elapsed: f32,
-    anim_speed: f32,
-) -> GradientCoordinates {
-    let mut interpolated = (*current_direction).clone();
-
-    let x_start_step = end_direction.start[0] - start_direction.start[0];
-    let y_start_step = end_direction.start[1] - start_direction.start[1];
-    let x_end_step = end_direction.end[0] - start_direction.end[0];
-    let y_end_step = end_direction.end[1] - start_direction.end[1];
-
-    // Not gonna bother checking if we overshot the direction tbh
-    let anim_step = anim_elapsed * anim_speed;
-    interpolated.start[0] += x_start_step * anim_step;
-    interpolated.start[1] += y_start_step * anim_step;
-    interpolated.end[0] += x_end_step * anim_step;
-    interpolated.end[1] += y_end_step * anim_step;
 
     interpolated
 }

@@ -2,9 +2,7 @@ use crate::colors::color::Color;
 use crate::colors::color::Solid;
 use crate::colors::gradient::Gradient;
 use crate::colors::utils::adjust_gradient_stops;
-use crate::colors::utils::interpolate_d2d1_colors;
 use crate::colors::utils::interpolate_d2d1_to_visible;
-use crate::colors::utils::interpolate_direction;
 use crate::deserializer::from_str;
 use crate::window_border::WindowBorder;
 use crate::windows_api::WindowsApi;
@@ -119,6 +117,42 @@ impl VecAnimation for Vec<Animation> {
     }
 }
 
+pub fn animate_fade_setup(border: &mut WindowBorder) {
+    // Reset last_anim_time here because otherwise, anim_elapsed will be
+    // too large due to being paused and interpolation won't work correctly
+    border.last_animation_time = Some(Instant::now());
+
+    border.current_color = if border.is_window_active {
+        border.active_color.clone()
+    } else {
+        border.inactive_color.clone()
+    };
+
+    // Set the alpha of the current color to 0 so we can animate from invisible to visible
+    if let Color::Gradient(mut current_gradient) = border.current_color.clone() {
+        let mut gradient_stops: Vec<D2D1_GRADIENT_STOP> = Vec::new();
+        for i in 0..current_gradient.gradient_stops.len() {
+            current_gradient.gradient_stops[i].color.a = 0.0;
+            let color = current_gradient.gradient_stops[i].color;
+            let position = current_gradient.gradient_stops[i].position;
+            gradient_stops.push(D2D1_GRADIENT_STOP { color, position });
+        }
+
+        let direction = current_gradient.direction;
+
+        border.current_color = Color::Gradient(Gradient {
+            gradient_stops,
+            direction,
+        })
+    } else if let Color::Solid(mut current_solid) = border.current_color.clone() {
+        current_solid.color.a = 0.0;
+        let color = current_solid.color;
+
+        border.current_color = Color::Solid(Solid { color });
+    }
+    border.event_anim = ANIM_FADE_TO_VISIBLE;
+}
+
 impl Animation {
     pub fn play(
         &self,
@@ -169,50 +203,11 @@ impl Animation {
                     animate_fade_colors(border, anim_elapsed, anim_speed);
                 }
                 _ => {
-                    animate_fade_to_visible(border);
+                    animate_fade_setup(border);
                 }
             },
         }
     }
-}
-
-fn animate_fade_to_visible(border: &mut WindowBorder) {
-    // Reset last_anim_time here because otherwise, anim_elapsed will be
-    // too large due to being paused and interpolation won't work correctly
-    border.last_animation_time = Some(Instant::now());
-
-    border.current_color = if WindowsApi::is_window_active(border.tracking_window) {
-        border.active_color.clone()
-    } else {
-        border.inactive_color.clone()
-    };
-
-    // Set the alpha of the current color to 0 so we can animate from invisible to visible
-    if let Color::Gradient(mut current_gradient) = border.current_color.clone() {
-        let mut gradient_stops: Vec<D2D1_GRADIENT_STOP> = Vec::new();
-        for i in 0..current_gradient.gradient_stops.len() {
-            current_gradient.gradient_stops[i].color.a = 0.0;
-            let color = current_gradient.gradient_stops[i].color;
-            let position = current_gradient.gradient_stops[i].position;
-            gradient_stops.push(D2D1_GRADIENT_STOP { color, position });
-        }
-
-        let direction = current_gradient.direction;
-
-        border.current_color = Color::Gradient(Gradient {
-            gradient_stops,
-            direction,
-        })
-    } else if let Color::Solid(mut current_solid) = border.current_color.clone() {
-        current_solid.color.a = 0.0;
-        let color = current_solid.color;
-
-        border.current_color = Color::Solid(Solid { color });
-    }
-
-    // Just set event_anim to ANIM_FADE_TO_VISIBLE and the WM_APP_ANIMATE message in the
-    // WindowBorder should handle the rest.
-    border.event_anim = ANIM_FADE_TO_VISIBLE;
 }
 
 fn animate_fade_colors(border: &mut WindowBorder, anim_elapsed: &Duration, anim_speed: f32) {
@@ -229,45 +224,32 @@ fn animate_fade_colors(border: &mut WindowBorder, anim_elapsed: &Duration, anim_
 pub fn interpolate_solids(border: &mut WindowBorder, anim_elapsed: &Duration, anim_speed: f32) {
     //let before = std::time::Instant::now();
     let Color::Solid(current_solid) = border.current_color.clone() else {
-        debug!("an interpolation function failed pattern matching");
+        error!("Could not convert current_color for interpolation");
         return;
     };
-    let Color::Solid(active_solid) = border.active_color.clone() else {
-        debug!("an interpolation function failed pattern matching");
-        return;
-    };
-    let Color::Solid(inactive_solid) = border.inactive_color.clone() else {
-        debug!("an interpolation function failed pattern matching");
-        return;
+    let end_solid = match border.is_window_active {
+        true => {
+            let Color::Solid(active_solid) = border.active_color.clone() else {
+                error!("Could not convet active_color for interpolation");
+                return;
+            };
+            active_solid
+        }
+        false => {
+            let Color::Solid(inactive_solid) = border.inactive_color.clone() else {
+                error!("Could not convet active_color for interpolation");
+                return;
+            };
+            inactive_solid
+        }
     };
 
     let mut finished = false;
     let color = match border.event_anim {
-        ANIM_FADE_TO_VISIBLE => {
-            let end_color = match WindowsApi::is_window_visible(border.tracking_window) {
-                true => &active_solid.color,
-                false => &inactive_solid.color,
-            };
-
+        ANIM_FADE_TO_VISIBLE | ANIM_FADE_TO_ACTIVE | ANIM_FADE_TO_INACTIVE => {
             interpolate_d2d1_to_visible(
                 &current_solid.color,
-                end_color,
-                anim_elapsed.as_secs_f32(),
-                anim_speed,
-                &mut finished,
-            )
-        }
-        ANIM_FADE_TO_ACTIVE | ANIM_FADE_TO_INACTIVE => {
-            let (start_color, end_color) = match border.event_anim {
-                ANIM_FADE_TO_ACTIVE => (&inactive_solid.color, &active_solid.color),
-                ANIM_FADE_TO_INACTIVE => (&active_solid.color, &inactive_solid.color),
-                _ => return,
-            };
-
-            interpolate_d2d1_colors(
-                &current_solid.color,
-                start_color,
-                end_color,
+                &end_solid.color,
                 anim_elapsed.as_secs_f32(),
                 anim_speed,
                 &mut finished,
@@ -350,45 +332,27 @@ pub fn interpolate_gradients(border: &mut WindowBorder, anim_elapsed: &Duration,
         };
     };
 
+    println!("Interpolate Gradients: {}", border.event_anim);
+
     for (i, _) in current_gradient_stops.iter().enumerate() {
         let mut current_finished = false;
 
-        let active_color = match &active_colors {
-            Color::Gradient(gradient) => gradient.gradient_stops[i].color,
-            Color::Solid(solid) => solid.color,
-        };
-
-        let inactive_color = match &inactive_colors {
-            Color::Gradient(gradient) => gradient.gradient_stops[i].color,
-            Color::Solid(solid) => solid.color,
+        let end_color = match border.is_window_active {
+            true => match &active_colors {
+                Color::Gradient(gradient) => gradient.gradient_stops[i].color,
+                Color::Solid(solid) => solid.color,
+            },
+            false => match &inactive_colors {
+                Color::Gradient(gradient) => gradient.gradient_stops[i].color,
+                Color::Solid(solid) => solid.color,
+            },
         };
 
         let color = match border.event_anim {
-            ANIM_FADE_TO_VISIBLE => {
-                let end_color = match WindowsApi::is_window_visible(border.tracking_window) {
-                    true => &active_color,
-                    false => &inactive_color,
-                };
-
+            ANIM_FADE_TO_VISIBLE | ANIM_FADE_TO_ACTIVE | ANIM_FADE_TO_INACTIVE => {
                 interpolate_d2d1_to_visible(
                     &current_gradient_stops[i].color,
-                    end_color,
-                    anim_elapsed.as_secs_f32(),
-                    anim_speed,
-                    &mut current_finished,
-                )
-            }
-            ANIM_FADE_TO_ACTIVE | ANIM_FADE_TO_INACTIVE => {
-                let (start_color, end_color) = match border.event_anim {
-                    ANIM_FADE_TO_ACTIVE => (&inactive_color, &active_color),
-                    ANIM_FADE_TO_INACTIVE => (&active_color, &inactive_color),
-                    _ => return,
-                };
-
-                interpolate_d2d1_colors(
-                    &current_gradient_stops[i].color,
-                    start_color,
-                    end_color,
+                    &end_color,
                     anim_elapsed.as_secs_f32(),
                     anim_speed,
                     &mut current_finished,
@@ -410,39 +374,14 @@ pub fn interpolate_gradients(border: &mut WindowBorder, anim_elapsed: &Duration,
         gradient_stops.push(stop);
     }
 
-    let mut direction = current_gradient.direction;
-
-    // Interpolate direction if both active and inactive are gradients
-    if border.event_anim != ANIM_FADE_TO_VISIBLE {
-        if let Color::Gradient(inactive_gradient) = inactive_colors {
-            if let Color::Gradient(active_gradient) = active_colors {
-                let (start_direction, end_direction) = match border.event_anim {
-                    ANIM_FADE_TO_ACTIVE => {
-                        (&inactive_gradient.direction, &active_gradient.direction)
-                    }
-                    ANIM_FADE_TO_INACTIVE => {
-                        (&active_gradient.direction, &inactive_gradient.direction)
-                    }
-                    _ => return,
-                };
-
-                direction = interpolate_direction(
-                    &direction,
-                    start_direction,
-                    end_direction,
-                    anim_elapsed.as_secs_f32(),
-                    anim_speed,
-                );
-            }
-        }
-    }
+    let direction = current_gradient.direction;
 
     if all_finished {
         match border.event_anim {
             ANIM_FADE_TO_ACTIVE => border.current_color = border.active_color.clone(),
             ANIM_FADE_TO_INACTIVE => border.current_color = border.inactive_color.clone(),
             ANIM_FADE_TO_VISIBLE => {
-                border.current_color = match WindowsApi::is_window_active(border.tracking_window) {
+                border.current_color = match border.is_window_active {
                     true => border.active_color.clone(),
                     false => border.inactive_color.clone(),
                 }

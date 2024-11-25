@@ -36,3 +36,7 @@ features = [
 
 [build-dependencies]
 winres = "0.1.12"
+
+[features]
+rust150 = []
+rust180 = []

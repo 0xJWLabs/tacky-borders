@@ -1,5 +1,6 @@
 use regex::Regex;
 use std::thread;
+use windows::Win32::UI::WindowsAndMessaging::WM_NCDESTROY;
 
 use windows::core::Result;
 use windows::core::PWSTR;
@@ -44,7 +45,6 @@ use windows::Win32::UI::WindowsAndMessaging::GWL_EXSTYLE;
 use windows::Win32::UI::WindowsAndMessaging::GWL_STYLE;
 use windows::Win32::UI::WindowsAndMessaging::LAYERED_WINDOW_ATTRIBUTES_FLAGS;
 use windows::Win32::UI::WindowsAndMessaging::WM_APP;
-use windows::Win32::UI::WindowsAndMessaging::WM_CLOSE;
 
 use windows::Win32::UI::WindowsAndMessaging::WS_CHILD;
 use windows::Win32::UI::WindowsAndMessaging::WS_EX_NOACTIVATE;
@@ -524,7 +524,7 @@ impl WindowsApi {
 
             let border_window: HWND = HWND(*border_isize as _);
             unsafe {
-                let _ = PostMessageW(border_window, WM_CLOSE, WPARAM(0), LPARAM(0));
+                let _ = PostMessageW(border_window, WM_NCDESTROY, WPARAM(0), LPARAM(0));
             }
             borders_hashmap.remove(&window_isize);
 

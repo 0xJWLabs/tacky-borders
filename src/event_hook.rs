@@ -23,6 +23,7 @@ use windows::Win32::UI::WindowsAndMessaging::EVENT_OBJECT_UNCLOAKED;
 use windows::Win32::UI::WindowsAndMessaging::EVENT_SYSTEM_MINIMIZEEND;
 use windows::Win32::UI::WindowsAndMessaging::EVENT_SYSTEM_MINIMIZESTART;
 use windows::Win32::UI::WindowsAndMessaging::GA_ROOT;
+use windows::Win32::UI::WindowsAndMessaging::OBJID_CLIENT;
 use windows::Win32::UI::WindowsAndMessaging::OBJID_CURSOR;
 use windows::Win32::UI::WindowsAndMessaging::OBJID_WINDOW;
 
@@ -71,9 +72,7 @@ pub extern "system" fn handle_win_event(
         }
         EVENT_OBJECT_FOCUS => {
             // TODO not sure if I should use GA_ROOT or GA_ROOTOWNER
-            //let before = std::time::Instant::now();
             let parent = unsafe { GetAncestor(_hwnd, GA_ROOT) };
-            //println!("time elapsed: {:?}", before.elapsed());
 
             if WindowsApi::has_filtered_style(parent) {
                 return;
@@ -91,15 +90,10 @@ pub extern "system" fn handle_win_event(
         EVENT_OBJECT_SHOW | EVENT_OBJECT_UNCLOAKED => {
             WindowsApi::show_border_for_window(_hwnd);
         }
-        EVENT_OBJECT_HIDE => {
-            // I have to check IsWindowVisible because for some reason, EVENT_OBJECT_HIDE can be
-            // sent even while the window is still visible (it does this for Vesktop)
-            if !WindowsApi::is_window_visible(_hwnd) {
+        EVENT_OBJECT_HIDE | EVENT_OBJECT_CLOAKED => {
+            if _id_object == OBJID_WINDOW.0 {
                 WindowsApi::hide_border_for_window(_hwnd);
             }
-        }
-        EVENT_OBJECT_CLOAKED => {
-            WindowsApi::hide_border_for_window(_hwnd);
         }
         EVENT_SYSTEM_MINIMIZESTART => {
             let border_option = WindowsApi::get_border_from_window(_hwnd);
@@ -119,7 +113,9 @@ pub extern "system" fn handle_win_event(
         }
         // TODO this is called an unnecessary number of times which may hurt performance?
         EVENT_OBJECT_DESTROY => {
-            if _id_object == OBJID_WINDOW.0 && !WindowsApi::has_filtered_style(_hwnd) {
+            if (_id_object == OBJID_WINDOW.0 || _id_object == OBJID_CLIENT.0)
+                && !WindowsApi::has_filtered_style(_hwnd)
+            {
                 let _ = WindowsApi::destroy_border_for_window(_hwnd);
             }
         }

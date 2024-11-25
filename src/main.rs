@@ -3,7 +3,6 @@
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
 )]
-
 #[macro_use]
 extern crate log;
 extern crate sp_log;

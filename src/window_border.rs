@@ -141,6 +141,7 @@ pub struct WindowBorder {
     pub event_anim: i32,
     pub fade_anim_temp: Color,
     pub is_window_active: bool,
+    pub timer_id: Option<usize>,
 }
 
 impl WindowBorder {
@@ -297,13 +298,13 @@ impl WindowBorder {
     }
 
     pub fn update_window_rect(&mut self) -> Result<()> {
-        let _ = WindowsApi::dwm_get_window_attribute(
+        let _ = WindowsApi::dwm_get_window_attribute::<RECT, _>(
             self.tracking_window,
             DWMWA_EXTENDED_FRAME_BOUNDS,
-            &mut self.window_rect.clone(),
+            ptr::addr_of_mut!(self.window_rect) as _,
             Some(ErrorMsg::Fn(|| {
-                warn!("could not get window rect. This is normal for elevated/admin windows.");
                 unsafe {
+                    // Temporarily borrow self mutably here, outside of the closure
                     self.destroy_anim_timer();
                     PostQuitMessage(0);
                 }
@@ -348,10 +349,8 @@ impl WindowBorder {
     }
 
     pub fn update_color(&mut self, check_delay: Option<u64>) -> Result<()> {
-        println!("running update_color");
         match self.current_animations.fetch(&AnimationType::Fade) {
             Some(anim) => {
-                println!("running animate_fade_setup (animation exist)");
                 if check_delay == Some(0) {
                     self.current_color = match self.is_window_active {
                         true => self.active_color.clone(),
@@ -462,16 +461,19 @@ impl WindowBorder {
     }
 
     pub fn set_anim_timer(&mut self) {
-        if !self.active_animations.is_empty() || !self.inactive_animations.is_empty() {
+        if !self.active_animations.is_empty()
+            || !self.inactive_animations.is_empty() && self.timer_id.is_none()
+        {
             let timer_duration = (1000 / self.animation_fps) as u32;
             unsafe {
-                let _ = SetCustomTimer(self.border_window, 1, timer_duration);
+                self.timer_id = Some(SetCustomTimer(self.border_window, 1, timer_duration));
             }
         }
     }
 
     pub fn destroy_anim_timer(&mut self) {
         KillCustomTimer(self.border_window, 1);
+        self.timer_id = None;
     }
 
     // When CreateWindowExW is called, we can optionally pass a value to its LPARAM field which will
@@ -595,7 +597,6 @@ impl WindowBorder {
                     if self.current_animations.has(&AnimationType::Fade) {
                         self.event_anim = ANIM_FADE_TO_VISIBLE;
                     }
-                    let _ = self.update_color(Some(self.unminimize_delay));
                     let _ = self.update_window_rect();
                     let _ = self.update_position(Some(SWP_SHOWWINDOW));
                     let _ = self.render();

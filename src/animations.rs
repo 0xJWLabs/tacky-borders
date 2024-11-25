@@ -291,58 +291,45 @@ pub fn interpolate_gradients(border: &mut WindowBorder, anim_elapsed: &Duration,
     };
     //debug!("time elapsed: {:?}", before.elapsed());
 
-    let target_stops_len = match border.event_anim {
-        ANIM_FADE_TO_ACTIVE => border.active_color.gradient_stops_len(),
-        ANIM_FADE_TO_INACTIVE => border.inactive_color.gradient_stops_len(),
-        _ => current_gradient.gradient_stops.len(),
-    };
+    let target_stops_len = border
+        .active_color
+        .gradient_stops_len()
+        .max(border.inactive_color.gradient_stops_len());
 
     let mut gradient_stops: Vec<D2D1_GRADIENT_STOP> = Vec::with_capacity(target_stops_len);
 
-    let mut active_colors: Color = border.active_color.clone();
-    let mut inactive_colors: Color = border.inactive_color.clone();
-    let mut current_gradient_stops = current_gradient.gradient_stops.clone();
+    let current_gradient_stops =
+        adjust_gradient_stops(current_gradient.gradient_stops.clone(), target_stops_len);
 
-    let mut all_finished = true;
-
-    if target_stops_len != 0 {
-        current_gradient_stops = adjust_gradient_stops(current_gradient_stops, target_stops_len);
-        active_colors = match active_colors {
-            Color::Gradient(gradient) => {
-                let gradient_stops =
-                    adjust_gradient_stops(gradient.gradient_stops, target_stops_len);
-                Color::Gradient(Gradient {
-                    gradient_stops,
-                    direction: gradient.direction,
-                })
-            }
-            Color::Solid(color) => Color::Solid(color),
-        };
-
-        inactive_colors = match inactive_colors {
-            Color::Gradient(gradient) => {
-                let gradient_stops =
-                    adjust_gradient_stops(gradient.gradient_stops, target_stops_len);
-                Color::Gradient(Gradient {
-                    gradient_stops,
-                    direction: gradient.direction,
-                })
-            }
-            Color::Solid(color) => Color::Solid(color),
-        };
+    let active_color = match border.active_color.clone() {
+        Color::Gradient(mut gradient) => {
+            gradient.gradient_stops =
+                adjust_gradient_stops(gradient.gradient_stops, target_stops_len);
+            Color::Gradient(gradient)
+        }
+        Color::Solid(solid) => Color::Solid(solid),
     };
 
-    println!("Interpolate Gradients: {}", border.event_anim);
+    let inactive_color = match border.inactive_color.clone() {
+        Color::Gradient(mut gradient) => {
+            gradient.gradient_stops =
+                adjust_gradient_stops(gradient.gradient_stops, target_stops_len);
+            Color::Gradient(gradient)
+        }
+        Color::Solid(solid) => Color::Solid(solid),
+    };
+
+    let mut all_finished = true;
 
     for (i, _) in current_gradient_stops.iter().enumerate() {
         let mut current_finished = false;
 
         let end_color = match border.is_window_active {
-            true => match &active_colors {
+            true => match &active_color {
                 Color::Gradient(gradient) => gradient.gradient_stops[i].color,
                 Color::Solid(solid) => solid.color,
             },
-            false => match &inactive_colors {
+            false => match &inactive_color {
                 Color::Gradient(gradient) => gradient.gradient_stops[i].color,
                 Color::Solid(solid) => solid.color,
             },

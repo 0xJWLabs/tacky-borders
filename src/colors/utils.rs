@@ -201,8 +201,6 @@ pub fn interpolate_d2d1_to_visible(
         true => interpolated.a += anim_step,
         false => interpolated.a -= anim_step,
     }
-    println!("{}", interpolated.a);
-
     if (interpolated.a - end_color.a) * diff.signum() >= 0.0 {
         *finished = true;
         return *end_color;

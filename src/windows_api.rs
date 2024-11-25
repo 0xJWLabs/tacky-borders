@@ -1,4 +1,6 @@
 use regex::Regex;
+use std::ffi::c_void;
+use std::ptr;
 use std::thread;
 use windows::Win32::UI::WindowsAndMessaging::WM_NCDESTROY;
 
@@ -162,7 +164,7 @@ impl WindowsApi {
     pub fn dwm_get_window_attribute<T, E>(
         hwnd: HWND,
         attribute: DWMWINDOWATTRIBUTE,
-        value: &mut T,
+        value: *mut c_void,
         err: Option<ErrorMsg<E>>,
     ) -> Result<()>
     where
@@ -172,8 +174,7 @@ impl WindowsApi {
             DwmGetWindowAttribute(
                 hwnd,
                 attribute,
-                std::ptr::addr_of_mut!(*value) as _,
-                // (value as *mut T).cast(),
+                value as _,
                 u32::try_from(std::mem::size_of::<T>())?,
             )
         };
@@ -208,7 +209,7 @@ impl WindowsApi {
         let _ = Self::dwm_get_window_attribute::<BOOL, fn()>(
             hwnd,
             DWMWA_CLOAKED,
-            &mut is_cloaked,
+            ptr::addr_of_mut!(is_cloaked) as _,
             Some(ErrorMsg::String("Getting is_window_cloaked".to_string())),
         );
 
@@ -560,7 +561,7 @@ fn convert_config_radius(
     let _ = WindowsApi::dwm_get_window_attribute::<DWM_WINDOW_CORNER_PREFERENCE, fn()>(
         tracking_window,
         DWMWA_WINDOW_CORNER_PREFERENCE,
-        &mut corner_preference,
+        ptr::addr_of_mut!(corner_preference) as _,
         Some(ErrorMsg::String(
             "Getting window corner preference".to_string(),
         )),

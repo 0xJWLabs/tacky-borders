@@ -1,6 +1,5 @@
-use crate::animations::Animation;
 use crate::animations::AnimationType;
-use crate::animations::VecAnimation;
+use crate::animations::HashMapAnimationExt;
 use crate::animations::ANIM_FADE;
 use crate::colors::color::Color;
 use crate::timer::KillCustomTimer;
@@ -16,6 +15,7 @@ use crate::windows_api::WM_APP_REORDER;
 use crate::windows_api::WM_APP_SHOWUNCLOAKED;
 use crate::windows_api::WM_APP_TIMER;
 
+use std::collections::HashMap;
 use std::ptr;
 use std::sync::LazyLock;
 use std::sync::OnceLock;
@@ -123,9 +123,9 @@ pub struct WindowBorder {
     pub brush_properties: D2D1_BRUSH_PROPERTIES,
     pub render_target: OnceLock<ID2D1HwndRenderTarget>,
     pub rounded_rect: D2D1_ROUNDED_RECT,
-    pub active_animations: Vec<Animation>,
-    pub inactive_animations: Vec<Animation>,
-    pub current_animations: Vec<Animation>,
+    pub active_animations: HashMap<AnimationType, f32>,
+    pub inactive_animations: HashMap<AnimationType, f32>,
+    pub current_animations: HashMap<AnimationType, f32>,
     pub animation_fps: i32,
     pub active_color: Color,
     pub inactive_color: Color,
@@ -622,7 +622,7 @@ impl WindowBorder {
                     self.brush_properties.transform = Matrix3x2::identity();
                     false
                 } else {
-                    self.current_animations.clone().iter().any(|animation| {
+                    self.current_animations.clone().to_iter().any(|animation| {
                         match animation.animation_type {
                             AnimationType::Spiral | AnimationType::ReverseSpiral => {
                                 let anim_speed = animation.speed;
@@ -635,9 +635,8 @@ impl WindowBorder {
                 };
 
                 if self.event_anim == ANIM_FADE {
-                    let anim = self.current_animations.fetch(&AnimationType::Fade).unwrap();
-                    let animation = anim.clone();
-                    animation.play(self, &anim_elapsed, animation.speed / 15.0);
+                    let anim = self.current_animations.find(&AnimationType::Fade).unwrap();
+                    anim.play(self, &anim_elapsed, anim.speed / 15.0);
                     animations_updated = true;
                 }
 

@@ -27,9 +27,9 @@ pub struct Animation {
 #[derive(Debug, Deserialize, PartialEq, Clone, Default)]
 pub struct Animations {
     #[serde(deserialize_with = "animation", default)]
-    pub active: Vec<Animation>,
+    pub active: HashMap<AnimationType, f32>,
     #[serde(deserialize_with = "animation", default)]
-    pub inactive: Vec<Animation>,
+    pub inactive: HashMap<AnimationType, f32>,
     #[serde(default = "default_fps")]
     pub fps: i32,
 }
@@ -38,13 +38,13 @@ fn default_fps() -> i32 {
     60
 }
 
-pub fn animation<'de, D>(deserializer: D) -> Result<Vec<Animation>, D::Error>
+pub fn animation<'de, D>(deserializer: D) -> Result<HashMap<AnimationType, f32>, D::Error>
 where
     D: Deserializer<'de>,
 {
     let map: Option<HashMap<String, Value>> = Option::deserialize(deserializer)?;
 
-    let mut result: Vec<Animation> = Vec::new();
+    let mut result: HashMap<AnimationType, f32> = HashMap::new();
 
     if let Some(entries) = map {
         for (anim_type, anim_value) in entries {
@@ -61,10 +61,7 @@ where
                     AnimationType::Fade => 200.0,
                 };
 
-                result.add(Animation {
-                    animation_type,
-                    speed: speed.unwrap_or(default_speed),
-                });
+                result.insert(animation_type, speed.unwrap_or(default_speed));
             }
         }
     }
@@ -72,82 +69,59 @@ where
     Ok(result)
 }
 
-#[allow(unused)]
-pub trait VecAnimation {
-    fn add(&mut self, animation: Animation);
-    fn fetch(&self, animation_type: &AnimationType) -> Option<&Animation>;
-    fn remove(&mut self, animation_type: &AnimationType) -> Option<Animation>;
+pub trait HashMapAnimationExt {
+    fn find(&self, animation_type: &AnimationType) -> Option<Animation>;
     fn has(&self, animation_type: &AnimationType) -> bool;
+    fn to_iter(&self) -> impl Iterator<Item = Animation> + '_;
 }
 
-impl VecAnimation for Vec<Animation> {
-    fn add(&mut self, animation: Animation) {
-        // Check if the animation type already exists, and replace it if found
-        if let Some(existing_index) = self
-            .iter()
-            .position(|a| a.animation_type == animation.animation_type)
-        {
-            self[existing_index] = animation;
-        } else {
-            self.push(animation);
-        }
-    }
-
-    fn fetch(&self, animation_type: &AnimationType) -> Option<&Animation> {
-        self.iter().find(|a| &a.animation_type == animation_type)
-    }
-
-    fn remove(&mut self, animation_type: &AnimationType) -> Option<Animation> {
-        self.iter()
-            .position(|a| &a.animation_type == animation_type)
-            .map(|index| self.swap_remove(index))
+impl HashMapAnimationExt for HashMap<AnimationType, f32> {
+    fn find(&self, animation_type: &AnimationType) -> Option<Animation> {
+        self.get(animation_type).map(|&speed| Animation {
+            animation_type: animation_type.clone(),
+            speed,
+        })
     }
 
     fn has(&self, animation_type: &AnimationType) -> bool {
-        self.iter().any(|a| &a.animation_type == animation_type)
+        self.contains_key(animation_type)
+    }
+
+    fn to_iter(&self) -> impl Iterator<Item = Animation> + '_ {
+        self.iter().map(|(animation_type, &speed)| Animation {
+            animation_type: animation_type.clone(),
+            speed,
+        })
     }
 }
 
 impl Animation {
-    pub fn play(
-        &self,
-        border: &mut WindowBorder,
-        anim_elapsed: &Duration,
-        anim_speed: f32,
-    ) {
+    pub fn play(&self, border: &mut WindowBorder, anim_elapsed: &Duration, anim_speed: f32) {
         match self.animation_type {
             AnimationType::Spiral => {
                 if border.spiral_anim_angle >= 360.0 {
                     border.spiral_anim_angle -= 360.0;
                 }
-                border.spiral_anim_angle +=
-                    (anim_elapsed.as_secs_f32() * anim_speed).min(359.0);
+                border.spiral_anim_angle += (anim_elapsed.as_secs_f32() * anim_speed).min(359.0);
 
                 let center_x = WindowsApi::get_rect_width(border.window_rect) / 2;
                 let center_y = WindowsApi::get_rect_height(border.window_rect) / 2;
 
-                border.brush_properties.transform = Matrix3x2::rotation(
-                    border.spiral_anim_angle,
-                    center_x as f32,
-                    center_y as f32,
-                );
+                border.brush_properties.transform =
+                    Matrix3x2::rotation(border.spiral_anim_angle, center_x as f32, center_y as f32);
             }
             AnimationType::ReverseSpiral => {
                 border.spiral_anim_angle %= 360.0;
-                    if border.spiral_anim_angle < 0.0 {
-                        border.spiral_anim_angle += 360.0;
-                    }
-                    border.spiral_anim_angle -=
-                        (anim_elapsed.as_secs_f32() * anim_speed).min(359.0);
+                if border.spiral_anim_angle < 0.0 {
+                    border.spiral_anim_angle += 360.0;
+                }
+                border.spiral_anim_angle -= (anim_elapsed.as_secs_f32() * anim_speed).min(359.0);
 
-                    let center_x = WindowsApi::get_rect_width(border.window_rect) / 2;
-                    let center_y = WindowsApi::get_rect_height(border.window_rect) / 2;
+                let center_x = WindowsApi::get_rect_width(border.window_rect) / 2;
+                let center_y = WindowsApi::get_rect_height(border.window_rect) / 2;
 
-                    border.brush_properties.transform = Matrix3x2::rotation(
-                        border.spiral_anim_angle,
-                        center_x as f32,
-                        center_y as f32,
-                    );
+                border.brush_properties.transform =
+                    Matrix3x2::rotation(border.spiral_anim_angle, center_x as f32, center_y as f32);
             }
             AnimationType::Fade => {
                 animate_fade(border, anim_elapsed, anim_speed);

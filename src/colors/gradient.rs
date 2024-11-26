@@ -25,6 +25,7 @@ pub struct GradientConfig {
 pub struct Gradient {
     pub direction: GradientCoordinates,
     pub gradient_stops: Vec<D2D1_GRADIENT_STOP>,
+    pub opacity: f32
 }
 
 #[derive(Debug)]

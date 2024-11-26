@@ -1,10 +1,7 @@
 use crate::animations::Animation;
 use crate::animations::AnimationType;
 use crate::animations::VecAnimation;
-use crate::animations::ANIM_FADE_TO_ACTIVE;
-use crate::animations::ANIM_FADE_TO_INACTIVE;
-use crate::animations::ANIM_FADE_TO_VISIBLE;
-use crate::animations::ANIM_NONE;
+use crate::animations::ANIM_FADE;
 use crate::colors::color::Color;
 use crate::timer::KillCustomTimer;
 use crate::timer::SetCustomTimer;
@@ -139,7 +136,6 @@ pub struct WindowBorder {
     pub last_render_time: Option<std::time::Instant>,
     pub spiral_anim_angle: f32,
     pub event_anim: i32,
-    pub fade_anim_temp: Color,
     pub is_window_active: bool,
     pub timer_id: Option<usize>,
 }
@@ -215,10 +211,6 @@ impl WindowBorder {
                 true => self.active_animations.clone(),
                 false => self.inactive_animations.clone(),
             };
-
-            if self.current_animations.has(&AnimationType::Fade) {
-                self.event_anim = ANIM_FADE_TO_VISIBLE;
-            }
 
             let _ = self.update_color(Some(initialize_delay));
 
@@ -349,36 +341,17 @@ impl WindowBorder {
     }
 
     pub fn update_color(&mut self, check_delay: Option<u64>) -> Result<()> {
-        match self.current_animations.fetch(&AnimationType::Fade) {
-            Some(anim) => {
-                if check_delay == Some(0) {
-                    self.current_color = match self.is_window_active {
-                        true => self.active_color.clone(),
-                        false => self.inactive_color.clone(),
-                    };
-                    return Ok(());
-                }
-
-                let animation = anim.clone();
-
-                if self.event_anim == ANIM_FADE_TO_VISIBLE {
-                    animation.play(self, None, None);
-                } else {
-                    if self.event_anim == ANIM_NONE {
-                        self.fade_anim_temp = self.current_color.clone();
-                        animation.play(self, None, None);
-                    }
-                    match self.is_window_active {
-                        true => self.event_anim = ANIM_FADE_TO_ACTIVE,
-                        false => self.event_anim = ANIM_FADE_TO_INACTIVE,
-                    }
-                }
+        match self.current_animations.has(&AnimationType::Fade) && check_delay != Some(0) {
+            true => {
+                self.event_anim = ANIM_FADE;
             }
-            None => {
-                self.current_color = match self.is_window_active {
-                    true => self.active_color.clone(),
-                    false => self.inactive_color.clone(),
+            false => {
+                let (top_color, bottom_color) = match self.is_window_active {
+                    true => (&mut self.active_color, &mut self.inactive_color),
+                    false => (&mut self.inactive_color, &mut self.active_color),
                 };
+                top_color.set_opacity(1.0);
+                bottom_color.set_opacity(0.0);
             }
         }
 
@@ -412,30 +385,40 @@ impl WindowBorder {
         unsafe {
             let _ = render_target.Resize(&pixel_size);
 
-            let Some(brush) = self.current_color.to_brush(
-                render_target,
-                &self.window_rect,
-                &self.brush_properties,
-            ) else {
-                return Ok(());
+            let active_opacity = self.active_color.get_opacity();
+            let inactive_opacity = self.inactive_color.get_opacity();
+
+            let (bottom_opacity, top_opacity) = match self.is_window_active {
+                true => (inactive_opacity, active_opacity),
+                false => (active_opacity, inactive_opacity),
+            };
+
+            let (bottom_color, top_color) = match self.is_window_active {
+                true => (&self.inactive_color, &self.active_color),
+                false => (&self.active_color, &self.inactive_color),
             };
 
             render_target.BeginDraw();
             render_target.Clear(None);
 
-            if self.event_anim == ANIM_FADE_TO_ACTIVE || self.event_anim == ANIM_FADE_TO_INACTIVE {
-                let Some(brush2) = self.fade_anim_temp.to_brush(
-                    render_target,
-                    &self.window_rect,
-                    &self.brush_properties,
-                ) else {
+            if bottom_opacity > 0.0 {
+                let Some(brush) =
+                    bottom_color.to_brush(render_target, &self.window_rect, &self.brush_properties)
+                else {
                     return Ok(());
                 };
-                self.draw_rectangle(render_target, &brush2);
+                self.draw_rectangle(render_target, &brush);
             }
-            self.draw_rectangle(render_target, &brush);
+            if top_opacity > 0.0 {
+                let Some(brush) =
+                    top_color.to_brush(render_target, &self.window_rect, &self.brush_properties)
+                else {
+                    return Ok(());
+                };
+                self.draw_rectangle(render_target, &brush);
+            }
+
             let _ = render_target.EndDraw(None, None);
-            // let _ = InvalidateRect(self.border_window, None, false);
         }
 
         Ok(())
@@ -549,6 +532,7 @@ impl WindowBorder {
             }
             WM_APP_FOCUS => {
                 self.is_window_active = WindowsApi::is_window_active(self.tracking_window);
+
                 self.current_animations = match self.is_window_active {
                     true => self.active_animations.clone(),
                     false => self.inactive_animations.clone(),
@@ -579,9 +563,21 @@ impl WindowBorder {
 
                 self.pause = false;
             }
-            // EVENT_OBJECT_HIDE / EVENT_OBJECT_CLOAKED / EVENT_OBJECT_MINIMIZESTART
-            WM_APP_HIDECLOAKED | WM_APP_MINIMIZESTART => {
+            // EVENT_OBJECT_HIDE / EVENT_OBJECT_CLOAKED
+            WM_APP_HIDECLOAKED => {
                 let _ = self.update_position(Some(SWP_HIDEWINDOW));
+
+                self.destroy_anim_timer();
+
+                self.pause = true;
+            }
+            // EVENT_OBJECT_MINIMIZESTART
+            WM_APP_MINIMIZESTART => {
+                let _ = self.update_position(Some(SWP_HIDEWINDOW));
+
+                // TODO this is scuffed to work with fade animations
+                self.active_color.set_opacity(0.0);
+                self.inactive_color.set_opacity(0.0);
 
                 self.destroy_anim_timer();
 
@@ -593,10 +589,10 @@ impl WindowBorder {
             WM_APP_MINIMIZEEND => {
                 thread::sleep(time::Duration::from_millis(self.unminimize_delay));
 
+                self.last_animation_time = Some(time::Instant::now());
+
                 if WindowsApi::has_native_border(self.tracking_window) {
-                    if self.current_animations.has(&AnimationType::Fade) {
-                        self.event_anim = ANIM_FADE_TO_VISIBLE;
-                    }
+                    let _ = self.update_color(Some(self.unminimize_delay));
                     let _ = self.update_window_rect();
                     let _ = self.update_position(Some(SWP_SHOWWINDOW));
                     let _ = self.render();
@@ -630,7 +626,7 @@ impl WindowBorder {
                         match animation.animation_type {
                             AnimationType::Spiral | AnimationType::ReverseSpiral => {
                                 let anim_speed = animation.speed;
-                                animation.play(self, Some(&anim_elapsed), Some(anim_speed * 2.0));
+                                animation.play(self, &anim_elapsed, anim_speed * 2.0);
                                 true
                             }
                             AnimationType::Fade => false,
@@ -638,13 +634,10 @@ impl WindowBorder {
                     })
                 };
 
-                if matches!(
-                    self.event_anim,
-                    ANIM_FADE_TO_ACTIVE | ANIM_FADE_TO_INACTIVE | ANIM_FADE_TO_VISIBLE
-                ) {
+                if self.event_anim == ANIM_FADE {
                     let anim = self.current_animations.fetch(&AnimationType::Fade).unwrap();
                     let animation = anim.clone();
-                    animation.play(self, Some(&anim_elapsed), Some(animation.speed / 15.0));
+                    animation.play(self, &anim_elapsed, animation.speed / 15.0);
                     animations_updated = true;
                 }
 

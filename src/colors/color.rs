@@ -30,6 +30,7 @@ use super::utils::is_valid_direction;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Solid {
     pub color: D2D1_COLOR_F,
+    pub opacity: f32
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -49,6 +50,7 @@ impl Default for Color {
     fn default() -> Self {
         Color::Solid(Solid {
             color: D2D1_COLOR_F::default(),
+            opacity: 0.0
         })
     }
 }
@@ -158,13 +160,6 @@ impl ToColor for String {
 }
 
 impl Color {
-    pub fn gradient_stops_len(&self) -> usize {
-        match self {
-            Self::Gradient(gradient) => gradient.gradient_stops.len(),
-            _ => 0,
-        }
-    }
-
     fn from_string(color: String, is_active: Option<bool>) -> Self {
         if color.starts_with("gradient(") && color.ends_with(")") {
             return Self::from_string(strip_string(color, &["gradient("], ')'), is_active);
@@ -181,6 +176,7 @@ impl Color {
         if color_matches.len() == 1 {
             return Self::Solid(Solid {
                 color: color_matches[0].to_string().to_d2d1_color(is_active),
+                opacity: 0.0
             });
         }
 
@@ -223,6 +219,7 @@ impl Color {
         Self::Gradient(Gradient {
             gradient_stops,
             direction,
+            opacity: 0.0
         })
     }
 
@@ -230,9 +227,11 @@ impl Color {
         match color.colors.len() {
             0 => Color::Solid(Solid {
                 color: D2D1_COLOR_F::default(),
+                opacity: 0.0
             }),
             1 => Color::Solid(Solid {
                 color: color.colors[0].clone().to_d2d1_color(is_active),
+                opacity: 0.0
             }),
             _ => {
                 let num_colors = color.colors.len();
@@ -257,6 +256,7 @@ impl Color {
                 Color::Gradient(Gradient {
                     gradient_stops,
                     direction,
+                    opacity: 0.0
                 })
             }
         }
@@ -268,6 +268,20 @@ impl Color {
             ColorConfig::Mapping(gradient_def) => {
                 Self::from_mapping(gradient_def.clone(), is_active)
             }
+        }
+    }
+
+    pub fn set_opacity(&mut self, opacity: f32) {
+        match self {
+            Color::Gradient(gradient) => gradient.opacity = opacity,
+            Color::Solid(solid) => solid.opacity = opacity,
+        }
+    }
+
+    pub fn get_opacity(&self) -> f32 {
+        match self {
+            Color::Gradient(gradient) => gradient.opacity,
+            Color::Solid(solid) => solid.opacity,
         }
     }
 
@@ -284,6 +298,9 @@ impl Color {
                 else {
                     return None;
                 };
+
+                brush.SetOpacity(solid.opacity);
+
                 Some(brush.into())
             },
             Color::Gradient(gradient) => unsafe {
@@ -317,6 +334,8 @@ impl Color {
                 ) else {
                     return None;
                 };
+
+                brush.SetOpacity(gradient.opacity);
 
                 Some(brush.into())
             },

@@ -146,7 +146,7 @@ pub fn animate_fade(border: &mut WindowBorder, anim_elapsed: &Duration, anim_spe
     let top_opacity = top_color.get_opacity();
     let bottom_opacity = bottom_color.get_opacity();
 
-    if top_opacity >= 0.99 {
+    if border.animations.fade_progress >= 1.0 || top_opacity >= 1.0 {
         top_color.set_opacity(1.0);
         bottom_color.set_opacity(0.0);
 
@@ -160,7 +160,12 @@ pub fn animate_fade(border: &mut WindowBorder, anim_elapsed: &Duration, anim_spe
 
     border.animations.fade_progress += delta_t;
 
-    let new_top_opacity = bezier(0.45, 0.0, 0.55, 1.0)(border.animations.fade_progress);
+    let Ok(ease) = bezier(0.5, 0.0, 0.6, 1.0) else {
+        error!("Could not create bezier easing function!");
+        return;
+    };
+
+    let new_top_opacity = ease(border.animations.fade_progress);
 
     // I do the following because I want this to work when a window is first opened (when only the
     // top color should be visible) without having to write a separate function for it lol.

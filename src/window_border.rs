@@ -1,4 +1,5 @@
 use crate::animations::AnimationType;
+use crate::animations::Animations;
 use crate::animations::HashMapAnimationExt;
 use crate::animations::ANIM_FADE;
 use crate::colors::color::Color;
@@ -15,7 +16,6 @@ use crate::windows_api::WM_APP_REORDER;
 use crate::windows_api::WM_APP_SHOWUNCLOAKED;
 use crate::windows_api::WM_APP_TIMER;
 
-use std::collections::HashMap;
 use std::ptr;
 use std::sync::LazyLock;
 use std::sync::OnceLock;
@@ -123,10 +123,7 @@ pub struct WindowBorder {
     pub brush_properties: D2D1_BRUSH_PROPERTIES,
     pub render_target: OnceLock<ID2D1HwndRenderTarget>,
     pub rounded_rect: D2D1_ROUNDED_RECT,
-    pub active_animations: HashMap<AnimationType, f32>,
-    pub inactive_animations: HashMap<AnimationType, f32>,
-    pub current_animations: HashMap<AnimationType, f32>,
-    pub animation_fps: i32,
+    pub animations: Animations,
     pub active_color: Color,
     pub inactive_color: Color,
     pub current_color: Color,
@@ -207,9 +204,9 @@ impl WindowBorder {
 
             self.is_window_active = WindowsApi::is_window_active(self.tracking_window);
 
-            self.current_animations = match self.is_window_active {
-                true => self.active_animations.clone(),
-                false => self.inactive_animations.clone(),
+            self.animations.current = match self.is_window_active {
+                true => self.animations.active.clone(),
+                false => self.animations.inactive.clone(),
             };
 
             let _ = self.update_color(Some(initialize_delay));
@@ -341,7 +338,7 @@ impl WindowBorder {
     }
 
     pub fn update_color(&mut self, check_delay: Option<u64>) -> Result<()> {
-        match self.current_animations.has(&AnimationType::Fade) && check_delay != Some(0) {
+        match self.animations.current.has(&AnimationType::Fade) && check_delay != Some(0) {
             true => {
                 self.event_anim = ANIM_FADE;
             }
@@ -444,10 +441,10 @@ impl WindowBorder {
     }
 
     pub fn set_anim_timer(&mut self) {
-        if !self.active_animations.is_empty()
-            || !self.inactive_animations.is_empty() && self.timer_id.is_none()
+        if !self.animations.active.is_empty()
+            || !self.animations.inactive.is_empty() && self.timer_id.is_none()
         {
-            let timer_duration = (1000 / self.animation_fps) as u32;
+            let timer_duration = (1000 / self.animations.fps) as u32;
             unsafe {
                 self.timer_id = Some(SetCustomTimer(self.border_window, 1, timer_duration));
             }
@@ -533,9 +530,9 @@ impl WindowBorder {
             WM_APP_FOCUS => {
                 self.is_window_active = WindowsApi::is_window_active(self.tracking_window);
 
-                self.current_animations = match self.is_window_active {
-                    true => self.active_animations.clone(),
-                    false => self.inactive_animations.clone(),
+                self.animations.current = match self.is_window_active {
+                    true => self.animations.active.clone(),
+                    false => self.animations.inactive.clone(),
                 };
 
                 let _ = self.update_color(None);
@@ -618,11 +615,11 @@ impl WindowBorder {
 
                 self.last_animation_time = Some(time::Instant::now());
 
-                let mut animations_updated = if self.current_animations.is_empty() {
+                let mut animations_updated = if self.animations.current.is_empty() {
                     self.brush_properties.transform = Matrix3x2::identity();
                     false
                 } else {
-                    self.current_animations.clone().to_iter().any(|animation| {
+                    self.animations.current.clone().to_iter().any(|animation| {
                         match animation.animation_type {
                             AnimationType::Spiral | AnimationType::ReverseSpiral => {
                                 let anim_speed = animation.speed;
@@ -635,14 +632,14 @@ impl WindowBorder {
                 };
 
                 if self.event_anim == ANIM_FADE {
-                    let anim = self.current_animations.find(&AnimationType::Fade).unwrap();
+                    let anim = self.animations.current.find(&AnimationType::Fade).unwrap();
                     anim.play(self, &anim_elapsed, anim.speed / 15.0);
                     animations_updated = true;
                 }
 
                 // println!("time since last anim: {}", render_elapsed.as_secs_f32());
 
-                let interval = 1.0 / self.animation_fps as f32;
+                let interval = 1.0 / self.animations.fps as f32;
                 let diff = render_elapsed.as_secs_f32() - interval;
                 if animations_updated && (diff.abs() <= 0.001 || diff >= 0.0) {
                     let _ = self.render();

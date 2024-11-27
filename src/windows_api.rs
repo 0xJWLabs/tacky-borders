@@ -467,9 +467,7 @@ impl WindowsApi {
                 border_radius,
                 active_color: border_colors.0,
                 inactive_color: border_colors.1,
-                active_animations: animations.active,
-                inactive_animations: animations.inactive,
-                animation_fps: animations.fps,
+                animations,
                 unminimize_delay,
                 ..Default::default()
             };

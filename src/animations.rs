@@ -7,6 +7,7 @@ use serde_yml::Value;
 use std::collections::HashMap;
 use std::time::Duration;
 use windows::Foundation::Numerics::Matrix3x2;
+use crate::bezier::bezier;
 
 pub const ANIM_NONE: i32 = 0;
 pub const ANIM_FADE: i32 = 1;
@@ -30,8 +31,14 @@ pub struct Animations {
     pub active: HashMap<AnimationType, f32>,
     #[serde(deserialize_with = "animation", default)]
     pub inactive: HashMap<AnimationType, f32>,
+    #[serde(skip)]
+    pub current: HashMap<AnimationType, f32>,
     #[serde(default = "default_fps")]
     pub fps: i32,
+    #[serde(skip)]
+    pub fade_progress: f32,
+    #[serde(skip)]
+    pub spiral_angle: f32
 }
 
 fn default_fps() -> i32 {
@@ -130,7 +137,7 @@ impl Animation {
     }
 }
 
-fn animate_fade(border: &mut WindowBorder, anim_elapsed: &Duration, anim_speed: f32) {
+pub fn animate_fade(border: &mut WindowBorder, anim_elapsed: &Duration, anim_speed: f32) {
     let (bottom_color, top_color) = match border.is_window_active {
         true => (&mut border.inactive_color, &mut border.active_color),
         false => (&mut border.active_color, &mut border.inactive_color),
@@ -139,16 +146,28 @@ fn animate_fade(border: &mut WindowBorder, anim_elapsed: &Duration, anim_speed: 
     let top_opacity = top_color.get_opacity();
     let bottom_opacity = bottom_color.get_opacity();
 
-    let anim_step = anim_elapsed.as_secs_f32() * anim_speed * (0.75 + (top_opacity / 4.0));
+    if top_opacity >= 0.99 {
+        top_color.set_opacity(1.0);
+        bottom_color.set_opacity(0.0);
 
-    let mut new_top_opacity = top_opacity + anim_step;
-    let mut new_bottom_opacity = bottom_opacity - anim_step;
-
-    if new_top_opacity >= 1.0 {
-        new_top_opacity = 1.0;
-        new_bottom_opacity = 0.0;
+        // Reset fade_progress so we can reuse it next time
+        border.animations.fade_progress = 0.0;
         border.event_anim = ANIM_NONE;
+        return;
     }
+
+    let delta_t = anim_elapsed.as_secs_f32() * anim_speed;
+
+    border.animations.fade_progress += delta_t;
+
+    let new_top_opacity = bezier(0.45, 0.0, 0.55, 1.0)(border.animations.fade_progress);
+
+    // I do the following because I want this to work when a window is first opened (when only the
+    // top color should be visible) without having to write a separate function for it lol.
+    let new_bottom_opacity = match bottom_opacity == 0.0 {
+        true => 0.0,
+        false => 1.0 - new_top_opacity,
+    };
 
     top_color.set_opacity(new_top_opacity);
     bottom_color.set_opacity(new_bottom_opacity);

@@ -14,33 +14,33 @@ Upon the first run, `tacky-borders` will generate a configuration file located a
 ### Build it Yourself
 If you'd like to build the application manually:
 
-    1. Ensure you have the following tools installed:
-        - [Rust](https://www.rust-lang.org/tools/install)
-        - [MSVC](https://visualstudio.microsoft.com/downloads/)
+1. Ensure you have the following tools installed:
+    - [Rust](https://www.rust-lang.org/tools/install)
+    - [MSVC](https://visualstudio.microsoft.com/downloads/)
 
-    2. Clone this repository:
+2. Clone this repository:
 
-        ```sh
-        git clone https://github.com/GlazeBar/tacky-borders.git
-        ```
+    ```sh
+    git clone https://github.com/GlazeBar/tacky-borders.git
+    ```
     
-    3. Navigate into the project directory:
+3. Navigate into the project directory:
 
-        ```sh
-        cd tacky-borders
-        ```
+    ```sh
+    cd tacky-borders
+    ```
     
-    4. Build or run the project:
+4. Build or run the project:
 
-        ```sh
-        cargo build --release
-        ```
+    ```sh
+    cargo build --release
+    ```
 
-        or
+    or
 
-        ```sh
-        cargo run
-        ```
+    ```sh
+    cargo run
+    ```
 
 ## Configuration
 

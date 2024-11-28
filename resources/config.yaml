@@ -48,12 +48,12 @@ global:
 
 # animations: Defines the animation properties for the border.
 #   - active: Specifies animations for the active window border. Can be a map with optional speed values 
-#             (e.g., `{ Spiral, Fade: 20 }`) or a simple list (e.g., `{ Spiral, Fade }`).
+#             (e.g., `{ Spiral, Fade: { speed: 60, easing: Linear } }`) or a simple list (e.g., `{ Spiral, Fade }`).
 #   - inactive: Specifies animations for the inactive window border. Can be a map with optional speed values 
 #               (e.g., `{ Fade: 10 }`) or a simple list (e.g., `{ Fade }`).
 #   - fps: Defines the frames per second for the animations (default: 60).
   animations:
-    active: { Spiral, Fade }
+    active: { Spiral: { speed: 60, easing: Linear }, Fade }
     inactive: { Fade }
     fps: 60
 

@@ -1,113 +1,5 @@
-const NEWTON_ITERATIONS: u32 = 4; // Number of iterations to run Newton-Raphson method
-const NEWTON_MIN_SLOPE: f32 = 0.001; // Minimum slope for switching from Newton's method to binary subdivision
 const SUBDIVISION_PRECISION: f32 = 0.0000001; // Precision for binary subdivision
 const SUBDIVISION_MAX_ITERATIONS: u32 = 10; // Maximum number of iterations for binary subdivision
-const K_SPLINE_TABLE_SIZE: usize = 11; // Number of sample points in the spline table
-const K_SAMPLE_STEP_SIZE: f32 = 1.0 / (K_SPLINE_TABLE_SIZE as f32 - 1.0); // Step size for the spline sample
-
-// Calculates the coefficient for the cubic Bezier function's term involving a1 and a2
-#[inline]
-fn a(a1: f32, a2: f32) -> f32 {
-    1.0 - 3.0 * a2 + 3.0 * a1 // The coefficient for the cubic term
-}
-
-// Calculates the coefficient for the Bezier function's term involving a1 and a2
-#[inline]
-fn b(a1: f32, a2: f32) -> f32 {
-    3.0 * a2 - 6.0 * a1 // The coefficient for the quadratic term
-}
-
-// Calculates the coefficient for the linear term of the Bezier function involving a1
-#[inline]
-fn c(a1: f32) -> f32 {
-    3.0 * a1 // The coefficient for the linear term
-}
-
-// Returns y(t) for given t, x1, and x2 (or y1 and y2), which computes the cubic Bezier curve value
-fn calc_bezier(t: f32, a1: f32, a2: f32) -> f32 {
-    // Evaluate the cubic Bezier function at time t using a1 and a2 as control points
-    ((a(a1, a2) * t + b(a1, a2)) * t + c(a1)) * t
-}
-
-// Returns the slope (dx/dt) for the Bezier curve at time t, using a1 and a2 as control points
-fn get_slope(t: f32, a1: f32, a2: f32) -> f32 {
-    // Compute the derivative of the cubic Bezier function at time t
-    3.0 * a(a1, a2) * t * t + 2.0 * b(a1, a2) * t + c(a1)
-}
-
-// Performs binary subdivision to approximate t for the given x value
-#[inline]
-fn binary_subdivide(a_x: f32, a_a: f32, a_b: f32, m_x1: f32, m_x2: f32) -> f32 {
-    let mut a = a_a; // Start of the search range
-    let mut b = a_b; // End of the search range
-    let mut i = 0; // Iteration counter
-
-    // Perform binary search to find t for which calc_bezier(t) is close to a_x
-    while (b - a).abs() > SUBDIVISION_PRECISION && i < SUBDIVISION_MAX_ITERATIONS {
-        let current_t = a + (b - a) / 2.0; // Midpoint of the current range
-        let current_x = calc_bezier(current_t, m_x1, m_x2) - a_x; // Evaluate Bezier and compare to a_x
-
-        // Narrow the search range based on the comparison
-        if current_x > 0.0 {
-            b = current_t; // Move the upper bound closer
-        } else {
-            a = current_t; // Move the lower bound closer
-        }
-
-        i += 1; // Increment iteration count
-    }
-
-    a + (b - a) / 2.0 // Return the midpoint of the final range
-}
-
-// Applies Newton-Raphson method to approximate t for the given x value
-#[inline]
-fn newton_raphson_iterate(a_x: f32, a_guess_t: f32, m_x1: f32, m_x2: f32) -> f32 {
-    let mut guess_t = a_guess_t; // Initial guess for t
-    for _ in 0..NEWTON_ITERATIONS {
-        let current_slope = get_slope(guess_t, m_x1, m_x2); // Calculate the slope (dx/dt)
-        if current_slope == 0.0 {
-            return guess_t; // If slope is zero, return the current guess for t
-        }
-
-        let current_x = calc_bezier(guess_t, m_x1, m_x2) - a_x; // Evaluate Bezier and find the difference from a_x
-        guess_t -= current_x / current_slope; // Adjust guess using Newton-Raphson update
-    }
-
-    guess_t // Return the final t after all iterations
-}
-
-fn get_t_for_x(x: f32, m_x1: f32, m_x2: f32) -> f32 {
-    // Precompute the sample values for the Bezier curve at different t values
-    let sample_values: Vec<f32> = (0..K_SPLINE_TABLE_SIZE)
-        .map(|i| calc_bezier(i as f32 * K_SAMPLE_STEP_SIZE, m_x1, m_x2))
-        .collect();
-    let mut low = 0usize; // Lower bound for binary search
-    let mut high = K_SPLINE_TABLE_SIZE - 1; // Upper bound for binary search
-    while high - low > 1 {
-        let mid = (low + high) / 2;
-        if sample_values[mid] < x {
-            low = mid; // Narrow down the search range
-        } else {
-            high = mid;
-        }
-    }
-
-    // Interpolate the guess for t using the binary search result
-    let dist = (x - sample_values[low]) / (sample_values[low + 1] - sample_values[low]);
-    let guess_for_t = low as f32 * K_SAMPLE_STEP_SIZE + dist * K_SAMPLE_STEP_SIZE;
-
-    // Compute the initial slope and decide whether to use Newton's method or binary subdivision
-    let initial_slope = get_slope(guess_for_t, m_x1, m_x2);
-    let t = if initial_slope >= NEWTON_MIN_SLOPE {
-        // Use Newton-Raphson iteration if the slope is large enough
-        newton_raphson_iterate(x, guess_for_t, m_x1, m_x2)
-    } else {
-        // Otherwise, fall back to binary subdivision
-        binary_subdivide(x, 0.0, 1.0, m_x1, m_x2)
-    };
-    t
-}
 
 pub enum BezierError {
     InvalidControlPoint,
@@ -123,26 +15,104 @@ impl std::fmt::Display for BezierError {
     }
 }
 
-// Public function to generate a Bezier function from two control points
-pub fn bezier(
-    m_x1: f32,
-    m_y1: f32,
-    m_x2: f32,
-    m_y2: f32,
-) -> Result<impl Fn(f32) -> f32, BezierError> {
-    if !(0.0..=1.0).contains(&m_x1) || !(0.0..=1.0).contains(&m_x2) {
+#[derive(Debug, Clone, Copy)]
+pub struct Point(pub f32, pub f32);
+
+impl Point {
+    fn lerp(a: Point, b: Point, t: f32) -> Point {
+        Point(a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t)
+    }
+}
+
+/// Computes the cubic Bézier curve using De Casteljau's algorithm.
+///
+/// De Casteljau's algorithm is a recursive method for evaluating Bézier curves
+/// at a specific parameter `t`. It works by linearly interpolating between
+/// control points at each level until a single point is obtained.
+///
+/// Parameters:
+/// - `t`: The parameter (0 ≤ t ≤ 1) at which to evaluate the curve.
+/// - `p0`: The first control point (start of the curve).
+/// - `p1`: The second control point (first "pull" control).
+/// - `p2`: The third control point (second "pull" control).
+/// - `p3`: The fourth control point (end of the curve).
+///
+/// Returns:
+/// - The y-coordinate of the Bézier curve at parameter `t`.
+fn de_casteljau(t: f32, p0: Point, p1: Point, p2: Point, p3: Point) -> Point {
+    // First level: Linearly interpolate between the control points
+    // Compute intermediate points `q0`, `q1`, and `q2` at the first level.
+    let q0 = Point::lerp(p0, p1, t);
+    let q1 = Point::lerp(p1, p2, t);
+    let q2 = Point::lerp(p2, p3, t);
+
+    // Second level: Interpolate between the intermediate points from the first level
+    // Compute `r0` and `r1` as the second-level intermediate points.
+    let r0 = Point::lerp(q0, q1, t);
+    let r1 = Point::lerp(q1, q2, t);
+
+    // Final level: Interpolate between the second-level points to get the final result
+    // Compute the final point on the curve corresponding to `t`.
+    Point::lerp(r0, r1, t) // Interpolates between r0 and r1 to get the curve's value
+}
+
+/// Uses binary subdivision to find the parameter `t` for a given x-coordinate on the Bézier curve.
+///
+/// # Parameters
+/// - `x`: The target x-coordinate.
+/// - `p0`, `p1`, `p2`, `p3`: The control points of the Bézier curve.
+///
+/// # Returns
+/// The parameter `t` corresponding to the given x-coordinate.
+fn get_t_for_x(x: f32, p0: Point, p1: Point, p2: Point, p3: Point) -> f32 {
+    let mut t0 = 0.0;
+    let mut t1 = 1.0;
+    let mut t = x;
+
+    for _ in 0..SUBDIVISION_MAX_ITERATIONS {
+        // Evaluate the Bézier curve at `t` to find its x-coordinate.
+        let x_val = de_casteljau(t, p0, p1, p2, p3);
+        let error = x - x_val.0;
+
+        // Adjust the range based on the error.
+        if error.abs() < SUBDIVISION_PRECISION {
+            break;
+        }
+        if error > 0.0 {
+            t0 = t;
+        } else {
+            t1 = t;
+        }
+        t = (t0 + t1) / 2.0;
+    }
+
+    t
+}
+
+pub fn bezier(x1: f32, y1: f32, x2: f32, y2: f32) -> Result<impl Fn(f32) -> f32, BezierError> {
+    // Ensure control points are within bounds (for x-coordinates of p1 and p2).
+    if !(0.0..=1.0).contains(&x1) || !(0.0..=1.0).contains(&x2) || !(0.0..=1.0).contains(&y1) || !(0.0..=1.0).contains(&y2) {
         return Err(BezierError::InvalidControlPoint);
     }
 
     Ok(move |x: f32| {
-        if m_x1 == m_y1 && m_x2 == m_y2 {
-            return x;
-        }
-        if x == 0.0 || x == 1.0 {
-            return x; // If x is at the boundary, return x itself
+        // Shortcut for linear curves (control points are on the line y = x).
+        if x1 == y1 && x2 == y2 {
+            return x; // Return the same x for a linear curve (y = x).
         }
 
-        // Return the final value of the Bezier curve for the calculated t
-        calc_bezier(get_t_for_x(x, m_x1, m_x2), m_y1, m_y2)
+        // Handle boundary cases explicitly.
+        if x == 0.0 || x == 1.0 {
+            return x;
+        }
+
+        let p0 = Point(0.0, 0.0);
+        let p1 = Point(x1, y1);
+        let p2 = Point(x2, y2);
+        let p3 = Point(1.0, 1.0);
+
+        // Find the parameter `t` corresponding to the x-coordinate.
+        // Once `t` is found, evaluate the Bézier curve for the y-coordinate.
+        de_casteljau(get_t_for_x(x, p0, p1, p2, p3), p0, p1, p2, p3).1 // Return the y-coordinate
     })
 }

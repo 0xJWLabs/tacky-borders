@@ -633,7 +633,7 @@ impl WindowBorder {
 
                 if self.event_anim == ANIM_FADE {
                     let anim = self.animations.current.find(&AnimationType::Fade).unwrap();
-                    anim.play(self, &anim_elapsed, anim.speed / 15.0);
+                    anim.play(self, &anim_elapsed, anim.speed / 20.0);
                     animations_updated = true;
                 }
 

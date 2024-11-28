@@ -1,3 +1,4 @@
+use crate::bezier::bezier;
 use crate::deserializer::from_str;
 use crate::window_border::WindowBorder;
 use crate::windows_api::WindowsApi;
@@ -7,7 +8,6 @@ use serde_yml::Value;
 use std::collections::HashMap;
 use std::time::Duration;
 use windows::Foundation::Numerics::Matrix3x2;
-use crate::bezier::bezier;
 
 pub const ANIM_NONE: i32 = 0;
 pub const ANIM_FADE: i32 = 1;
@@ -38,7 +38,7 @@ pub struct Animations {
     #[serde(skip)]
     pub fade_progress: f32,
     #[serde(skip)]
-    pub spiral_angle: f32
+    pub spiral_angle: f32,
 }
 
 fn default_fps() -> i32 {
@@ -160,7 +160,7 @@ pub fn animate_fade(border: &mut WindowBorder, anim_elapsed: &Duration, anim_spe
 
     border.animations.fade_progress += delta_t;
 
-    let Ok(ease) = bezier(0.5, 0.0, 0.6, 1.0) else {
+    let Ok(ease) = bezier(0.42, 0.0, 0.58, 1.0) else {
         error!("Could not create bezier easing function!");
         return;
     };

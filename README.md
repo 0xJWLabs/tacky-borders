@@ -2,6 +2,8 @@
 
 Bring sleek, customizable borders to your Windows desktop.
 
+https://github.com/user-attachments/assets/246300e8-0853-4408-a05d-1b2ae91c4da0
+
 ## Installation
 
 ### Download Prebuilt Release
@@ -30,11 +32,7 @@ If you'd like to build the application manually:
     cd tacky-borders
     ```
     
-4. Build or
-
-https://github.com/user-attachments/assets/246300e8-0853-4408-a05d-1b2ae91c4da0
-
- run the project:
+4. Build or run the project:
 
     ```sh
     cargo build --release

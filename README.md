@@ -2,6 +2,8 @@
 
 Bring sleek, customizable borders to your Windows desktop.
 
+Use the original [tacky-borders](https://github.com/lukeyou05/tacky-borders) please!
+
 https://github.com/user-attachments/assets/246300e8-0853-4408-a05d-1b2ae91c4da0
 
 ## Installation
@@ -88,9 +90,6 @@ To make customization easier, a [configuration schema](./schema.json) is availab
 ## Credits
 This project makes use of the following open-source library:
 - [Bezier-Easing](https://github.com/gre/bezier-easing) by Gaëtan Renaudeau
-
-This is the original tacky-borders:
-- [tacky-borders](https://github.com/lukeyou05/tacky-borders) by LukeYou05
 
 ## License
 

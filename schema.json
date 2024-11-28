@@ -60,8 +60,25 @@
                 ]
               },
               "additionalProperties": {
-                "type": "number",
-                "description": "The speed of the animation (a numeric value)."
+                "description": "An object that may contain optional 'speed' and 'easing' values.",
+                "type": "object",
+                "properties": {
+                  "speed": {
+                    "type": "number",
+                    "description": "The speed of the animation (a numeric value)."
+                  },
+                  "easing": {
+                    "type": "string",
+                    "enum": [
+                      "Linear",
+                      "EaseIn",
+                      "EaseOut",
+                      "EaseInOut"
+                    ],
+                    "description": "The easing of the animation."
+                  }
+                },
+                "additionalProperties": false
               }
             },
             "inactive": {
@@ -75,9 +92,26 @@
                 ]
               },
               "additionalProperties": {
-                "type": "number",
-                "description": "The speed of the animation (a numeric value)."
-              }
+                "description": "An object that may contain optional 'speed' and 'easing' values.",
+                "type": "object",
+                "properties": {
+                  "speed": {
+                    "type": "number",
+                    "description": "The speed of the animation (a numeric value)."
+                  },
+                  "easing": {
+                    "type": "string",
+                    "enum": [
+                      "Linear",
+                      "EaseIn",
+                      "EaseOut",
+                      "EaseInOut"
+                    ],
+                    "description": "The easing of the animation."
+                  }
+                },
+                "additionalProperties": false
+              } 
             },
             "speed": {
               "type": "number",
@@ -386,8 +420,25 @@
                       ]
                     },
                     "additionalProperties": {
-                      "type": "number",
-                      "description": "The speed of the animation (a numeric value)."
+                      "description": "An object that may contain optional 'speed' and 'easing' values.",
+                      "type": "object",
+                      "properties": {
+                        "speed": {
+                          "type": "number",
+                          "description": "The speed of the animation (a numeric value)."
+                        },
+                        "easing": {
+                          "type": "string",
+                          "enum": [
+                            "Linear",
+                            "EaseIn",
+                            "EaseOut",
+                            "EaseInOut"
+                          ],
+                          "description": "The easing of the animation."
+                        }
+                      },
+                      "additionalProperties": false
                     }
                   },
                   "inactive": {
@@ -401,8 +452,25 @@
                       ]
                     },
                     "additionalProperties": {
-                      "type": "number",
-                      "description": "The speed of the animation (a numeric value)."
+                      "description": "An object that may contain optional 'speed' and 'easing' values.",
+                      "type": "object",
+                      "properties": {
+                        "speed": {
+                          "type": "number",
+                          "description": "The speed of the animation (a numeric value)."
+                        },
+                        "easing": {
+                          "type": "string",
+                          "enum": [
+                            "Linear",
+                            "EaseIn",
+                            "EaseOut",
+                            "EaseInOut"
+                          ],
+                          "description": "The easing of the animation."
+                        }
+                      },
+                      "additionalProperties": false
                     }
                   },
                   "fps": {

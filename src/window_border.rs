@@ -626,13 +626,18 @@ impl WindowBorder {
                                 animation.play(self, &anim_elapsed, anim_speed * 2.0);
                                 true
                             }
-                            AnimationType::Fade => false,
+                            _ => false,
                         }
                     })
                 };
 
                 if self.event_anim == ANIM_FADE {
-                    let anim = self.animations.current.find(&AnimationType::Fade).unwrap();
+                    let anim = self
+                        .animations
+                        .current
+                        .find(&AnimationType::Fade)
+                        .unwrap()
+                        .clone();
                     anim.play(self, &anim_elapsed, anim.speed / 20.0);
                     animations_updated = true;
                 }

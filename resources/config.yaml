@@ -53,8 +53,8 @@ global:
 #               (e.g., `{ Fade: 10 }`) or a simple list (e.g., `{ Fade }`).
 #   - fps: Defines the frames per second for the animations (default: 60).
   animations:
-    active: { Spiral: { speed: 60, easing: Linear }, Fade }
-    inactive: { Fade }
+    active: { Spiral: { speed: 60, easing: linear }, Fade }
+    inactive: { Fade: { easing: "cubic-bezier(0.42, 0.0, 0.58, 1.0)" } }
     fps: 60
 
 # inactive_color: Defines the color of the inactive window border.

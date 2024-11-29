@@ -1,4 +1,4 @@
-const SUBDIVISION_PRECISION: f32 = 0.0000001; // Precision for binary subdivision
+const SUBDIVISION_PRECISION: f32 = 0.0001; // Precision for binary subdivision
 const SUBDIVISION_MAX_ITERATIONS: u32 = 10; // Maximum number of iterations for binary subdivision
 
 pub enum BezierError {
@@ -91,7 +91,11 @@ fn get_t_for_x(x: f32, p0: Point, p1: Point, p2: Point, p3: Point) -> f32 {
 
 pub fn bezier(x1: f32, y1: f32, x2: f32, y2: f32) -> Result<impl Fn(f32) -> f32, BezierError> {
     // Ensure control points are within bounds (for x-coordinates of p1 and p2).
-    if !(0.0..=1.0).contains(&x1) || !(0.0..=1.0).contains(&x2) || !(0.0..=1.0).contains(&y1) || !(0.0..=1.0).contains(&y2) {
+    if !(0.0..=1.0).contains(&x1)
+        || !(0.0..=1.0).contains(&x2)
+        || !(0.0..=1.0).contains(&y1)
+        || !(0.0..=1.0).contains(&y2)
+    {
         return Err(BezierError::InvalidControlPoint);
     }
 
@@ -116,3 +120,4 @@ pub fn bezier(x1: f32, y1: f32, x2: f32, y2: f32) -> Result<impl Fn(f32) -> f32,
         de_casteljau(get_t_for_x(x, p0, p1, p2, p3), p0, p1, p2, p3).1 // Return the y-coordinate
     })
 }
+

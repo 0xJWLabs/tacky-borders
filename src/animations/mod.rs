@@ -84,8 +84,6 @@ where
                         easing,
                     };
 
-                    println!("{:?}", animation);
-
                     result.insert(animation_type, animation);
                 }
             } else {

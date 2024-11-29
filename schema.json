@@ -69,13 +69,22 @@
                   },
                   "easing": {
                     "type": "string",
-                    "enum": [
-                      "Linear",
-                      "EaseIn",
-                      "EaseOut",
-                      "EaseInOut"
-                    ],
-                    "description": "The easing of the animation."
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "Linear",
+                          "EaseIn",
+                          "EaseOut",
+                          "EaseInOut"
+                        ],
+                        "description": "The easing of the animation."
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^cubic-bezier\\([0-9\\.\\,\\s]+\\)$",
+                        "description": "A cubic-bezier function, e.g., cubic-bezier(0.42, 0.0, 0.58, 1.0)."
+                      }
+                    ]
                   }
                 },
                 "additionalProperties": false
@@ -101,17 +110,26 @@
                   },
                   "easing": {
                     "type": "string",
-                    "enum": [
-                      "Linear",
-                      "EaseIn",
-                      "EaseOut",
-                      "EaseInOut"
-                    ],
-                    "description": "The easing of the animation."
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "Linear",
+                          "EaseIn",
+                          "EaseOut",
+                          "EaseInOut"
+                        ],
+                        "description": "The easing of the animation."
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^cubic-bezier\\([0-9\\.\\,\\s]+\\)$",
+                        "description": "A cubic-bezier function, e.g., cubic-bezier(0.42, 0.0, 0.58, 1.0)."
+                      }
+                    ]
                   }
                 },
                 "additionalProperties": false
-              } 
+              }
             },
             "speed": {
               "type": "number",
@@ -429,13 +447,22 @@
                         },
                         "easing": {
                           "type": "string",
-                          "enum": [
-                            "Linear",
-                            "EaseIn",
-                            "EaseOut",
-                            "EaseInOut"
-                          ],
-                          "description": "The easing of the animation."
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "Linear",
+                                "EaseIn",
+                                "EaseOut",
+                                "EaseInOut"
+                              ],
+                              "description": "The easing of the animation."
+                            },
+                            {
+                              "type": "string",
+                              "pattern": "^cubic-bezier\\([0-9\\.\\,\\s]+\\)$",
+                              "description": "A cubic-bezier function, e.g., cubic-bezier(0.42, 0.0, 0.58, 1.0)."
+                            }
+                          ]
                         }
                       },
                       "additionalProperties": false
@@ -461,13 +488,22 @@
                         },
                         "easing": {
                           "type": "string",
-                          "enum": [
-                            "Linear",
-                            "EaseIn",
-                            "EaseOut",
-                            "EaseInOut"
-                          ],
-                          "description": "The easing of the animation."
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "Linear",
+                                "EaseIn",
+                                "EaseOut",
+                                "EaseInOut"
+                              ],
+                              "description": "The easing of the animation."
+                            },
+                            {
+                              "type": "string",
+                              "pattern": "^cubic-bezier\\([0-9\\.\\,\\s]+\\)$",
+                              "description": "A cubic-bezier function, e.g., cubic-bezier(0.42, 0.0, 0.58, 1.0)."
+                            }
+                          ]
                         }
                       },
                       "additionalProperties": false

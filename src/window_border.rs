@@ -343,6 +343,10 @@ impl WindowBorder {
                 self.event_anim = ANIM_FADE;
             }
             false => {
+                self.animations.fade_progress = match self.is_window_active {
+                    true => 1.0,
+                    false => 0.0,
+                };
                 let (top_color, bottom_color) = match self.is_window_active {
                     true => (&mut self.active_color, &mut self.inactive_color),
                     false => (&mut self.inactive_color, &mut self.active_color),

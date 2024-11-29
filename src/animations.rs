@@ -2,23 +2,59 @@ use crate::bezier::bezier;
 use crate::deserializer::from_str;
 use crate::window_border::WindowBorder;
 use crate::windows_api::WindowsApi;
+use regex::Regex;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde_yml::Value;
 use std::collections::HashMap;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::time::Duration;
 use windows::Foundation::Numerics::Matrix3x2;
 
 pub const ANIM_NONE: i32 = 0;
 pub const ANIM_FADE: i32 = 1;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub enum AnimationEasing {
     Linear,
     EaseInOut,
     EaseIn,
     EaseOut,
+    CubicBezier([f32; 4]),
 }
+
+impl Hash for AnimationEasing {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            AnimationEasing::Linear => 0.hash(state),
+            AnimationEasing::EaseInOut => 1.hash(state),
+            AnimationEasing::EaseIn => 2.hash(state),
+            AnimationEasing::EaseOut => 3.hash(state),
+            AnimationEasing::CubicBezier(bezier) => {
+                // Hash the individual elements of the CubicBezier array
+                for &value in bezier.iter() {
+                    value.to_bits().hash(state); // Convert f32 to bits for consistent hashing
+                }
+            }
+        }
+    }
+}
+
+impl PartialEq for AnimationEasing {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (AnimationEasing::Linear, AnimationEasing::Linear)
+            | (AnimationEasing::EaseInOut, AnimationEasing::EaseInOut)
+            | (AnimationEasing::EaseIn, AnimationEasing::EaseIn)
+            | (AnimationEasing::EaseOut, AnimationEasing::EaseOut) => true,
+            (AnimationEasing::CubicBezier(a), AnimationEasing::CubicBezier(b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for AnimationEasing {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
 pub enum AnimationType {
@@ -33,7 +69,7 @@ pub struct Animation {
     #[serde(skip, default = "default_animation_type")]
     pub animation_type: AnimationType,
     pub speed: f32,
-    pub easing: AnimationEasing,
+    pub easing_points: [f32; 4],
 }
 
 #[derive(Debug, Deserialize, PartialEq, Clone, Default)]
@@ -49,6 +85,8 @@ pub struct Animations {
     #[serde(skip)]
     pub fade_progress: f32,
     #[serde(skip)]
+    pub fade_to_visible: bool,
+    #[serde(skip)]
     pub spiral_progress: f32,
     #[serde(skip)]
     pub spiral_angle: f32,
@@ -60,6 +98,18 @@ fn default_animation_type() -> AnimationType {
 
 fn default_fps() -> i32 {
     60
+}
+
+pub fn parse_cubic_bezier(input: &str) -> Option<[f32; 4]> {
+    let re = Regex::new(r"^cubic-bezier\(([-+]?[0-9]*\.?[0-9]+),\s*([-+]?[0-9]*\.?[0-9]+),\s*([-+]?[0-9]*\.?[0-9]+),\s*([-+]?[0-9]*\.?[0-9]+)\)$").unwrap();
+    if let Some(caps) = re.captures(input) {
+        let x1 = caps[1].parse::<f32>().ok()?;
+        let y1 = caps[2].parse::<f32>().ok()?;
+        let x2 = caps[3].parse::<f32>().ok()?;
+        let y2 = caps[4].parse::<f32>().ok()?;
+        return Some([x1, y1, x2, y2]);
+    }
+    None
 }
 
 pub fn animation<'de, D>(deserializer: D) -> Result<HashMap<AnimationType, Animation>, D::Error>
@@ -79,21 +129,35 @@ where
                 if animation_type == AnimationType::None {
                     continue;
                 }
+
                 // Deserialize the remaining fields of `speed` and `easing`
                 if let Value::Mapping(ref obj) = anim_value {
+                    // Manually extract `speed` and provide a default if missing
                     let speed = match obj.get("speed") {
                         Some(Value::Number(n)) => n.as_f64().map(|f| f as f32),
-                        _ => None,
+                        _ => None, // No speed provided
                     };
 
                     let easing = match obj.get("easing") {
-                        Some(Value::String(s)) => match s.as_str() {
-                            "EaseInOut" => AnimationEasing::EaseInOut,
-                            "EaseIn" => AnimationEasing::EaseIn,
-                            "EaseOut" => AnimationEasing::EaseOut,
-                            _ => AnimationEasing::Linear, // default easing if not specified
-                        },
+                        Some(Value::String(s)) => {
+                            if let Some(bezier_values) = parse_cubic_bezier(s) {
+                                AnimationEasing::CubicBezier(bezier_values)
+                            } else {
+                                match from_str::<AnimationEasing>(&s) {
+                                    Ok(easing) => easing,
+                                    Err(_) => AnimationEasing::Linear,
+                                }
+                            }
+                        }
                         _ => AnimationEasing::Linear,
+                    };
+
+                    let easing_points: [f32; 4] = match easing {
+                        AnimationEasing::Linear => [0.0, 0.0, 1.0, 1.0],
+                        AnimationEasing::EaseIn => [0.42, 0.0, 1.0, 1.0],
+                        AnimationEasing::EaseOut => [0.0, 0.0, 0.58, 1.0],
+                        AnimationEasing::EaseInOut => [0.42, 0.0, 0.58, 1.0],
+                        AnimationEasing::CubicBezier(points) => points, // Use the cubic-bezier points
                     };
 
                     // Set the default speed based on the animation type if not provided
@@ -101,15 +165,17 @@ where
                         AnimationType::Spiral
                         | AnimationType::ReverseSpiral
                         | AnimationType::Fade => 50.0,
-                        _ => 0.0,
+                        _ => 0.0, // Default fallback for other types
                     };
 
+                    // Create the animation object
                     let animation = Animation {
                         animation_type: animation_type.clone(),
-                        speed: speed.unwrap_or(default_speed), // use the default speed if not specified
-                        easing,
+                        speed: speed.unwrap_or(default_speed), // Use the default speed if not specified
+                        easing_points,
                     };
 
+                    // Insert the animation into the result map
                     result.insert(animation_type, animation);
                 }
             } else {
@@ -144,6 +210,8 @@ impl HashMapAnimationExt for HashMap<AnimationType, Animation> {
 
 impl Animation {
     pub fn play(&self, border: &mut WindowBorder, anim_elapsed: &Duration, anim_speed: f32) {
+        let points = self.easing_points;
+
         match self.animation_type {
             AnimationType::Spiral => {
                 let delta_t = anim_elapsed.as_secs_f32() * (anim_speed / 20.0);
@@ -152,13 +220,6 @@ impl Animation {
                 if border.animations.spiral_progress >= 1.0 {
                     border.animations.spiral_progress -= 1.0;
                 }
-
-                let points: Vec<f32> = match self.easing {
-                    AnimationEasing::Linear => vec![0.0, 0.0, 1.0, 1.0],
-                    AnimationEasing::EaseIn => vec![0.42, 0.0, 1.0, 1.0],
-                    AnimationEasing::EaseOut => vec![0.0, 0.0, 0.58, 1.0],
-                    AnimationEasing::EaseInOut => vec![0.42, 0.0, 0.58, 1.0],
-                };
 
                 let Ok(ease) = bezier(points[0], points[1], points[2], points[3]) else {
                     error!("Could not create bezier easing function!");
@@ -191,13 +252,6 @@ impl Animation {
                     border.animations.spiral_progress -= 1.0;
                 }
 
-                let points: Vec<f32> = match self.easing {
-                    AnimationEasing::Linear => vec![0.0, 0.0, 1.0, 1.0],
-                    AnimationEasing::EaseIn => vec![0.42, 0.0, 1.0, 1.0],
-                    AnimationEasing::EaseOut => vec![0.0, 0.0, 0.58, 1.0],
-                    AnimationEasing::EaseInOut => vec![0.42, 0.0, 0.58, 1.0],
-                };
-
                 let Ok(ease) = bezier(points[0], points[1], points[2], points[3]) else {
                     error!("Could not create bezier easing function!");
                     return;
@@ -225,8 +279,7 @@ impl Animation {
                 let _ = self;
             }
             AnimationType::Fade => {
-                let easing = self.easing.clone();
-                animate_fade(easing, border, anim_elapsed, anim_speed);
+                animate_fade(points, border, anim_elapsed, anim_speed);
                 let _ = self;
             }
             _ => {}
@@ -235,54 +288,56 @@ impl Animation {
 }
 
 pub fn animate_fade(
-    animation_easing: AnimationEasing,
+    animation_easing: [f32; 4],
     border: &mut WindowBorder,
     anim_elapsed: &Duration,
     anim_speed: f32,
 ) {
-    let (bottom_color, top_color) = match border.is_window_active {
-        true => (&mut border.inactive_color, &mut border.active_color),
-        false => (&mut border.active_color, &mut border.inactive_color),
+    if border.active_color.get_opacity() == 0.0 && border.inactive_color.get_opacity() == 0.0 {
+        border.animations.fade_progress = match border.is_window_active {
+            true => 0.0,
+            false => 1.0,
+        };
+        border.animations.fade_to_visible = true;
+    }
+
+    let direction = match border.is_window_active {
+        true => 1.0,
+        false => -1.0,
     };
 
-    let top_opacity = top_color.get_opacity();
-    let bottom_opacity = bottom_color.get_opacity();
+    let delta_t = anim_elapsed.as_secs_f32() * anim_speed * direction;
+    border.animations.fade_progress += delta_t;
 
-    if border.animations.fade_progress >= 1.0 || top_opacity >= 1.0 {
-        top_color.set_opacity(1.0);
-        bottom_color.set_opacity(0.0);
+    if !(0.0..=1.0).contains(&border.animations.fade_progress) {
+        let final_opacity = border.animations.fade_progress.clamp(0.0, 1.0);
 
-        // Reset fade_progress so we can reuse it next time
-        border.animations.fade_progress = 0.0;
+        border.active_color.set_opacity(final_opacity);
+        border.inactive_color.set_opacity(1.0 - final_opacity);
+
+        border.animations.fade_progress = final_opacity;
+        border.animations.fade_to_visible = false;
         border.event_anim = ANIM_NONE;
         return;
     }
 
-    let delta_t = anim_elapsed.as_secs_f32() * anim_speed;
-
-    border.animations.fade_progress += delta_t;
-
-    let points: Vec<f32> = match animation_easing {
-        AnimationEasing::Linear => vec![0.0, 0.0, 1.0, 1.0],
-        AnimationEasing::EaseIn => vec![0.42, 0.0, 1.0, 1.0],
-        AnimationEasing::EaseOut => vec![0.0, 0.0, 0.58, 1.0],
-        AnimationEasing::EaseInOut => vec![0.42, 0.0, 0.58, 1.0],
-    };
+    let points = animation_easing;
 
     let Ok(ease) = bezier(points[0], points[1], points[2], points[3]) else {
         error!("Could not create bezier easing function!");
         return;
     };
 
-    let new_top_opacity = ease(border.animations.fade_progress);
+    let y_coord = ease(border.animations.fade_progress);
 
-    // I do the following because I want this to work when a window is first opened (when only the
-    // top color should be visible) without having to write a separate function for it lol.
-    let new_bottom_opacity = match bottom_opacity == 0.0 {
-        true => 0.0,
-        false => 1.0 - new_top_opacity,
+    let (new_active_opacity, new_inactive_opacity) = match border.animations.fade_to_visible {
+        true => match border.is_window_active {
+            true => (y_coord, 0.0),
+            false => (0.0, 1.0 - y_coord),
+        },
+        false => (y_coord, 1.0 - y_coord),
     };
 
-    top_color.set_opacity(new_top_opacity);
-    bottom_color.set_opacity(new_bottom_opacity);
+    border.active_color.set_opacity(new_active_opacity);
+    border.inactive_color.set_opacity(new_inactive_opacity);
 }

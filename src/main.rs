@@ -62,7 +62,6 @@ mod timer;
 mod utils;
 mod window_border;
 mod windows_api;
-mod bezier;
 
 extern "C" {
     pub static __ImageBase: IMAGE_DOS_HEADER;

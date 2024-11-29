@@ -1,5 +1,8 @@
-use super::{easing::AnimationEasing, ANIM_NONE};
-use crate::{bezier::bezier, window_border::WindowBorder, windows_api::WindowsApi};
+use super::bezier::bezier;
+use super::easing::AnimationEasing;
+use super::ANIM_NONE;
+use crate::window_border::WindowBorder;
+use crate::windows_api::WindowsApi;
 use serde::Deserialize;
 use std::time::Duration;
 use windows::Foundation::Numerics::Matrix3x2;

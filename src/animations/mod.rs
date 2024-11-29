@@ -11,6 +11,7 @@ use serde_yml::Value;
 use crate::deserializer::from_str;
 
 pub mod animation;
+pub mod bezier;
 pub mod easing;
 pub mod utils;
 

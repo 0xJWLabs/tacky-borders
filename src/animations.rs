@@ -9,6 +9,7 @@ use serde_yml::Value;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::str::FromStr;
 use std::time::Duration;
 use windows::Foundation::Numerics::Matrix3x2;
 
@@ -22,6 +23,29 @@ pub enum AnimationEasing {
     EaseIn,
     EaseOut,
     CubicBezier([f32; 4]),
+}
+
+impl FromStr for AnimationEasing {
+    type Err = String;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        if let Ok(easing) = from_str::<AnimationEasing>(input) {
+            return Ok(easing);
+        }
+
+        match input {
+            "linear" => Ok(AnimationEasing::Linear),
+            "ease-in" => Ok(AnimationEasing::EaseIn),
+            "ease-out" => Ok(AnimationEasing::EaseOut),
+            "ease-in-out" => Ok(AnimationEasing::EaseInOut),
+            _ if input.starts_with("cubic-bezier") => {
+                parse_cubic_bezier(input).map(AnimationEasing::CubicBezier).ok_or_else(|| {
+                  format!("Invalid cubic-bezier format: {}", input) 
+                })
+            },
+            _ => Err(format!("Invalid easing type: {}", input))
+        }
+    }
 }
 
 impl Hash for AnimationEasing {
@@ -140,14 +164,10 @@ where
 
                     let easing = match obj.get("easing") {
                         Some(Value::String(s)) => {
-                            if let Some(bezier_values) = parse_cubic_bezier(s) {
-                                AnimationEasing::CubicBezier(bezier_values)
-                            } else {
-                                match from_str::<AnimationEasing>(&s) {
-                                    Ok(easing) => easing,
-                                    Err(_) => AnimationEasing::Linear,
-                                }
-                            }
+                            match AnimationEasing::from_str(&s) {
+                                Ok(animation) => animation,
+                                Err(_) => AnimationEasing::Linear
+                            } 
                         }
                         _ => AnimationEasing::Linear,
                     };

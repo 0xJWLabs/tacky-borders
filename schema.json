@@ -73,9 +73,13 @@
                       {
                         "enum": [
                           "Linear",
-                          "EaseIn",
-                          "EaseOut",
-                          "EaseInOut"
+                                "EaseIn",
+                                "EaseOut",
+                                "EaseInOut",
+                                "linear",
+                                "ease-in",
+                                "ease-out",
+                                "ease-in-out"
                         ],
                         "description": "The easing of the animation."
                       },
@@ -116,7 +120,11 @@
                           "Linear",
                           "EaseIn",
                           "EaseOut",
-                          "EaseInOut"
+                          "EaseInOut",
+                          "linear",
+                          "ease-in",
+                          "ease-out",
+                          "ease-in-out"
                         ],
                         "description": "The easing of the animation."
                       },
@@ -453,7 +461,11 @@
                                 "Linear",
                                 "EaseIn",
                                 "EaseOut",
-                                "EaseInOut"
+                                "EaseInOut",
+                                "linear",
+                                "ease-in",
+                                "ease-out",
+                                "ease-in-out"
                               ],
                               "description": "The easing of the animation."
                             },
@@ -494,7 +506,11 @@
                                 "Linear",
                                 "EaseIn",
                                 "EaseOut",
-                                "EaseInOut"
+                                "EaseInOut",
+                                "linear",
+                                "ease-in",
+                                "ease-out",
+                                "ease-in-out"
                               ],
                               "description": "The easing of the animation."
                             },

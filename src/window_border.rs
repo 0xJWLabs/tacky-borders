@@ -1,4 +1,4 @@
-use crate::animations::AnimationType;
+use crate::animations::animation::AnimationType;
 use crate::animations::Animations;
 use crate::animations::HashMapAnimationExt;
 use crate::animations::ANIM_FADE;

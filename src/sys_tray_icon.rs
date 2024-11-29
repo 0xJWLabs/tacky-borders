@@ -2,6 +2,7 @@ use crate::border_config::Config;
 use crate::reload_borders;
 use crate::utils::get_config;
 use crate::EVENT_HOOK;
+use std::thread;
 use std::process::exit;
 use tray_icon::menu::Menu;
 use tray_icon::menu::MenuEvent;
@@ -11,6 +12,30 @@ use tray_icon::TrayIcon;
 use tray_icon::TrayIconBuilder;
 use windows::Win32::System::Threading::ExitProcess;
 use windows::Win32::UI::Accessibility::UnhookWinEvent;
+use std::sync::mpsc::{channel, Sender};
+use rdev::listen;
+use rdev::Event;
+use rdev::EventType;
+use rdev::Key;
+
+fn reload_config() {
+    Config::reload();
+    reload_borders();
+}
+
+pub fn create_icon_threads() {
+    let (tx, rx) = channel();
+    thread::spawn(move || listen_for_hotkeys(tx));
+
+    thread::spawn(move || {
+        for action in rx {
+            match action.as_str() {
+                "reload" => reload_config(),
+                _ => {}
+            }
+        }
+    });
+}
 
 pub fn create_tray_icon() -> Result<TrayIcon, tray_icon::Error> {
     let icon = match Icon::from_resource(1, Some((64, 64))) {
@@ -38,10 +63,7 @@ pub fn create_tray_icon() -> Result<TrayIcon, tray_icon::Error> {
             let config_path = config_dir.join("config.yaml");
             let _ = open::that(config_path);
         }
-        "1" => {
-            Config::reload();
-            reload_borders();
-        }
+        "1" => reload_config(),
         "2" => unsafe {
             if UnhookWinEvent(EVENT_HOOK.get()).as_bool() {
                 debug!("exiting tacky-borders!");
@@ -54,4 +76,17 @@ pub fn create_tray_icon() -> Result<TrayIcon, tray_icon::Error> {
     }));
 
     tray_icon
+}
+
+fn listen_for_hotkeys(tx: Sender<String>) {
+    if let Err(error) = listen(move |event: Event| {
+        if let EventType::KeyPress(key) = event.event_type {
+            match key {
+                Key::F8 => tx.send("reload".to_string()).unwrap(), // Send an owned String
+                _ => {}
+            }
+        }
+    }) {
+        eprintln!("Error listening to global hotkeys: {:?}", error);
+    }
 }

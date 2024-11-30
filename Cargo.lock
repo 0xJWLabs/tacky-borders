@@ -1321,6 +1321,7 @@ dependencies = [
 name = "tacky-borders"
 version = "0.1.0"
 dependencies = [
+ "cfg-if",
  "dirs",
  "log",
  "open",

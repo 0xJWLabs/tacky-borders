@@ -1,5 +1,4 @@
 use dirs::home_dir;
-use std::fs;
 use std::fs::write;
 use std::fs::DirBuilder;
 use std::fs::File;
@@ -76,24 +75,27 @@ pub fn strip_string(input: String, prefixes: &[&str], suffix: char) -> String {
     result.strip_suffix(suffix).unwrap_or(&result).to_string()
 }
 
-pub fn has_file<P>(path: P) -> io::Result<bool>
-where
-    P: AsRef<Path>,
-{
-    #[cfg(feature = "rust150")]
-    {
-        // Code for Rust 1.7.0
-        Ok(fs::metadata(path.as_ref()).is_ok())
-    }
-
-    #[cfg(feature = "rust180")]
-    {
-        // Code for Rust 1.8.0 or greater
-        path.as_ref().try_exists()
-    }
-
-    #[cfg(not(any(feature = "rust150", feature = "rust180")))]
-    {
-        fs::exists(path.as_ref())
+cfg_if::cfg_if! {
+    if #[cfg(feature = "rust150")] {
+        pub fn has_file<P>(path: P) -> io::Result<bool>
+        where
+            P: AsRef<Path>
+        {
+            Ok(std::fs::metadata(path.as_ref()).is_ok())
+        }
+    } else if #[cfg(feature = "rust180")] {
+        pub fn has_file<P>(path: P) -> io::Result<bool>
+        where
+            P: AsRef<Path>
+        {
+            path.as_ref().try_exists()
+        }
+    } else {
+        pub fn has_file<P>(path: P) -> io::Result<bool>
+        where
+            P: AsRef<Path>
+        {
+            std::fs::exists(path.as_ref())
+        }
     }
 }

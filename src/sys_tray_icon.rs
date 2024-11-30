@@ -2,10 +2,6 @@ use crate::border_config::Config;
 use crate::reload_borders;
 use crate::utils::get_config;
 use crate::EVENT_HOOK;
-use rdev::listen;
-use rdev::Event;
-use rdev::EventType;
-use rdev::Key;
 use std::process::exit;
 use std::sync::mpsc::{channel, Sender};
 use std::thread;
@@ -15,6 +11,10 @@ use tray_icon::menu::MenuItem;
 use tray_icon::Icon;
 use tray_icon::TrayIcon;
 use tray_icon::TrayIconBuilder;
+use win_binder::listen;
+use win_binder::Event;
+use win_binder::EventType;
+use win_binder::Key;
 use windows::Win32::System::Threading::ExitProcess;
 use windows::Win32::UI::Accessibility::UnhookWinEvent;
 
@@ -213,4 +213,3 @@ fn key_from_string(key_str: &str) -> Option<Key> {
         _ => None, // Return None if no match is found
     }
 }
-

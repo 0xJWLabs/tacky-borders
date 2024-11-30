@@ -30,10 +30,10 @@ impl Animation {
 
         match self.animation_type {
             AnimationType::Spiral => {
-                animate_spiral(points, border, anim_elapsed, anim_speed, false)
+                animate_spiral(points, border, anim_elapsed, anim_speed)
             }
             AnimationType::ReverseSpiral => {
-                animate_spiral(points, border, anim_elapsed, anim_speed, true)
+                animate_spiral(points, border, anim_elapsed, -anim_speed)
             }
             AnimationType::Fade => {
                 animate_fade(points, border, anim_elapsed, anim_speed);
@@ -48,16 +48,11 @@ fn animate_spiral(
     border: &mut WindowBorder,
     anim_elapsed: &Duration,
     anim_speed: f32,
-    reverse: bool, // Determines direction of the spiral
 ) {
     // Update spiral_progress
     let delta_t = anim_elapsed.as_secs_f32() * (anim_speed / 20.0);
-    border.animations.spiral_progress += delta_t;
-
-    // Wrap progress between 0 and 1
-    if border.animations.spiral_progress >= 1.0 {
-        border.animations.spiral_progress -= 1.0;
-    }
+    border.animations.spiral_progress =
+        (border.animations.spiral_progress + delta_t).rem_euclid(1.0); // Wrap progress to [0, 1)
 
     // Create the easing function
     let Ok(ease) = bezier(points[0], points[1], points[2], points[3]) else {
@@ -70,18 +65,7 @@ fn animate_spiral(
 
     // Adjust the spiral angle based on the direction
     let angle_delta = curve_value * (anim_speed / 20.0);
-    if reverse {
-        border.spiral_anim_angle -= angle_delta;
-        border.spiral_anim_angle %= 360.0; // Wrap the angle within [0, 360)
-        if border.spiral_anim_angle < 0.0 {
-            border.spiral_anim_angle += 360.0;
-        }
-    } else {
-        border.spiral_anim_angle += angle_delta;
-        if border.spiral_anim_angle >= 360.0 {
-            border.spiral_anim_angle -= 360.0;
-        }
-    }
+    border.spiral_anim_angle = (border.spiral_anim_angle + angle_delta).rem_euclid(360.0); // Wrap to [0, 360)
 
     // Calculate the center of the window
     let center_x = WindowsApi::get_rect_width(border.window_rect) / 2;

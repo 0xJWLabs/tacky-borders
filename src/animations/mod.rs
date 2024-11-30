@@ -1,12 +1,11 @@
-use std::collections::HashMap;
-use std::str::FromStr;
-
 use animation::Animation;
 use animation::AnimationType;
 use easing::AnimationEasing;
+use rustc_hash::FxHashMap;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde_yml::Value;
+use std::str::FromStr;
 
 use crate::deserializer::from_str;
 
@@ -21,11 +20,11 @@ pub const ANIM_FADE: i32 = 1;
 #[derive(Debug, Deserialize, PartialEq, Clone, Default)]
 pub struct Animations {
     #[serde(deserialize_with = "animation", default)]
-    pub active: HashMap<AnimationType, Animation>,
+    pub active: FxHashMap<AnimationType, Animation>,
     #[serde(deserialize_with = "animation", default)]
-    pub inactive: HashMap<AnimationType, Animation>,
+    pub inactive: FxHashMap<AnimationType, Animation>,
     #[serde(skip)]
-    pub current: HashMap<AnimationType, Animation>,
+    pub current: FxHashMap<AnimationType, Animation>,
     #[serde(default = "default_fps")]
     pub fps: i32,
     #[serde(skip)]
@@ -42,12 +41,12 @@ fn default_fps() -> i32 {
     60
 }
 
-fn animation<'de, D>(deserializer: D) -> Result<HashMap<AnimationType, Animation>, D::Error>
+fn animation<'de, D>(deserializer: D) -> Result<FxHashMap<AnimationType, Animation>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let map: Option<HashMap<String, Value>> = Option::deserialize(deserializer)?;
-    let mut result: HashMap<AnimationType, Animation> = HashMap::new();
+    let map: Option<FxHashMap<String, Value>> = Option::deserialize(deserializer)?;
+    let mut result: FxHashMap<AnimationType, Animation> = FxHashMap::default();
 
     if let Some(entries) = map {
         for (anim_type_str, anim_value) in entries {
@@ -58,17 +57,27 @@ where
                     continue;
                 }
 
-                if let Value::Mapping(ref obj) = anim_value {
+                let default_speed = match animation_type {
+                    AnimationType::Spiral
+                    | AnimationType::ReverseSpiral
+                    | AnimationType::Fade => 50.0,
+                    _ => 0.0, // Default fallback for other types
+                };
+
+                if let Value::Null = anim_value {
+                    result.insert(animation_type.clone(), Animation {
+                        animation_type: animation_type.clone(),
+                        speed: default_speed,
+                        easing: AnimationEasing::Linear
+                    });
+                } else if let Value::Mapping(ref obj) = anim_value {
                     let speed = match obj.get("speed") {
                         Some(Value::Number(n)) => n.as_f64().map(|f| f as f32),
                         _ => None,
                     };
 
                     let easing = match obj.get("easing") {
-                        Some(Value::String(s)) => match AnimationEasing::from_str(&s) {
-                            Ok(animation) => animation,
-                            Err(_) => AnimationEasing::Linear,
-                        },
+                        Some(Value::String(s)) => AnimationEasing::from_str(&s).unwrap_or_else(|_| AnimationEasing::Linear),
                         _ => AnimationEasing::Linear,
                     };
 
@@ -86,6 +95,8 @@ where
                     };
 
                     result.insert(animation_type, animation);
+                } else {
+                    println!("Invalid value type: {:?}", anim_value);
                 }
             } else {
                 println!("Invalid animation type: {}", anim_type_str);
@@ -102,7 +113,7 @@ pub trait HashMapAnimationExt {
     fn to_iter(&self) -> impl Iterator<Item = &Animation> + '_;
 }
 
-impl HashMapAnimationExt for HashMap<AnimationType, Animation> {
+impl HashMapAnimationExt for FxHashMap<AnimationType, Animation> {
     fn find(&self, animation_type: &AnimationType) -> Option<&Animation> {
         self.get(animation_type)
     }

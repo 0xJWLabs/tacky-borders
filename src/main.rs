@@ -57,6 +57,7 @@ mod border_config;
 mod colors;
 mod deserializer;
 mod event_hook;
+mod keybinding;
 mod sys_tray_icon;
 mod timer;
 mod utils;

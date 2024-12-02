@@ -1,21 +1,28 @@
 use crate::border_config::Config;
-use crate::keybinding::KeyBinding;
-use crate::keybinding::KeyBindingHook;
-// use crate::keybinding::{KeyBinding, KeyBindingHook};
+use crate::keybinding::parse_hotkey;
+use crate::keybinding::CreateHotkeyHook;
+use crate::keybinding::HotkeyHook;
+use crate::keybinding::RegisterHotkeyHook;
+use crate::keybinding::UnbindHotkeyHook;
 use crate::reload_borders;
 use crate::utils::get_config;
 use crate::EVENT_HOOK;
+use rustc_hash::FxHashMap;
 use std::process::exit;
+use std::sync::Arc;
+use std::sync::LazyLock;
+use std::sync::Mutex;
 use tray_icon::menu::Menu;
 use tray_icon::menu::MenuEvent;
 use tray_icon::menu::MenuItem;
 use tray_icon::Icon;
 use tray_icon::TrayIcon;
 use tray_icon::TrayIconBuilder;
-// use win_binder::Key;
-use win_hotkey::keys::VirtualKey;
 use windows::Win32::System::Threading::ExitProcess;
 use windows::Win32::UI::Accessibility::UnhookWinEvent;
+
+static HOTKEY_HOOK: LazyLock<Arc<Mutex<HotkeyHook>>> =
+    LazyLock::new(|| Arc::new(Mutex::new(CreateHotkeyHook(None))));
 
 fn reload_config() {
     Config::reload();
@@ -28,6 +35,12 @@ fn open_config() {
     let _ = open::that(config_path);
 }
 
+fn lock_hotkey_hook() -> std::sync::MutexGuard<'static, HotkeyHook> {
+    HOTKEY_HOOK.lock().unwrap_or_else(|_| {
+        panic!("Failed to lock hotkey hook.");
+    })
+}
+
 pub fn create_tray_icon() -> Result<TrayIcon, tray_icon::Error> {
     let icon = match Icon::from_resource(1, Some((64, 64))) {
         Ok(icon) => icon,
@@ -38,9 +51,11 @@ pub fn create_tray_icon() -> Result<TrayIcon, tray_icon::Error> {
     };
 
     let tray_menu = Menu::new();
-    let _ = tray_menu.append(&MenuItem::with_id("0", "Open Config", true, None));
-    let _ = tray_menu.append(&MenuItem::with_id("1", "Reload", true, None));
-    let _ = tray_menu.append(&MenuItem::with_id("2", "Close", true, None));
+    let _ = tray_menu.append_items(&[
+        &MenuItem::with_id("0", "Open Config", true, None),
+        &MenuItem::with_id("1", "Reload", true, None),
+        &MenuItem::with_id("2", "Close", true, None),
+    ]);
 
     let tray_icon = TrayIconBuilder::new()
         .with_menu(Box::new(tray_menu))
@@ -54,6 +69,8 @@ pub fn create_tray_icon() -> Result<TrayIcon, tray_icon::Error> {
         "2" => unsafe {
             if UnhookWinEvent(EVENT_HOOK.get()).as_bool() {
                 debug!("exiting tacky-borders!");
+                let mut hotkey_hook = lock_hotkey_hook();
+                UnbindHotkeyHook(&mut hotkey_hook);
                 ExitProcess(0);
             } else {
                 error!("could not unhook win event hook");
@@ -62,25 +79,22 @@ pub fn create_tray_icon() -> Result<TrayIcon, tray_icon::Error> {
         _ => {}
     }));
 
+    bind_tray_hotkeys();
+
     tray_icon
 }
 
 pub fn bind_tray_hotkeys() {
-    let keybinding_hook = KeyBindingHook::new(None);
+    let mut bindings = FxHashMap::default();
 
-    keybinding_hook.add_binding(KeyBinding::new(
-        "reload".to_string(),
-        VirtualKey::F8,
-        None,
-        Box::new(reload_config),
-    ));
+    let mut reload_binding = parse_hotkey("f8").unwrap();
+    reload_binding.set_action(Box::new(reload_config));
+    bindings.insert("reload".to_string(), reload_binding);
 
-    keybinding_hook.add_binding(KeyBinding::new(
-        "open_config".to_string(),
-        VirtualKey::F9,
-        None,
-        Box::new(open_config),
-    ));
+    let mut open_config_binding = parse_hotkey("f9").unwrap();
+    open_config_binding.set_action(Box::new(open_config));
+    bindings.insert("open_config".to_string(), open_config_binding);
 
-    keybinding_hook.listen();
+    let mut hotkey_hook = lock_hotkey_hook();
+    RegisterHotkeyHook(&mut hotkey_hook, Some(bindings));
 }

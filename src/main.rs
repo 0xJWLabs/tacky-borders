@@ -112,8 +112,6 @@ fn main() {
         error!("failed to build tray icon");
     }
 
-    sys_tray_icon::bind_tray_hotkeys();
-
     EVENT_HOOK.replace(set_event_hook());
     let _ = register_window_class();
     let _ = WindowsApi::enum_windows();

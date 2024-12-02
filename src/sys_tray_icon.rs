@@ -1,5 +1,7 @@
 use crate::border_config::Config;
-use crate::keybinding::{KeyBinding, KeyBindingHook};
+use crate::keybinding::KeyBinding;
+use crate::keybinding::KeyBindingHook;
+// use crate::keybinding::{KeyBinding, KeyBindingHook};
 use crate::reload_borders;
 use crate::utils::get_config;
 use crate::EVENT_HOOK;
@@ -10,7 +12,8 @@ use tray_icon::menu::MenuItem;
 use tray_icon::Icon;
 use tray_icon::TrayIcon;
 use tray_icon::TrayIconBuilder;
-use win_binder::Key;
+// use win_binder::Key;
+use win_hotkey::keys::VirtualKey;
 use windows::Win32::System::Threading::ExitProcess;
 use windows::Win32::UI::Accessibility::UnhookWinEvent;
 
@@ -63,17 +66,21 @@ pub fn create_tray_icon() -> Result<TrayIcon, tray_icon::Error> {
 }
 
 pub fn bind_tray_hotkeys() {
-    let bindings = vec![
-        KeyBinding::new("reload".to_string(), Key::F8, None, Box::new(reload_config)),
-        KeyBinding::new(
-            "open_config".to_string(),
-            Key::F9,
-            None,
-            Box::new(open_config),
-        ),
-    ];
+    let keybinding_hook = KeyBindingHook::new(None);
 
-    let keybinding_hook = KeyBindingHook::new(Some(bindings));
+    keybinding_hook.add_binding(KeyBinding::new(
+        "reload".to_string(),
+        VirtualKey::F8,
+        None,
+        Box::new(reload_config),
+    ));
+
+    keybinding_hook.add_binding(KeyBinding::new(
+        "open_config".to_string(),
+        VirtualKey::F9,
+        None,
+        Box::new(open_config),
+    ));
 
     keybinding_hook.listen();
 }

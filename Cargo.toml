@@ -17,7 +17,7 @@ sp_log = "0.1.0"
 log = "0.4.22"
 rustc-hash = "2.0.0"
 cfg-if = "1.0.0"
-win_binder = "0.1.0"
+win-hotkey = "0.1.2"
 
 [dependencies.windows]
 version = "0.58.0"

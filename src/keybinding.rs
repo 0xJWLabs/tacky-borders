@@ -1,17 +1,18 @@
 #[allow(dead_code)]
-use rustc_hash::FxHashSet;
-use std::sync::mpsc::{channel, Receiver};
-use std::sync::{mpsc::Sender, Arc, Mutex};
-use std::thread::spawn;
-use win_binder::{listen, Event, EventType, Key};
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::thread;
+use win_hotkey::keys::ModifiersKey;
+use win_hotkey::keys::VirtualKey;
+use win_hotkey::{HotkeyManager, HotkeyManagerImpl};
 
 type KeyBindingCallback = Arc<dyn Fn() + Send + Sync>;
 
 #[derive(Clone)]
 pub struct KeyBinding {
     pub name: String,
-    pub virtual_key: Key,
-    pub modifiers: Option<FxHashSet<Key>>,
+    pub virtual_key: VirtualKey,
+    pub modifiers: Option<Vec<ModifiersKey>>,
     pub callback: KeyBindingCallback,
 }
 
@@ -28,8 +29,8 @@ impl std::fmt::Debug for KeyBinding {
 impl KeyBinding {
     pub fn new(
         name: String,
-        virtual_key: Key,
-        modifiers: Option<Vec<Key>>,
+        virtual_key: VirtualKey,
+        modifiers: Option<Vec<ModifiersKey>>,
         callback: impl Fn() + Send + Sync + 'static,
     ) -> Self {
         Self {
@@ -43,77 +44,46 @@ impl KeyBinding {
 
 pub struct KeyBindingHook {
     bindings: Arc<Mutex<Vec<KeyBinding>>>,
-    sender: Sender<KeyBinding>,
-    receiver: Arc<Mutex<Receiver<KeyBinding>>>,
+    hkm: Arc<Mutex<HotkeyManager<()>>>,
 }
 
 impl KeyBindingHook {
     pub fn new(keybinds: Option<Vec<KeyBinding>>) -> Self {
-        let (sender, receiver) = channel();
+        let mut hkm = HotkeyManager::new();
+        hkm.set_no_repeat(false);
         Self {
             bindings: Arc::new(Mutex::new(keybinds.unwrap_or_default())),
-            sender,
-            receiver: Arc::new(Mutex::new(receiver)),
+            hkm: Arc::new(Mutex::new(hkm)),
         }
     }
 
-    pub fn _add_binding(&self, binding: KeyBinding) {
+    pub fn add_binding(&self, keybind: KeyBinding) {
         let mut bindings = self.bindings.lock().unwrap();
-        bindings.push(binding);
+        bindings.push(keybind);
     }
 
     pub fn listen(&self) {
-        let active_modifiers = Arc::new(Mutex::new(FxHashSet::default()));
-
         let bindings = Arc::clone(&self.bindings);
-        let sender = self.sender.clone();
-        let receiver = self.receiver.clone();
+        let hkm = Arc::clone(&self.hkm);
 
-        spawn(move || {
-            if let Err(error) = listen(move |event: Event| match event.event_type {
-                EventType::KeyPress(pressed_key) => {
-                    let mut modifiers = active_modifiers.lock().unwrap();
-                    update_active_modifiers(pressed_key, true, &mut modifiers);
+        thread::spawn(move || {
+            // Lock bindings to access keybindings
+            let mut hkm = hkm.lock().unwrap();
+            let bindings = bindings.lock().unwrap();
+            for binding in bindings.iter() {
+                let callback = Arc::clone(&binding.callback);
+                // Lock hkm to mutate it
 
-                    let bindings = bindings.lock().unwrap();
-                    for binding in &*bindings {
-                        if binding.virtual_key == pressed_key {
-                            if let Some(required_modifiers) = &binding.modifiers {
-                                if required_modifiers.is_subset(&modifiers) {
-                                    sender.send(binding.clone()).unwrap();
-                                    modifiers.clear();
-                                    break;
-                                }
-                            } else {
-                                sender.send(binding.clone()).unwrap();
-                                modifiers.clear();
-                                break;
-                            }
-                        }
-                    }
+                if let Err(e) = hkm.register(
+                    binding.virtual_key,
+                    binding.modifiers.as_deref(),
+                    move || callback(),
+                ) {
+                    eprintln!("Failed to register keybinding {}: {:?}", binding.name, e);
                 }
-                EventType::KeyRelease(released_key) => {
-                    let mut modifiers = active_modifiers.lock().unwrap();
-                    update_active_modifiers(released_key, false, &mut modifiers);
-                }
-                _ => {}
-            }) {
-                eprintln!("Error listening to global hotkeys: {:?}", error);
             }
+            // Event loop will run after all bindings are registered
+            hkm.event_loop();
         });
-
-        spawn(move || {
-            for binding in receiver.lock().unwrap().iter() {
-                (binding.callback)();
-            }
-        });
-    }
-}
-
-fn update_active_modifiers(key: Key, is_pressed: bool, modifiers: &mut FxHashSet<Key>) {
-    if is_pressed {
-        modifiers.insert(key);
-    } else {
-        modifiers.remove(&key);
     }
 }

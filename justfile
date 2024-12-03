@@ -6,9 +6,8 @@ default: run
 build:
     cargo build --release --locked
 
-# Run the project using cargo
-run:
-    cargo run
+run type="debug":
+  @cargo run {{ if type == "debug" { "" } else if type == "release" { "--release" } else { error("Type " + type + " doesn't exist") } }}
 
 # Clean the project using cargo
 clean:

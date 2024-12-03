@@ -1,6 +1,7 @@
 use crate::border_config::Config;
-use crate::keybinding::parse_hotkey;
 use crate::keybinding::CreateHotkeyHook;
+use crate::keybinding::HotKeyParseError;
+use crate::keybinding::HotkeyBinding;
 use crate::keybinding::HotkeyHook;
 use crate::keybinding::RegisterHotkeyHook;
 use crate::keybinding::UnbindHotkeyHook;
@@ -84,14 +85,19 @@ pub fn create_tray_icon() -> Result<TrayIcon, tray_icon::Error> {
     tray_icon
 }
 
+fn create_binding(hotkey: &str) -> Result<HotkeyBinding, HotKeyParseError> {
+    let reload_binding: HotkeyBinding = hotkey.try_into()?;
+    Ok(reload_binding)
+}
+
 pub fn bind_tray_hotkeys() {
     let mut bindings = FxHashMap::default();
 
-    let mut reload_binding = parse_hotkey("f8").unwrap();
+    let mut reload_binding = create_binding("f8").unwrap();
     reload_binding.set_action(Box::new(reload_config));
     bindings.insert("reload".to_string(), reload_binding);
 
-    let mut open_config_binding = parse_hotkey("f9").unwrap();
+    let mut open_config_binding = create_binding("f9").unwrap();
     open_config_binding.set_action(Box::new(open_config));
     bindings.insert("open_config".to_string(), open_config_binding);
 

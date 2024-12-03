@@ -158,215 +158,49 @@ pub enum HotKeyParseError {
     InvalidFormat(String),
 }
 
-pub fn parse_hotkey(hotkey: &str) -> Result<HotkeyBinding, HotKeyParseError> {
-    let tokens = hotkey.split('+').collect::<Vec<&str>>();
-    let mut modifiers = Vec::new();
-    let mut key = None;
+impl TryInto<HotkeyBinding> for &str {
+    type Error = HotKeyParseError;
 
-    match tokens.len() {
-        1 => {
-            key = Some(parse_key(tokens[0])?);
-        }
-        _ => {
-            for raw in tokens {
-                let token = raw.trim();
+    fn try_into(self) -> Result<HotkeyBinding, Self::Error> {
+        let tokens = self.split('+').collect::<Vec<&str>>();
+        let mut modifiers = Vec::new();
+        let mut key = None;
 
-                if token.is_empty() {
-                    return Err(HotKeyParseError::EmptyToken(hotkey.to_string()));
-                }
+        match tokens.len() {
+            1 => {
+                key = Some(
+                    VirtualKey::try_from(tokens[0].trim())
+                        .map_err(|e| HotKeyParseError::UnsupportedKey(e.to_string()))?,
+                );
+            }
+            _ => {
+                for raw in tokens {
+                    let token = raw.trim();
 
-                if key.is_some() {
-                    return Err(HotKeyParseError::InvalidFormat(hotkey.to_string()));
-                }
+                    if token.is_empty() {
+                        return Err(HotKeyParseError::EmptyToken(self.to_string()));
+                    }
 
-                match token.to_uppercase().as_str() {
-                    "OPTION" | "ALT" => modifiers.push(ModifiersKey::Alt),
-                    "CONTROL" | "CTRL" => modifiers.push(ModifiersKey::Ctrl),
-                    "SHIFT" => modifiers.push(ModifiersKey::Shift),
-                    _ => {
-                        key = Some(parse_key(token)?);
+                    if key.is_some() {
+                        return Err(HotKeyParseError::InvalidFormat(self.to_string()));
+                    }
+
+                    let temp_key = VirtualKey::try_from(token)
+                        .map_err(|e| HotKeyParseError::UnsupportedKey(e.to_string()))?;
+
+                    if let Ok(modifier) = temp_key.try_into() {
+                        modifiers.push(modifier);
+                    } else {
+                        key = Some(temp_key);
                     }
                 }
             }
         }
-    }
 
-    Ok(HotkeyBinding::new(
-        key.ok_or_else(|| HotKeyParseError::InvalidFormat(hotkey.to_string()))?,
-        Some(modifiers),
-        None,
-    ))
-}
-
-fn parse_key(key: &str) -> Result<VirtualKey, HotKeyParseError> {
-    use VirtualKey::*;
-
-    match key.to_uppercase().as_str() {
-        "BACK" => Ok(Back),
-        "TAB" => Ok(Tab),
-        "CLEAR" => Ok(Clear),
-        "RETURN" => Ok(Return),
-        "SHIFT" => Ok(Shift),
-        "CONTROL" | "CTRL" => Ok(Control),
-        "MENU" | "ALT" => Ok(Menu),
-        "PAUSE" => Ok(Pause),
-        "CAPITAL" => Ok(Capital),
-        "ESC" | "ESCAPE" => Ok(Escape),
-        "SPACE" => Ok(Space),
-        "PRIOR" => Ok(Prior),
-        "NEXT" => Ok(Next),
-        "END" => Ok(End),
-        "HOME" => Ok(Home),
-        "LEFT" => Ok(Left),
-        "UP" => Ok(Up),
-        "RIGHT" => Ok(Right),
-        "DOWN" => Ok(Down),
-        "SELECT" => Ok(Select),
-        "PRINT" => Ok(Print),
-        "EXECUTE" => Ok(Execute),
-        "SNAPSHOT" => Ok(Snapshot),
-        "INSERT" => Ok(Insert),
-        "DELETE" => Ok(Delete),
-        "HELP" => Ok(Help),
-
-        "LWIN" => Ok(LWin),
-        "RWIN" => Ok(RWin),
-        "APPS" => Ok(Apps),
-        "SLEEP" => Ok(Sleep),
-
-        "NUMPAD0" => Ok(Numpad0),
-        "NUMPAD1" => Ok(Numpad1),
-        "NUMPAD2" => Ok(Numpad2),
-        "NUMPAD3" => Ok(Numpad3),
-        "NUMPAD4" => Ok(Numpad4),
-        "NUMPAD5" => Ok(Numpad5),
-        "NUMPAD6" => Ok(Numpad6),
-        "NUMPAD7" => Ok(Numpad7),
-        "NUMPAD8" => Ok(Numpad8),
-        "NUMPAD9" => Ok(Numpad9),
-
-        "MULTIPLY" => Ok(Multiply),
-        "ADD" => Ok(Add),
-        "SEPARATOR" => Ok(Separator),
-        "SUBTRACT" => Ok(Subtract),
-        "DECIMAL" => Ok(Decimal),
-        "DIVIDE" => Ok(Divide),
-
-        "F1" => Ok(F1),
-        "F2" => Ok(F2),
-        "F3" => Ok(F3),
-        "F4" => Ok(F4),
-        "F5" => Ok(F5),
-        "F6" => Ok(F6),
-        "F7" => Ok(F7),
-        "F8" => Ok(F8),
-        "F9" => Ok(F9),
-        "F10" => Ok(F10),
-        "F11" => Ok(F11),
-        "F12" => Ok(F12),
-        "F13" => Ok(F13),
-        "F14" => Ok(F14),
-        "F15" => Ok(F15),
-        "F16" => Ok(F16),
-        "F17" => Ok(F17),
-        "F18" => Ok(F18),
-        "F19" => Ok(F19),
-        "F20" => Ok(F20),
-        "F21" => Ok(F21),
-        "F22" => Ok(F22),
-        "F23" => Ok(F23),
-        "F24" => Ok(F24),
-
-        "NUMLOCK" => Ok(Numlock),
-        "SCROLL" => Ok(Scroll),
-
-        "LSHIFT" => Ok(LShift),
-        "RSHIFT" => Ok(RShift),
-        "LCONTROL" => Ok(LControl),
-        "RCONTROL" => Ok(RControl),
-        "LMENU" => Ok(LMenu),
-        "RMENU" => Ok(RMenu),
-
-        "BROWSERBACK" => Ok(BrowserBack),
-        "BROWSERFORWARD" => Ok(BrowserForward),
-        "BROWSERREFRESH" => Ok(BrowserRefresh),
-        "BROWSERSTOP" => Ok(BrowserStop),
-        "BROWSERSEARCH" => Ok(BrowserSearch),
-        "BROWSERFAVORITES" => Ok(BrowserFavorites),
-        "BROWSERHOME" => Ok(BrowserHome),
-
-        "VOLUMEMUTE" => Ok(VolumeMute),
-        "VOLUMEDOWN" => Ok(VolumeDown),
-        "VOLUMEUP" => Ok(VolumeUp),
-        "MEDIANEXTTRACK" => Ok(MediaNextTrack),
-        "MEDIAPREVTRACK" => Ok(MediaPrevTrack),
-        "MEDIASTOP" => Ok(MediaStop),
-        "MEDIAPLAYPAUSE" => Ok(MediaPlayPause),
-        "LAUNCHMAIL" => Ok(LaunchMail),
-        "LAUNCHMEDIASELECT" => Ok(LaunchMediaSelect),
-        "LAUNCHAPP1" => Ok(LaunchApp1),
-        "LAUNCHAPP2" => Ok(LaunchApp2),
-
-        "OEM1" => Ok(Oem1),
-        "OEMPLUS" => Ok(OemPlus),
-        "OEMCOMMA" => Ok(OemComma),
-        "OEMMINUS" => Ok(OemMinus),
-        "OEMPERIOD" => Ok(OemPeriod),
-        "OEM2" => Ok(Oem2),
-        "OEM3" => Ok(Oem3),
-        "OEM4" => Ok(Oem4),
-        "OEM5" => Ok(Oem5),
-        "OEM6" => Ok(Oem6),
-        "OEM7" => Ok(Oem7),
-        "OEM8" => Ok(Oem8),
-        "OEM102" => Ok(Oem102),
-
-        "ATTN" => Ok(Attn),
-        "CRSEL" => Ok(Crsel),
-        "EXSEL" => Ok(Exsel),
-        "PLAY" => Ok(Play),
-        "ZOOM" => Ok(Zoom),
-        "PA1" => Ok(Pa1),
-        "OEMCLEAR" => Ok(OemClear),
-
-        "VK0" => Ok(Vk0),
-        "VK1" => Ok(Vk1),
-        "VK2" => Ok(Vk2),
-        "VK3" => Ok(Vk3),
-        "VK4" => Ok(Vk4),
-        "VK5" => Ok(Vk5),
-        "VK6" => Ok(Vk6),
-        "VK7" => Ok(Vk7),
-        "VK8" => Ok(Vk8),
-        "VK9" => Ok(Vk9),
-
-        "A" => Ok(A),
-        "B" => Ok(B),
-        "C" => Ok(C),
-        "D" => Ok(D),
-        "E" => Ok(E),
-        "F" => Ok(F),
-        "G" => Ok(G),
-        "H" => Ok(H),
-        "I" => Ok(I),
-        "J" => Ok(J),
-        "K" => Ok(K),
-        "L" => Ok(L),
-        "M" => Ok(M),
-        "N" => Ok(N),
-        "O" => Ok(O),
-        "P" => Ok(P),
-        "Q" => Ok(Q),
-        "R" => Ok(R),
-        "S" => Ok(S),
-        "T" => Ok(T),
-        "U" => Ok(U),
-        "V" => Ok(V),
-        "W" => Ok(W),
-        "X" => Ok(X),
-        "Y" => Ok(Y),
-        "Z" => Ok(Z),
-
-        key => Err(HotKeyParseError::UnsupportedKey(key.to_string())),
+        Ok(HotkeyBinding::new(
+            key.ok_or_else(|| HotKeyParseError::InvalidFormat(self.to_string()))?,
+            Some(modifiers),
+            None,
+        ))
     }
 }

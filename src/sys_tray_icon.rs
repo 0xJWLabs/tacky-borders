@@ -1,8 +1,5 @@
 use crate::border_config::Config;
 use crate::keybinding::CreateHotkeyHook;
-use crate::keybinding::HotKeyParseError;
-use crate::keybinding::HotkeyBinding;
-use crate::keybinding::HotkeyHook;
 use crate::keybinding::RegisterHotkeyHook;
 use crate::keybinding::UnbindHotkeyHook;
 use crate::reload_borders;
@@ -19,11 +16,13 @@ use tray_icon::menu::MenuItem;
 use tray_icon::Icon;
 use tray_icon::TrayIcon;
 use tray_icon::TrayIconBuilder;
+use win_hotkey::global::GlobalHotkey;
+use win_hotkey::global::GlobalHotkeyManager;
 use windows::Win32::System::Threading::ExitProcess;
 use windows::Win32::UI::Accessibility::UnhookWinEvent;
 
-static HOTKEY_HOOK: LazyLock<Arc<Mutex<HotkeyHook>>> =
-    LazyLock::new(|| Arc::new(Mutex::new(CreateHotkeyHook(None))));
+static HOTKEY_HOOK: LazyLock<Arc<Mutex<GlobalHotkeyManager<()>>>> =
+    LazyLock::new(|| Arc::new(Mutex::new(CreateHotkeyHook())));
 
 fn reload_config() {
     Config::reload();
@@ -34,12 +33,6 @@ fn open_config() {
     let config_dir = get_config();
     let config_path = config_dir.join("config.yaml");
     let _ = open::that(config_path);
-}
-
-fn lock_hotkey_hook() -> std::sync::MutexGuard<'static, HotkeyHook> {
-    HOTKEY_HOOK.lock().unwrap_or_else(|_| {
-        panic!("Failed to lock hotkey hook.");
-    })
 }
 
 pub fn create_tray_icon() -> Result<TrayIcon, tray_icon::Error> {
@@ -70,8 +63,7 @@ pub fn create_tray_icon() -> Result<TrayIcon, tray_icon::Error> {
         "2" => unsafe {
             if UnhookWinEvent(EVENT_HOOK.get()).as_bool() {
                 debug!("exiting tacky-borders!");
-                let mut hotkey_hook = lock_hotkey_hook();
-                UnbindHotkeyHook(&mut hotkey_hook);
+                UnbindHotkeyHook(&HOTKEY_HOOK.lock().unwrap());
                 ExitProcess(0);
             } else {
                 error!("could not unhook win event hook");
@@ -85,22 +77,21 @@ pub fn create_tray_icon() -> Result<TrayIcon, tray_icon::Error> {
     tray_icon
 }
 
-fn create_binding(hotkey: &str) -> Result<HotkeyBinding, HotKeyParseError> {
-    let reload_binding: HotkeyBinding = hotkey.try_into()?;
-    Ok(reload_binding)
-}
-
 pub fn bind_tray_hotkeys() {
-    let mut bindings = FxHashMap::default();
+    let mut bindings: FxHashMap<String, GlobalHotkey<()>> = FxHashMap::default();
 
-    let mut reload_binding = create_binding("f8").unwrap();
-    reload_binding.set_action(Box::new(reload_config));
-    bindings.insert("reload".to_string(), reload_binding);
+    let mut create_binding = |name: &str, hotkey: &str, action: fn()| match hotkey.try_into()
+        as Result<GlobalHotkey<()>, _>
+    {
+        Ok(mut binding) => {
+            binding.set_action(action);
+            bindings.insert(name.to_string(), binding);
+        }
+        Err(err) => eprintln!("Failed to create binding for '{}': {:?}", name, err),
+    };
 
-    let mut open_config_binding = create_binding("f9").unwrap();
-    open_config_binding.set_action(Box::new(open_config));
-    bindings.insert("open_config".to_string(), open_config_binding);
+    create_binding("reload", "f8", reload_config);
+    create_binding("open_config", "f9", open_config);
 
-    let mut hotkey_hook = lock_hotkey_hook();
-    RegisterHotkeyHook(&mut hotkey_hook, Some(bindings));
+    RegisterHotkeyHook(&HOTKEY_HOOK.lock().unwrap(), Some(bindings));
 }

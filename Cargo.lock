@@ -1204,6 +1204,7 @@ dependencies = [
  "serde",
  "serde_yml",
  "sp_log",
+ "thiserror 2.0.3",
  "tray-icon",
  "win-hotkey",
  "windows",

@@ -34,7 +34,7 @@ impl HotkeyBinding {
     ) -> Self {
         Self {
             virtual_key,
-            modifiers: modifiers.map(|mods| mods.into_iter().collect()),
+            modifiers,
             action: action.map(|a| Arc::new(a) as HotkeyAction), // Wrap action in Option<Arc<dyn Fn() + Send + Sync>>
         }
     }
@@ -150,11 +150,13 @@ pub fn UnbindHotkeyHook(hotkey_hook: &mut HotkeyHook) {
     hotkey_hook.stop();
 }
 
-#[derive(Debug)]
-#[allow(dead_code)]
+#[derive(thiserror::Error, Debug)]
 pub enum HotKeyParseError {
+    #[error("Couldn't recognize \"{0}\" as a valid key for hotkey")]
     UnsupportedKey(String),
+    #[error("Found empty token while parsing hotkey: {0}")]
     EmptyToken(String),
+    #[error("Invalid hotkey format: \"{0}\", an hotkey should have the modifiers first and only one main key, for example: \"Shift + Alt + K\"")]
     InvalidFormat(String),
 }
 

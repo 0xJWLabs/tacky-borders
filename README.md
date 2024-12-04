@@ -4,7 +4,7 @@ Bring sleek, customizable borders to your Windows desktop.
 
 Use the original [tacky-borders](https://github.com/lukeyou05/tacky-borders) please!
 
-https://github.com/user-attachments/assets/6d7dbf33-23a4-4ac9-8fe8-a00cdc700a8b
+https://github.com/user-attachments/assets/5f3185c0-25f7-425c-8160-3b05ce8dbbea
 
 ## Installation
 

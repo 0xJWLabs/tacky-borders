@@ -10,8 +10,6 @@ use windows::Win32::Foundation::LPARAM;
 use windows::Win32::Foundation::WPARAM;
 use windows::Win32::UI::Accessibility::HWINEVENTHOOK;
 use windows::Win32::UI::WindowsAndMessaging::GetAncestor;
-use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
-use windows::Win32::UI::WindowsAndMessaging::SendNotifyMessageW;
 use windows::Win32::UI::WindowsAndMessaging::EVENT_OBJECT_CLOAKED;
 use windows::Win32::UI::WindowsAndMessaging::EVENT_OBJECT_DESTROY;
 use windows::Win32::UI::WindowsAndMessaging::EVENT_OBJECT_FOCUS;
@@ -46,11 +44,13 @@ pub extern "system" fn handle_win_event(
                 return;
             }
 
-            let border_window = WindowsApi::get_border_from_window(_hwnd);
-            if let Some(hwnd) = border_window {
-                unsafe {
-                    let _ = SendNotifyMessageW(hwnd, WM_APP_LOCATIONCHANGE, WPARAM(0), LPARAM(0));
-                }
+            if let Some(hwnd) = WindowsApi::get_border_from_window(_hwnd) {
+                let _ = WindowsApi::send_notify_message_w(
+                    hwnd,
+                    WM_APP_LOCATIONCHANGE,
+                    WPARAM(0),
+                    LPARAM(0),
+                );
             }
         }
         EVENT_OBJECT_REORDER => {
@@ -63,9 +63,12 @@ pub extern "system" fn handle_win_event(
             for value in borders.values() {
                 let border_window: HWND = HWND(*value as _);
                 if WindowsApi::is_window_visible(border_window) {
-                    unsafe {
-                        let _ = PostMessageW(border_window, WM_APP_REORDER, WPARAM(0), LPARAM(0));
-                    }
+                    let _ = WindowsApi::post_message_w(
+                        border_window,
+                        WM_APP_REORDER,
+                        WPARAM(0),
+                        LPARAM(0),
+                    );
                 }
             }
             drop(borders);
@@ -78,12 +81,15 @@ pub extern "system" fn handle_win_event(
                 return;
             }
 
-            for val in BORDERS.lock().unwrap().values() {
+            for (key, val) in BORDERS.lock().unwrap().iter() {
                 let border_window: HWND = HWND(*val as _);
-                if WindowsApi::is_window_visible(border_window) {
-                    unsafe {
-                        let _ = PostMessageW(border_window, WM_APP_FOCUS, WPARAM(0), LPARAM(0));
-                    }
+                if WindowsApi::is_window_visible(border_window) || key == &(parent.0 as isize) {
+                    let _ = WindowsApi::post_message_w(
+                        border_window,
+                        WM_APP_FOCUS,
+                        WPARAM(0),
+                        LPARAM(0),
+                    );
                 }
             }
         }
@@ -96,19 +102,15 @@ pub extern "system" fn handle_win_event(
             }
         }
         EVENT_SYSTEM_MINIMIZESTART => {
-            let border_option = WindowsApi::get_border_from_window(_hwnd);
-            if let Some(border_window) = border_option {
-                unsafe {
-                    let _ = PostMessageW(border_window, WM_APP_MINIMIZESTART, WPARAM(0), LPARAM(0));
-                }
+            if let Some(border) = WindowsApi::get_border_from_window(_hwnd) {
+                let _ =
+                    WindowsApi::post_message_w(border, WM_APP_MINIMIZESTART, WPARAM(0), LPARAM(0));
             }
         }
         EVENT_SYSTEM_MINIMIZEEND => {
-            let border_option = WindowsApi::get_border_from_window(_hwnd);
-            if let Some(border_window) = border_option {
-                unsafe {
-                    let _ = PostMessageW(border_window, WM_APP_MINIMIZEEND, WPARAM(0), LPARAM(0));
-                }
+            if let Some(border) = WindowsApi::get_border_from_window(_hwnd) {
+                let _ =
+                    WindowsApi::post_message_w(border, WM_APP_MINIMIZEEND, WPARAM(0), LPARAM(0));
             }
         }
         // TODO this is called an unnecessary number of times which may hurt performance?

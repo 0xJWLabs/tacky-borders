@@ -3,7 +3,6 @@ use crate::keybinding::CreateHotkeyHook;
 use crate::keybinding::RegisterHotkeyHook;
 use crate::keybinding::UnbindHotkeyHook;
 use crate::reload_borders;
-use crate::utils::get_config;
 use crate::EVENT_HOOK;
 use rustc_hash::FxHashMap;
 use std::process::exit;
@@ -30,9 +29,13 @@ fn reload_config() {
 }
 
 fn open_config() {
-    let config_dir = get_config();
-    let config_path = config_dir.join("config.yaml");
-    let _ = open::that(config_path);
+    match Config::get_config_dir() {
+        Ok(dir) => {
+            let config_path = dir.join("config.yaml");
+            let _ = open::that(config_path);
+        }
+        Err(err) => error!("Error: {}", err),
+    }
 }
 
 pub fn create_tray_icon() -> Result<TrayIcon, tray_icon::Error> {
@@ -45,11 +48,16 @@ pub fn create_tray_icon() -> Result<TrayIcon, tray_icon::Error> {
     };
 
     let tray_menu = Menu::new();
-    let _ = tray_menu.append_items(&[
-        &MenuItem::with_id("0", "Open Config", true, None),
-        &MenuItem::with_id("1", "Reload", true, None),
-        &MenuItem::with_id("2", "Close", true, None),
-    ]);
+    if tray_menu
+        .append_items(&[
+            &MenuItem::with_id("0", "Open Config", true, None),
+            &MenuItem::with_id("1", "Reload", true, None),
+            &MenuItem::with_id("2", "Close", true, None),
+        ])
+        .is_err()
+    {
+        error!("could not create tray menu items!");
+    };
 
     let tray_icon = TrayIconBuilder::new()
         .with_menu(Box::new(tray_menu))

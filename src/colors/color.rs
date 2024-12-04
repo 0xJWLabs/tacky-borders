@@ -27,17 +27,23 @@ use windows::Win32::Graphics::Dwm::DwmGetColorizationColor;
 
 use super::utils::is_valid_direction;
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Solid {
-    pub color: D2D1_COLOR_F,
-    pub opacity: f32
-}
-
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum ColorConfig {
     String(String),
     Mapping(GradientConfig),
+}
+
+impl Default for ColorConfig {
+    fn default() -> Self {
+        Self::String("#000000".to_string())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Solid {
+    pub color: D2D1_COLOR_F,
+    pub opacity: f32,
 }
 
 #[derive(Debug, Clone)]
@@ -46,11 +52,195 @@ pub enum Color {
     Gradient(Gradient),
 }
 
+impl Color {
+    fn from_string(color: String, is_active: Option<bool>) -> Self {
+        if color.starts_with("gradient(") && color.ends_with(")") {
+            return Self::from_string(strip_string(color, &["gradient("], ')'), is_active);
+        }
+
+        let color_re = &COLOR_REGEX;
+
+        // Collect valid colors using regex
+        let color_matches: Vec<&str> = color_re
+            .captures_iter(&color)
+            .filter_map(|cap| cap.get(0).map(|m| m.as_str()))
+            .collect();
+
+        if color_matches.len() == 1 {
+            return Self::Solid(Solid {
+                color: color_matches[0].to_string().to_d2d1_color(is_active),
+                opacity: 0.0,
+            });
+        }
+
+        let remaining_input = color[color.rfind(color_matches.last().unwrap()).unwrap()
+            + color_matches.last().unwrap().len()..]
+            .trim_start();
+
+        let remaining_input_arr: Vec<&str> = remaining_input
+            .split(',')
+            .filter_map(|s| {
+                let trimmed = s.trim();
+                (!trimmed.is_empty()).then_some(trimmed)
+            })
+            .collect();
+
+        let direction = remaining_input_arr
+            .iter()
+            .find(|&&input| is_valid_direction(input))
+            .map(|&s| s.to_string())
+            .unwrap_or_else(|| "to_right".to_string());
+        let colors: Vec<D2D1_COLOR_F> = color_matches
+            .iter()
+            .map(|&color| color.to_string().to_d2d1_color(is_active))
+            .collect();
+
+        let num_colors = colors.len();
+        let step = 1.0 / (num_colors - 1) as f32;
+
+        let gradient_stops = colors
+            .into_iter()
+            .enumerate()
+            .map(|(i, color)| D2D1_GRADIENT_STOP {
+                position: i as f32 * step,
+                color,
+            })
+            .collect();
+
+        let direction = GradientCoordinates::from(&direction);
+
+        Self::Gradient(Gradient {
+            gradient_stops,
+            direction,
+            opacity: 0.0,
+        })
+    }
+
+    fn from_mapping(color: GradientConfig, is_active: Option<bool>) -> Self {
+        match color.colors.len() {
+            0 => Color::Solid(Solid {
+                color: D2D1_COLOR_F::default(),
+                opacity: 0.0,
+            }),
+            1 => Color::Solid(Solid {
+                color: color.colors[0].clone().to_d2d1_color(is_active),
+                opacity: 0.0,
+            }),
+            _ => {
+                let num_colors = color.colors.len();
+                let step = 1.0 / (num_colors - 1) as f32;
+                let gradient_stops: Vec<D2D1_GRADIENT_STOP> = color
+                    .colors
+                    .iter()
+                    .enumerate()
+                    .map(|(i, hex)| D2D1_GRADIENT_STOP {
+                        position: i as f32 * step,
+                        color: hex.to_string().to_d2d1_color(is_active),
+                    })
+                    .collect();
+
+                let direction = match color.direction {
+                    GradientDirection::Direction(direction) => {
+                        GradientCoordinates::from(&direction)
+                    }
+                    GradientDirection::Coordinates(direction) => direction,
+                };
+
+                Color::Gradient(Gradient {
+                    gradient_stops,
+                    direction,
+                    opacity: 0.0,
+                })
+            }
+        }
+    }
+
+    pub fn from(color_definition: &ColorConfig, is_active: Option<bool>) -> Self {
+        match color_definition {
+            ColorConfig::String(s) => Self::from_string(s.clone(), is_active),
+            ColorConfig::Mapping(gradient_def) => {
+                Self::from_mapping(gradient_def.clone(), is_active)
+            }
+        }
+    }
+
+    pub fn set_opacity(&mut self, opacity: f32) {
+        match self {
+            Color::Gradient(gradient) => gradient.opacity = opacity,
+            Color::Solid(solid) => solid.opacity = opacity,
+        }
+    }
+
+    pub fn get_opacity(&self) -> f32 {
+        match self {
+            Color::Gradient(gradient) => gradient.opacity,
+            Color::Solid(solid) => solid.opacity,
+        }
+    }
+
+    pub fn to_brush(
+        &self,
+        render_target: &ID2D1HwndRenderTarget, //&ID2D1HwndRenderTarget,
+        window_rect: &RECT,
+        brush_properties: &D2D1_BRUSH_PROPERTIES,
+    ) -> Option<ID2D1Brush> {
+        match self {
+            Color::Solid(solid) => unsafe {
+                let Ok(brush) =
+                    render_target.CreateSolidColorBrush(&solid.color, Some(brush_properties))
+                else {
+                    return None;
+                };
+
+                brush.SetOpacity(solid.opacity);
+
+                Some(brush.into())
+            },
+            Color::Gradient(gradient) => unsafe {
+                let width = WindowsApi::get_rect_width(*window_rect) as f32;
+                let height = WindowsApi::get_rect_height(*window_rect) as f32;
+
+                let gradient_properties = D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES {
+                    startPoint: D2D_POINT_2F {
+                        x: gradient.direction.start[0] * width,
+                        y: gradient.direction.start[1] * height,
+                    },
+                    endPoint: D2D_POINT_2F {
+                        x: gradient.direction.end[0] * width,
+                        y: gradient.direction.end[1] * height,
+                    },
+                };
+
+                let Ok(gradient_stop_collection) = render_target.CreateGradientStopCollection(
+                    &gradient.gradient_stops,
+                    D2D1_GAMMA_2_2,
+                    D2D1_EXTEND_MODE_CLAMP,
+                ) else {
+                    // TODO instead of panicking, I should just return a default value
+                    panic!("could not create gradient_stop_collection!");
+                };
+
+                let Ok(brush) = render_target.CreateLinearGradientBrush(
+                    &gradient_properties,
+                    Some(brush_properties),
+                    &gradient_stop_collection,
+                ) else {
+                    return None;
+                };
+
+                brush.SetOpacity(gradient.opacity);
+
+                Some(brush.into())
+            },
+        }
+    }
+}
+
 impl Default for Color {
     fn default() -> Self {
         Color::Solid(Solid {
             color: D2D1_COLOR_F::default(),
-            opacity: 0.0
+            opacity: 0.0,
         })
     }
 }
@@ -156,189 +346,5 @@ impl ToColor for String {
         }
 
         D2D1_COLOR_F::default()
-    }
-}
-
-impl Color {
-    fn from_string(color: String, is_active: Option<bool>) -> Self {
-        if color.starts_with("gradient(") && color.ends_with(")") {
-            return Self::from_string(strip_string(color, &["gradient("], ')'), is_active);
-        }
-
-        let color_re = &COLOR_REGEX;
-
-        // Collect valid colors using regex
-        let color_matches: Vec<&str> = color_re
-            .captures_iter(&color)
-            .filter_map(|cap| cap.get(0).map(|m| m.as_str()))
-            .collect();
-
-        if color_matches.len() == 1 {
-            return Self::Solid(Solid {
-                color: color_matches[0].to_string().to_d2d1_color(is_active),
-                opacity: 0.0
-            });
-        }
-
-        let remaining_input = color[color.rfind(color_matches.last().unwrap()).unwrap()
-            + color_matches.last().unwrap().len()..]
-            .trim_start();
-
-        let remaining_input_arr: Vec<&str> = remaining_input
-            .split(',')
-            .filter_map(|s| {
-                let trimmed = s.trim();
-                (!trimmed.is_empty()).then_some(trimmed)
-            })
-            .collect();
-
-        let direction = remaining_input_arr
-            .iter()
-            .find(|&&input| is_valid_direction(input))
-            .map(|&s| s.to_string())
-            .unwrap_or_else(|| "to_right".to_string());
-        let colors: Vec<D2D1_COLOR_F> = color_matches
-            .iter()
-            .map(|&color| color.to_string().to_d2d1_color(is_active))
-            .collect();
-
-        let num_colors = colors.len();
-        let step = 1.0 / (num_colors - 1) as f32;
-
-        let gradient_stops = colors
-            .into_iter()
-            .enumerate()
-            .map(|(i, color)| D2D1_GRADIENT_STOP {
-                position: i as f32 * step,
-                color,
-            })
-            .collect();
-
-        let direction = GradientCoordinates::from(&direction);
-
-        Self::Gradient(Gradient {
-            gradient_stops,
-            direction,
-            opacity: 0.0
-        })
-    }
-
-    fn from_mapping(color: GradientConfig, is_active: Option<bool>) -> Self {
-        match color.colors.len() {
-            0 => Color::Solid(Solid {
-                color: D2D1_COLOR_F::default(),
-                opacity: 0.0
-            }),
-            1 => Color::Solid(Solid {
-                color: color.colors[0].clone().to_d2d1_color(is_active),
-                opacity: 0.0
-            }),
-            _ => {
-                let num_colors = color.colors.len();
-                let step = 1.0 / (num_colors - 1) as f32;
-                let gradient_stops: Vec<D2D1_GRADIENT_STOP> = color
-                    .colors
-                    .iter()
-                    .enumerate()
-                    .map(|(i, hex)| D2D1_GRADIENT_STOP {
-                        position: i as f32 * step,
-                        color: hex.to_string().to_d2d1_color(is_active),
-                    })
-                    .collect();
-
-                let direction = match color.direction {
-                    GradientDirection::Direction(direction) => {
-                        GradientCoordinates::from(&direction)
-                    }
-                    GradientDirection::Coordinates(direction) => direction,
-                };
-
-                Color::Gradient(Gradient {
-                    gradient_stops,
-                    direction,
-                    opacity: 0.0
-                })
-            }
-        }
-    }
-
-    pub fn from(color_definition: &ColorConfig, is_active: Option<bool>) -> Self {
-        match color_definition {
-            ColorConfig::String(s) => Self::from_string(s.clone(), is_active),
-            ColorConfig::Mapping(gradient_def) => {
-                Self::from_mapping(gradient_def.clone(), is_active)
-            }
-        }
-    }
-
-    pub fn set_opacity(&mut self, opacity: f32) {
-        match self {
-            Color::Gradient(gradient) => gradient.opacity = opacity,
-            Color::Solid(solid) => solid.opacity = opacity,
-        }
-    }
-
-    pub fn get_opacity(&self) -> f32 {
-        match self {
-            Color::Gradient(gradient) => gradient.opacity,
-            Color::Solid(solid) => solid.opacity,
-        }
-    }
-
-    pub fn to_brush(
-        &self,
-        render_target: &ID2D1HwndRenderTarget, //&ID2D1HwndRenderTarget,
-        window_rect: &RECT,
-        brush_properties: &D2D1_BRUSH_PROPERTIES,
-    ) -> Option<ID2D1Brush> {
-        match self {
-            Color::Solid(solid) => unsafe {
-                let Ok(brush) =
-                    render_target.CreateSolidColorBrush(&solid.color, Some(brush_properties))
-                else {
-                    return None;
-                };
-
-                brush.SetOpacity(solid.opacity);
-
-                Some(brush.into())
-            },
-            Color::Gradient(gradient) => unsafe {
-                let width = WindowsApi::get_rect_width(*window_rect) as f32;
-                let height = WindowsApi::get_rect_height(*window_rect) as f32;
-
-                let gradient_properties = D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES {
-                    startPoint: D2D_POINT_2F {
-                        x: gradient.direction.start[0] * width,
-                        y: gradient.direction.start[1] * height,
-                    },
-                    endPoint: D2D_POINT_2F {
-                        x: gradient.direction.end[0] * width,
-                        y: gradient.direction.end[1] * height,
-                    },
-                };
-
-                let Ok(gradient_stop_collection) = render_target.CreateGradientStopCollection(
-                    &gradient.gradient_stops,
-                    D2D1_GAMMA_2_2,
-                    D2D1_EXTEND_MODE_CLAMP,
-                ) else {
-                    // TODO instead of panicking, I should just return a default value
-                    panic!("could not create gradient_stop_collection!");
-                };
-
-                let Ok(brush) = render_target.CreateLinearGradientBrush(
-                    &gradient_properties,
-                    Some(brush_properties),
-                    &gradient_stop_collection,
-                ) else {
-                    return None;
-                };
-
-                brush.SetOpacity(gradient.opacity);
-
-                Some(brush.into())
-            },
-        }
     }
 }

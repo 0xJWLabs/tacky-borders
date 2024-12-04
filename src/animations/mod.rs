@@ -45,66 +45,72 @@ fn animation<'de, D>(deserializer: D) -> Result<FxHashMap<AnimationType, Animati
 where
     D: Deserializer<'de>,
 {
-    let map: Option<FxHashMap<String, Value>> = Option::deserialize(deserializer)?;
-    let mut result: FxHashMap<AnimationType, Animation> = FxHashMap::default();
+    let result = FxHashMap::<String, Value>::deserialize(deserializer);
+    let hashmap = match result {
+        Ok(val) => val,
+        Err(err) => return Err(err),
+    };
 
-    if let Some(entries) = map {
-        for (anim_type_str, anim_value) in entries {
-            let animation_type: Result<AnimationType, _> = from_str(&anim_type_str);
+    let mut deserialized: FxHashMap<AnimationType, Animation> = FxHashMap::default();
 
-            if let Ok(animation_type) = animation_type {
-                if animation_type == AnimationType::None {
-                    continue;
-                }
+    for (anim_type_str, anim_value) in hashmap {
+        let animation_type: Result<AnimationType, _> = from_str(&anim_type_str);
+
+        if let Ok(animation_type) = animation_type {
+            if animation_type == AnimationType::None {
+                continue;
+            }
+
+            let default_speed = match animation_type {
+                AnimationType::Spiral | AnimationType::ReverseSpiral | AnimationType::Fade => 50.0,
+                _ => 0.0, // Default fallback for other types
+            };
+
+            if let Value::Null = anim_value {
+                deserialized.insert(
+                    animation_type.clone(),
+                    Animation {
+                        animation_type: animation_type.clone(),
+                        speed: default_speed,
+                        easing: AnimationEasing::Linear,
+                    },
+                );
+            } else if let Value::Mapping(ref obj) = anim_value {
+                let speed = match obj.get("speed") {
+                    Some(Value::Number(n)) => n.as_f64().map(|f| f as f32),
+                    _ => None,
+                };
+
+                let easing = match obj.get("easing") {
+                    Some(Value::String(s)) => {
+                        AnimationEasing::from_str(s).unwrap_or(AnimationEasing::Linear)
+                    }
+                    _ => AnimationEasing::Linear,
+                };
 
                 let default_speed = match animation_type {
-                    AnimationType::Spiral
-                    | AnimationType::ReverseSpiral
-                    | AnimationType::Fade => 50.0,
+                    AnimationType::Spiral | AnimationType::ReverseSpiral | AnimationType::Fade => {
+                        50.0
+                    }
                     _ => 0.0, // Default fallback for other types
                 };
 
-                if let Value::Null = anim_value {
-                    result.insert(animation_type.clone(), Animation {
-                        animation_type: animation_type.clone(),
-                        speed: default_speed,
-                        easing: AnimationEasing::Linear
-                    });
-                } else if let Value::Mapping(ref obj) = anim_value {
-                    let speed = match obj.get("speed") {
-                        Some(Value::Number(n)) => n.as_f64().map(|f| f as f32),
-                        _ => None,
-                    };
+                let animation = Animation {
+                    animation_type: animation_type.clone(),
+                    speed: speed.unwrap_or(default_speed),
+                    easing,
+                };
 
-                    let easing = match obj.get("easing") {
-                        Some(Value::String(s)) => AnimationEasing::from_str(&s).unwrap_or_else(|_| AnimationEasing::Linear),
-                        _ => AnimationEasing::Linear,
-                    };
-
-                    let default_speed = match animation_type {
-                        AnimationType::Spiral
-                        | AnimationType::ReverseSpiral
-                        | AnimationType::Fade => 50.0,
-                        _ => 0.0, // Default fallback for other types
-                    };
-
-                    let animation = Animation {
-                        animation_type: animation_type.clone(),
-                        speed: speed.unwrap_or(default_speed),
-                        easing,
-                    };
-
-                    result.insert(animation_type, animation);
-                } else {
-                    println!("Invalid value type: {:?}", anim_value);
-                }
+                deserialized.insert(animation_type, animation);
             } else {
-                println!("Invalid animation type: {}", anim_type_str);
+                println!("Invalid value type: {:?}", anim_value);
             }
+        } else {
+            println!("Invalid animation type: {}", anim_type_str);
         }
     }
 
-    Ok(result)
+    Ok(deserialized)
 }
 
 pub trait HashMapAnimationExt {

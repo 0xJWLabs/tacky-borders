@@ -1,61 +1,29 @@
-use dirs::home_dir;
+use anyhow::Context;
+use anyhow::Error;
+use anyhow::Result as AnyResult;
+use std::fs::exists;
 use std::fs::write;
-use std::fs::DirBuilder;
 use std::fs::File;
 use std::fs::OpenOptions;
-use std::io;
-use std::path::Path;
-use std::path::PathBuf;
-use windows::core::Result;
 
-// Configuration
-pub fn get_config() -> PathBuf {
-    let home_dir = home_dir().expect("can't find home path");
-    let config_dir = home_dir.join(".config").join("tacky-borders");
-    let fallback_dir = home_dir.join(".tacky-borders");
-
-    let dir_path = if has_file(&config_dir).expect("Couldn't check if config dir exists") {
-        config_dir
-    } else if has_file(&fallback_dir).expect("Couldn't check if config dir exists") {
-        fallback_dir
-    } else {
-        DirBuilder::new()
-            .recursive(true)
-            .create(&config_dir)
-            .expect("could not create config directory!");
-
-        config_dir
-    };
-
-    dir_path
-}
+use crate::border_config;
 
 // Log File
-pub fn get_log() -> Result<File> {
-    let config_dir = get_config();
-    let log_path = config_dir.join("log.txt");
+pub fn get_log() -> AnyResult<File, Error> {
+    let log_dir = border_config::Config::get_config_dir()?;
+    let log_path = log_dir.join("log.txt");
 
-    if !has_file(&log_path).expect("Couldn't check if log path exists") {
-        // Overwrite the file with an empty string
-        write(&log_path, "").map_err(|e| {
-            eprintln!("Failed to reset log file: {:?}", e);
-            e
-        })?;
+    if !exists(&log_path).context("Could not find log file")? {
+        write(&log_path, "").context("could not generate log file")?;
     }
 
-    if !has_file(&log_path).expect("Couldn't check if log path exists") {
-        write(&log_path, "").expect("could not generate log.txt");
-    }
+    let _ = write(&log_path, "");
 
     let file = OpenOptions::new()
-        .append(true) // Allow appending to the file
-        .create(true) // Create the file if it doesn't exist
+        .append(true)
+        .create(true)
         .open(&log_path)
-        .map_err(|err| {
-            error!("{}", &format!("Failed to open log file: {:?}", &log_path),);
-            debug!("{}", &format!("{:?}", err),);
-            err
-        })?;
+        .context(format!("Failed to open log file: {:?}", log_path))?;
 
     Ok(file)
 }
@@ -73,29 +41,4 @@ pub fn strip_string(input: String, prefixes: &[&str], suffix: char) -> String {
 
     // Remove suffix (if it exists)
     result.strip_suffix(suffix).unwrap_or(&result).to_string()
-}
-
-cfg_if::cfg_if! {
-    if #[cfg(feature = "rust150")] {
-        pub fn has_file<P>(path: P) -> io::Result<bool>
-        where
-            P: AsRef<Path>
-        {
-            Ok(std::fs::metadata(path.as_ref()).is_ok())
-        }
-    } else if #[cfg(feature = "rust180")] {
-        pub fn has_file<P>(path: P) -> io::Result<bool>
-        where
-            P: AsRef<Path>
-        {
-            path.as_ref().try_exists()
-        }
-    } else {
-        pub fn has_file<P>(path: P) -> io::Result<bool>
-        where
-            P: AsRef<Path>
-        {
-            std::fs::exists(path.as_ref())
-        }
-    }
 }

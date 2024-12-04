@@ -1,17 +1,30 @@
-use serde::Deserialize;
-use serde::Serialize;
-use std::fs;
-use std::sync::LazyLock;
-use std::sync::Mutex;
-
 use crate::animations::Animations;
 use crate::colors::color::ColorConfig;
-use crate::utils::get_config;
-use crate::utils::has_file;
+use anyhow::Context;
+use anyhow::Result as AnyResult;
+use dirs::home_dir;
+use serde::Deserialize;
+use serde::Serialize;
+use std::fs::exists;
+use std::fs::read_to_string;
+use std::fs::write;
+use std::fs::DirBuilder;
+use std::path::PathBuf;
+use std::sync::LazyLock;
+use std::sync::Mutex;
+use thiserror::Error;
+
+pub static CONFIG: LazyLock<Mutex<Config>> = LazyLock::new(|| {
+    Mutex::new(match Config::new() {
+        Ok(config) => config,
+        Err(err) => {
+            error!("Error: {}", err);
+            Config::default()
+        }
+    })
+});
 
 const DEFAULT_CONFIG: &str = include_str!("../resources/config.yaml");
-
-pub static CONFIG: LazyLock<Mutex<Config>> = LazyLock::new(|| Mutex::new(Config::new()));
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
 pub enum BorderRadiusOption {
@@ -42,6 +55,12 @@ pub enum MatchStrategy {
     Contains,
 }
 
+impl Default for BorderRadius {
+    fn default() -> Self {
+        Self::Float(0.0)
+    }
+}
+
 #[derive(Debug, Deserialize, Clone, Default)]
 pub struct MatchDetails {
     #[serde(rename = "kind")]
@@ -68,7 +87,7 @@ pub struct WindowRule {
     pub rule_match: MatchDetails,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Default)]
 pub struct GlobalRule {
     pub border_width: f32,
     pub border_offset: i32,
@@ -80,7 +99,7 @@ pub struct GlobalRule {
     pub unminimize_delay: Option<u64>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Default)]
 pub struct Config {
     #[serde(rename = "global")]
     pub global_rule: GlobalRule,
@@ -88,29 +107,60 @@ pub struct Config {
 }
 
 impl Config {
-    fn new() -> Self {
-        let config_dir = get_config();
+    fn new() -> AnyResult<Self> {
+        let config_dir = Self::get_config_dir()?;
         let config_path = config_dir.join("config.yaml");
-        if !has_file(&config_path).expect("Could not find config file in path") {
-            std::fs::write(&config_path, DEFAULT_CONFIG.as_bytes())
-                .expect("could not generate default config.yaml");
+        if !exists(&config_path).context("Could not find config file in path")? {
+            write(&config_path, DEFAULT_CONFIG.as_bytes())
+                .context("could not generate default config.yaml")?;
         }
 
-        let contents = match fs::read_to_string(&config_path) {
-            Ok(contents) => contents,
-            Err(_err) => panic!("could not read config.yaml in: {}", config_path.display()),
+        let contents = read_to_string(&config_path).context("Could not read config.yaml")?;
+
+        let config = serde_yml::from_str(&contents)?;
+        Ok(config)
+    }
+
+    pub fn get_config_dir() -> AnyResult<PathBuf, ConfigError> {
+        let Some(home_dir) = home_dir() else {
+            return Err(ConfigError::HomeDir);
         };
 
-        let config: Config = serde_yml::from_str(&contents).expect("error reading config.yaml");
+        let config_dir = home_dir.join(".config").join("tacky-borders");
+        let fallback_dir = home_dir.join(".tacky-borders");
 
-        config
+        if config_dir.exists() {
+            return Ok(config_dir);
+        }
+
+        if fallback_dir.exists() {
+            return Ok(fallback_dir);
+        }
+
+        DirBuilder::new()
+            .recursive(true)
+            .create(&config_dir)
+            .map_err(|_| ConfigError::ConfigDir)?;
+
+        Ok(config_dir)
     }
+
     pub fn reload() {
-        let mut config = CONFIG.lock().unwrap();
-        *config = Self::new();
-        drop(config);
+        let new_config = match Self::new() {
+            Ok(config) => config,
+            Err(err) => {
+                error!("Error: {}", err);
+                Config::default()
+            }
+        };
+        *CONFIG.lock().unwrap() = new_config;
     }
-    pub fn _get() -> Self {
-        CONFIG.lock().unwrap().clone()
-    }
+}
+
+#[derive(Error, Debug)]
+pub enum ConfigError {
+    #[error("Could not find home directory")]
+    HomeDir,
+    #[error("Could not create config directory")]
+    ConfigDir,
 }

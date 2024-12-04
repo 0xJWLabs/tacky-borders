@@ -2,9 +2,18 @@ use regex::Regex;
 use std::ffi::c_void;
 use std::ptr;
 use std::thread;
+use windows::Win32::Foundation::LRESULT;
+use windows::Win32::UI::HiDpi::SetProcessDpiAwarenessContext;
+use windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT;
+use windows::Win32::UI::Input::Ime::ImmDisableIME;
+use windows::Win32::UI::WindowsAndMessaging::DispatchMessageW;
+use windows::Win32::UI::WindowsAndMessaging::GetMessageW;
+use windows::Win32::UI::WindowsAndMessaging::SendNotifyMessageW;
+use windows::Win32::UI::WindowsAndMessaging::TranslateMessage;
+use windows::Win32::UI::WindowsAndMessaging::MSG;
 use windows::Win32::UI::WindowsAndMessaging::WM_NCDESTROY;
 
-use windows::core::Result;
+use windows::core::Result as WinResult;
 use windows::core::PWSTR;
 use windows::Win32::Foundation::CloseHandle;
 use windows::Win32::Foundation::BOOL;
@@ -93,6 +102,44 @@ where
 pub struct WindowsApi;
 
 impl WindowsApi {
+    pub fn post_message_w(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> WinResult<()> {
+        unsafe { PostMessageW(hwnd, msg, wparam, lparam) }
+    }
+
+    pub fn send_notify_message_w(
+        hwnd: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> WinResult<()> {
+        unsafe { SendNotifyMessageW(hwnd, msg, wparam, lparam) }
+    }
+
+    pub fn imm_disable_ime(param0: u32) -> BOOL {
+        unsafe { ImmDisableIME(param0) }
+    }
+
+    pub fn set_process_dpi_awareness_context(value: DPI_AWARENESS_CONTEXT) -> WinResult<()> {
+        unsafe { SetProcessDpiAwarenessContext(value) }
+    }
+
+    pub fn get_message_w(
+        lpmsg: *mut MSG,
+        hwnd: HWND,
+        wmsgfiltermin: u32,
+        wmsgfiltermax: u32,
+    ) -> BOOL {
+        unsafe { GetMessageW(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax) }
+    }
+
+    pub fn translate_message(lpmsg: *const MSG) -> BOOL {
+        unsafe { TranslateMessage(lpmsg) }
+    }
+
+    pub fn dispatch_message_w(lpmsg: *const MSG) -> LRESULT {
+        unsafe { DispatchMessageW(lpmsg) }
+    }
+
     pub fn get_rect_width(rect: RECT) -> i32 {
         rect.right - rect.left
     }
@@ -116,7 +163,7 @@ impl WindowsApi {
         alpha: u8,
         flags: LAYERED_WINDOW_ATTRIBUTES_FLAGS,
         err: Option<ErrorMsg<E>>,
-    ) -> Result<()>
+    ) -> WinResult<()>
     where
         E: FnOnce(),
     {
@@ -137,7 +184,7 @@ impl WindowsApi {
         attribute: DWMWINDOWATTRIBUTE,
         value: &T,
         err: Option<ErrorMsg<E>>,
-    ) -> Result<()>
+    ) -> WinResult<()>
     where
         E: FnOnce(),
     {
@@ -166,7 +213,7 @@ impl WindowsApi {
         attribute: DWMWINDOWATTRIBUTE,
         value: *mut c_void,
         err: Option<ErrorMsg<E>>,
-    ) -> Result<()>
+    ) -> WinResult<()>
     where
         E: FnOnce(),
     {
@@ -190,7 +237,7 @@ impl WindowsApi {
         Ok(())
     }
 
-    pub fn enum_windows() -> Result<Vec<HWND>> {
+    pub fn enum_windows() -> WinResult<Vec<HWND>> {
         let mut windows: Vec<HWND> = Vec::new();
         unsafe {
             let _ = EnumWindows(
@@ -357,23 +404,16 @@ impl WindowsApi {
         Some(border_window)
     }
 
-    // Return true if the border exists in the border hashmap. Otherwise, create a new border and
-    // return false.
-    pub fn show_border_for_window(hwnd: HWND) -> bool {
-        let border_window = Self::get_border_from_window(hwnd);
-        if let Some(hwnd) = border_window {
-            unsafe {
-                let _ = PostMessageW(hwnd, WM_APP_SHOWUNCLOAKED, WPARAM(0), LPARAM(0));
-            }
-            true
-        } else {
-            if Self::is_window_visible(hwnd)
-                && !Self::is_window_cloaked(hwnd)
-                && !Self::has_filtered_style(hwnd)
-            {
-                let _ = Self::create_border_for_window(hwnd);
-            }
-            false
+    pub fn show_border_for_window(hwnd: HWND) {
+        // If the border already exists, simply post a 'SHOW' message to its message queue. Otherwise,
+        // create a new border.
+        if let Some(border) = Self::get_border_from_window(hwnd) {
+            let _ = Self::post_message_w(border, WM_APP_SHOWUNCLOAKED, WPARAM(0), LPARAM(0));
+        } else if Self::is_window_visible(hwnd)
+            && !Self::is_window_cloaked(hwnd)
+            && !Self::has_filtered_style(hwnd)
+        {
+            let _ = Self::create_border_for_window(hwnd);
         }
     }
 
@@ -382,17 +422,15 @@ impl WindowsApi {
 
         let _ = thread::spawn(move || {
             let window_sent = window;
-            let border_option = Self::get_border_from_window(window_sent.0);
-            if let Some(border_window) = border_option {
-                unsafe {
-                    let _ = PostMessageW(border_window, WM_APP_HIDECLOAKED, WPARAM(0), LPARAM(0));
-                }
+            if let Some(border) = Self::get_border_from_window(window_sent.0) {
+                let _ =
+                    WindowsApi::post_message_w(border, WM_APP_HIDECLOAKED, WPARAM(0), LPARAM(0));
             }
         });
         true
     }
 
-    pub fn create_border_for_window(tracking_window: HWND) -> Result<()> {
+    pub fn create_border_for_window(tracking_window: HWND) -> Result<(), ()> {
         let window = SendHWND(tracking_window);
 
         let _ = std::thread::spawn(move || {
@@ -484,7 +522,15 @@ impl WindowsApi {
             }
 
             let hinstance: HINSTANCE = unsafe { std::mem::transmute(&__ImageBase) };
-            let _ = border.create_border_window(hinstance);
+            match border.create_border_window(hinstance) {
+                Ok(_) => {}
+                Err(err) => {
+                    error!("Could not create border window! {:?}", err);
+                    return;
+                }
+            };
+
+            // Insert the border and its tracking window into the hashmap to keep track of them
             borders_hashmap.insert(window_isize, border.border_window.0 as isize);
 
             // Drop these values (to save some RAM?) before calling init and entering a message loop
@@ -499,6 +545,8 @@ impl WindowsApi {
             let _ = border_colors;
             let _ = animations;
             let _ = window_isize;
+            let _ = initialize_delay;
+            let _ = unminimize_delay;
             let _ = hinstance;
 
             let _ = border.init(initialize_delay);
@@ -509,26 +557,20 @@ impl WindowsApi {
         Ok(())
     }
 
-    pub fn destroy_border_for_window(tracking_window: HWND) -> Result<()> {
-        let window = SendHWND(tracking_window);
+    pub fn destroy_border_for_window(tracking_window: HWND) -> Result<(), ()> {
+        let mut borders_hashmap = BORDERS.lock().unwrap();
 
-        let _ = thread::spawn(move || {
-            let window_sent = window;
-            let mut borders_hashmap = BORDERS.lock().unwrap();
-            let window_isize = window_sent.0 .0 as isize;
-            let Some(border_isize) = borders_hashmap.get(&window_isize) else {
-                drop(borders_hashmap);
-                return;
-            };
-
-            let border_window: HWND = HWND(*border_isize as _);
-            unsafe {
-                let _ = PostMessageW(border_window, WM_NCDESTROY, WPARAM(0), LPARAM(0));
-            }
-            borders_hashmap.remove(&window_isize);
-
+        let window_isize = tracking_window.0 as isize;
+        let Some(border_isize) = borders_hashmap.get(&window_isize) else {
             drop(borders_hashmap);
-        });
+            return Ok(());
+        };
+
+        let border_window: HWND = HWND(*border_isize as _);
+        let _ = WindowsApi::post_message_w(border_window, WM_NCDESTROY, WPARAM(0), LPARAM(0));
+        borders_hashmap.remove(&window_isize);
+
+        drop(borders_hashmap);
 
         Ok(())
     }

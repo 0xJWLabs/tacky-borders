@@ -23,7 +23,7 @@ use std::thread;
 use std::time;
 
 use windows::core::w;
-use windows::core::Result;
+use windows::core::Result as WinResult;
 
 use windows::core::PCWSTR;
 use windows::Foundation::Numerics::Matrix3x2;
@@ -37,7 +37,6 @@ use windows::Win32::Foundation::LRESULT;
 use windows::Win32::Foundation::RECT;
 use windows::Win32::Foundation::TRUE;
 use windows::Win32::Foundation::WPARAM;
-
 use windows::Win32::Graphics::Direct2D::Common::D2D1_ALPHA_MODE_PREMULTIPLIED;
 use windows::Win32::Graphics::Direct2D::Common::D2D1_PIXEL_FORMAT;
 use windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F;
@@ -54,21 +53,16 @@ use windows::Win32::Graphics::Direct2D::D2D1_PRESENT_OPTIONS_IMMEDIATELY;
 use windows::Win32::Graphics::Direct2D::D2D1_RENDER_TARGET_PROPERTIES;
 use windows::Win32::Graphics::Direct2D::D2D1_RENDER_TARGET_TYPE_DEFAULT;
 use windows::Win32::Graphics::Direct2D::D2D1_ROUNDED_RECT;
-
 use windows::Win32::Graphics::Dwm::DwmEnableBlurBehindWindow;
 use windows::Win32::Graphics::Dwm::DWMWA_EXTENDED_FRAME_BOUNDS;
 use windows::Win32::Graphics::Dwm::DWM_BB_BLURREGION;
 use windows::Win32::Graphics::Dwm::DWM_BB_ENABLE;
 use windows::Win32::Graphics::Dwm::DWM_BLURBEHIND;
-
 use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_UNKNOWN;
 use windows::Win32::Graphics::Gdi::CreateRectRgn;
 use windows::Win32::Graphics::Gdi::ValidateRect;
-
 use windows::Win32::UI::WindowsAndMessaging::CreateWindowExW;
 use windows::Win32::UI::WindowsAndMessaging::DefWindowProcW;
-use windows::Win32::UI::WindowsAndMessaging::DispatchMessageW;
-use windows::Win32::UI::WindowsAndMessaging::GetMessageW;
 use windows::Win32::UI::WindowsAndMessaging::GetSystemMetrics;
 use windows::Win32::UI::WindowsAndMessaging::GetWindow;
 use windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW;
@@ -76,7 +70,6 @@ use windows::Win32::UI::WindowsAndMessaging::PostQuitMessage;
 use windows::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW;
 use windows::Win32::UI::WindowsAndMessaging::SetWindowPos;
 use windows::Win32::UI::WindowsAndMessaging::ShowWindow;
-use windows::Win32::UI::WindowsAndMessaging::TranslateMessage;
 use windows::Win32::UI::WindowsAndMessaging::CREATESTRUCTW;
 use windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA;
 use windows::Win32::UI::WindowsAndMessaging::GW_HWNDPREV;
@@ -105,10 +98,16 @@ use windows::Win32::UI::WindowsAndMessaging::WS_EX_TOPMOST;
 use windows::Win32::UI::WindowsAndMessaging::WS_EX_TRANSPARENT;
 use windows::Win32::UI::WindowsAndMessaging::WS_POPUP;
 
-pub static RENDER_FACTORY: LazyLock<ID2D1Factory8> = unsafe {
+static RENDER_FACTORY: LazyLock<ID2D1Factory8> = unsafe {
     LazyLock::new(|| {
-        D2D1CreateFactory::<ID2D1Factory8>(D2D1_FACTORY_TYPE_MULTI_THREADED, None)
-            .expect("creating RENDER_FACTORY failed")
+        match D2D1CreateFactory::<ID2D1Factory8>(D2D1_FACTORY_TYPE_MULTI_THREADED, None) {
+            Ok(factory) => factory,
+            Err(err) => {
+                // Not sure how I can recover from this error so I'm just going to panic
+                error!("Critical Error: failed to create ID2D1Factory, {}", err);
+                panic!("Failed to create ID2D1Factory, {}", err);
+            }
+        }
     })
 };
 
@@ -126,7 +125,6 @@ pub struct WindowBorder {
     pub animations: Animations,
     pub active_color: Color,
     pub inactive_color: Color,
-    pub current_color: Color,
     pub unminimize_delay: u64,
     pub pause: bool,
     pub last_animation_time: Option<std::time::Instant>,
@@ -138,7 +136,7 @@ pub struct WindowBorder {
 }
 
 impl WindowBorder {
-    pub fn create_border_window(&mut self, hinstance: HINSTANCE) -> Result<()> {
+    pub fn create_border_window(&mut self, hinstance: HINSTANCE) -> WinResult<()> {
         unsafe {
             let self_title = format!(
                 "{}{}",
@@ -149,7 +147,7 @@ impl WindowBorder {
             string.push(0);
             self.border_window = CreateWindowExW(
                 WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT,
-                w!("tacky-border"),
+                w!("border"),
                 PCWSTR::from_raw(string.as_ptr()),
                 WS_POPUP | WS_DISABLED,
                 0,
@@ -166,7 +164,7 @@ impl WindowBorder {
         Ok(())
     }
 
-    pub fn init(&mut self, initialize_delay: u64) -> Result<()> {
+    pub fn init(&mut self, initialize_delay: u64) -> Result<(), ()> {
         thread::sleep(time::Duration::from_millis(initialize_delay));
 
         unsafe {
@@ -225,9 +223,10 @@ impl WindowBorder {
             self.set_anim_timer();
 
             let mut message = MSG::default();
-            while GetMessageW(&mut message, HWND::default(), 0, 0).into() {
-                let _ = TranslateMessage(&message);
-                DispatchMessageW(&message);
+
+            while WindowsApi::get_message_w(&mut message, HWND::default(), 0, 0).into() {
+                let _ = WindowsApi::translate_message(&message);
+                WindowsApi::dispatch_message_w(&message);
             }
             debug!("exiting border thread for {:?}!", self.tracking_window);
         }
@@ -235,7 +234,7 @@ impl WindowBorder {
         Ok(())
     }
 
-    pub fn create_render_targets(&mut self) -> Result<()> {
+    pub fn create_render_targets(&mut self) -> Result<(), ()> {
         let render_target_properties = D2D1_RENDER_TARGET_PROPERTIES {
             r#type: D2D1_RENDER_TARGET_TYPE_DEFAULT,
             pixelFormat: D2D1_PIXEL_FORMAT {
@@ -262,31 +261,26 @@ impl WindowBorder {
             radiusY: self.border_radius,
         };
 
-        if WindowsApi::is_window_active(self.tracking_window) {
-            self.current_color = self.active_color.clone();
-        } else {
-            self.current_color = self.inactive_color.clone();
-        }
-
         // Initialize the actual border color assuming it is in focus
         unsafe {
-            let factory = &*RENDER_FACTORY;
-            let _ = self.render_target.set(
-                factory
-                    .CreateHwndRenderTarget(
-                        &render_target_properties,
-                        &hwnd_render_target_properties,
-                    )
-                    .expect("creating self.render_target failed"),
-            );
-            let render_target = self.render_target.get().unwrap();
-            render_target.SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+            if let Ok(render_target) = RENDER_FACTORY
+                .CreateHwndRenderTarget(&render_target_properties, &hwnd_render_target_properties)
+            {
+                render_target.SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+                if self.render_target.set(render_target).is_err() {
+                    error!("Could not set self.render_target!");
+                    return Err(());
+                };
+            } else {
+                error!("Could not create render target!");
+                return Err(());
+            }
         }
 
         Ok(())
     }
 
-    pub fn update_window_rect(&mut self) -> Result<()> {
+    pub fn update_window_rect(&mut self) -> Result<(), ()> {
         let _ = WindowsApi::dwm_get_window_attribute::<RECT, _>(
             self.tracking_window,
             DWMWA_EXTENDED_FRAME_BOUNDS,
@@ -308,7 +302,7 @@ impl WindowBorder {
         Ok(())
     }
 
-    pub fn update_position(&mut self, c_flags: Option<SET_WINDOW_POS_FLAGS>) -> Result<()> {
+    pub fn update_position(&mut self, c_flags: Option<SET_WINDOW_POS_FLAGS>) -> Result<(), ()> {
         unsafe {
             // Place the window border above the tracking window
             let hwnd_above_tracking = GetWindow(self.tracking_window, GW_HWNDPREV);
@@ -332,12 +326,13 @@ impl WindowBorder {
                 warn!("Could not set window position! This is normal for elevated/admin windows.");
                 self.destroy_anim_timer();
                 PostQuitMessage(0);
+                return Err(());
             }
         }
         Ok(())
     }
 
-    pub fn update_color(&mut self, check_delay: Option<u64>) -> Result<()> {
+    pub fn update_color(&mut self, check_delay: Option<u64>) -> Result<(), ()> {
         match self.animations.current.has(&AnimationType::Fade) && check_delay != Some(0) {
             true => {
                 self.event_anim = ANIM_FADE;
@@ -359,7 +354,7 @@ impl WindowBorder {
         Ok(())
     }
 
-    pub fn render(&mut self) -> Result<()> {
+    pub fn render(&mut self) -> Result<(), ()> {
         self.last_render_time = Some(std::time::Instant::now());
 
         let Some(render_target) = self.render_target.get() else {
@@ -406,7 +401,7 @@ impl WindowBorder {
                 let Some(brush) =
                     bottom_color.to_brush(render_target, &self.window_rect, &self.brush_properties)
                 else {
-                    return Ok(());
+                    return Err(());
                 };
                 self.draw_rectangle(render_target, &brush);
             }
@@ -414,12 +409,15 @@ impl WindowBorder {
                 let Some(brush) =
                     top_color.to_brush(render_target, &self.window_rect, &self.brush_properties)
                 else {
-                    return Ok(());
+                    return Err(());
                 };
                 self.draw_rectangle(render_target, &brush);
             }
 
-            let _ = render_target.EndDraw(None, None);
+            if render_target.EndDraw(None, None).is_err() {
+                error!("Could not end the Direct2D draw call!");
+                return Err(());
+            };
         }
 
         Ok(())
@@ -473,7 +471,6 @@ impl WindowBorder {
         let mut border_pointer: *mut WindowBorder = GetWindowLongPtrW(window, GWLP_USERDATA) as _;
 
         if border_pointer.is_null() && message == WM_CREATE {
-            //println!("ref is null, assigning new ref");
             let create_struct: *mut CREATESTRUCTW = lparam.0 as *mut _;
             border_pointer = (*create_struct).lpCreateParams as *mut _;
             SetWindowLongPtrW(window, GWLP_USERDATA, border_pointer as _);

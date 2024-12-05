@@ -10,6 +10,7 @@ use std::str::FromStr;
 
 pub mod animation;
 pub mod easing;
+pub mod timer;
 pub mod utils;
 
 pub const ANIM_NONE: i32 = 0;

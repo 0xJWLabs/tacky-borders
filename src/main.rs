@@ -55,7 +55,6 @@ mod colors;
 mod event_hook;
 mod keybinding;
 mod sys_tray_icon;
-mod timer;
 mod utils;
 mod window_border;
 mod windows_api;

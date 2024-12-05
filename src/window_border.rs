@@ -1,11 +1,10 @@
 use crate::animations::animation::AnimationType;
+use crate::animations::timer::AnimationTimer;
 use crate::animations::Animations;
 use crate::animations::HashMapAnimationExt;
 use crate::animations::ANIM_FADE;
 use crate::colors::color::Color;
 use crate::log_if_err;
-use crate::timer::KillCustomTimer;
-use crate::timer::SetCustomTimer;
 use crate::windows_api::ErrorMsg;
 use crate::windows_api::WindowsApi;
 use crate::windows_api::WM_APP_FOCUS;
@@ -132,9 +131,9 @@ pub struct WindowBorder {
     pub last_animation_time: Option<std::time::Instant>,
     pub last_render_time: Option<std::time::Instant>,
     pub spiral_anim_angle: f32,
+    pub animation_timer: Option<AnimationTimer>,
     pub event_anim: i32,
     pub is_window_active: bool,
-    pub timer_id: Option<usize>,
 }
 
 impl WindowBorder {
@@ -356,7 +355,7 @@ impl WindowBorder {
         Ok(())
     }
 
-    pub fn render(&mut self) -> AnyResult<()> {
+    fn render(&mut self) -> AnyResult<()> {
         self.last_render_time = Some(std::time::Instant::now());
 
         let Some(ref render_target) = self.render_target else {
@@ -462,19 +461,19 @@ impl WindowBorder {
     }
 
     fn set_anim_timer(&mut self) {
-        if !self.animations.active.is_empty()
-            || !self.animations.inactive.is_empty() && self.timer_id.is_none()
+        if (!self.animations.active.is_empty() || !self.animations.inactive.is_empty())
+            && self.animation_timer.is_none()
         {
-            let timer_duration = (1000 / self.animations.fps) as u32;
-            unsafe {
-                self.timer_id = Some(SetCustomTimer(self.border_window, 1, timer_duration));
-            }
+            let timer_duration = (1000.0 / self.animations.fps as f32) as u64;
+            self.animation_timer = Some(AnimationTimer::start(self.border_window, timer_duration));
         }
     }
 
     fn destroy_anim_timer(&mut self) {
-        KillCustomTimer(self.border_window, 1);
-        self.timer_id = None;
+        if let Some(anim_timer) = self.animation_timer.as_mut() {
+            anim_timer.stop();
+            self.animation_timer = None;
+        }
     }
 
     fn exit_border_thread(&mut self) {

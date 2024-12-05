@@ -1092,16 +1092,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_plain2"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a08fdfbede7312246fa8b5905066b83285b55aa9ae26159a9c0a386437b88378"
-dependencies = [
- "serde",
- "thiserror 2.0.4",
-]
-
-[[package]]
 name = "serde_spanned"
 version = "0.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1208,7 +1198,6 @@ dependencies = [
  "regex",
  "rustc-hash",
  "serde",
- "serde_plain2",
  "serde_yaml_ng",
  "simple-bezier-easing",
  "sp_log",

@@ -29,6 +29,7 @@ use windows::core::PCWSTR;
 use windows::Foundation::Numerics::Matrix3x2;
 
 use windows::Win32::Foundation::COLORREF;
+use windows::Win32::Foundation::D2DERR_RECREATE_TARGET;
 use windows::Win32::Foundation::FALSE;
 use windows::Win32::Foundation::HINSTANCE;
 use windows::Win32::Foundation::HWND;
@@ -414,10 +415,30 @@ impl WindowBorder {
                 self.draw_rectangle(render_target, &brush);
             }
 
-            if render_target.EndDraw(None, None).is_err() {
-                error!("Could not end the Direct2D draw call!");
-                return Err(());
-            };
+            match render_target.EndDraw(None, None) {
+                Ok(_) => {}
+                Err(e) if e.code() == D2DERR_RECREATE_TARGET => {
+                    // D2DERR_RECREATE_TARGET is recoverable if we just recreate the render target.
+                    // This error can be caused by things like waking up from sleep, updating GPU
+                    // drivers, screen resolution changing, etc.
+                    error!("Recoverable: render_target has been lost; attempting to recreate");
+
+                    match self.create_render_targets() {
+                        Ok(_) => info!("Successfully recreated render_target; resuming thread"),
+                        Err(e_2) => {
+                            error!(
+                                "Critical: could not recreate render_target due to: {:?}",
+                                e_2
+                            );
+                            PostQuitMessage(0);
+                        }
+                    }
+                }
+                Err(other) => {
+                    error!("Critical: unrecoverable error with EndDraw(): {}", other);
+                    PostQuitMessage(0);
+                }
+            }
         }
 
         Ok(())

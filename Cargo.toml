@@ -3,9 +3,6 @@ name = "tacky-borders"
 version = "0.1.0"
 edition = "2021"
 
-[package.metadata.winresource]
-LegalCopyRight = "Copyright © 2024 0xJWLabs"
-
 [profile.dev]
 debug = true
 

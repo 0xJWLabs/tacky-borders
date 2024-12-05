@@ -25,7 +25,7 @@ pub struct GradientConfig {
 pub struct Gradient {
     pub direction: GradientCoordinates,
     pub gradient_stops: Vec<D2D1_GRADIENT_STOP>,
-    pub opacity: f32
+    pub opacity: f32,
 }
 
 #[derive(Debug)]
@@ -64,7 +64,7 @@ impl From<&String> for GradientCoordinates {
                 90.0..270.0 => (1.0, 0.0),
                 270.0..360.0 => (0.0, 1.0),
                 _ => {
-                    debug!("Reached a gradient angle that is not covered by the match statement in colors.rs");
+                    debug!("reached a gradient angle that is not covered by the match statement in colors.rs");
                     (0.0, 1.0)
                 }
             };

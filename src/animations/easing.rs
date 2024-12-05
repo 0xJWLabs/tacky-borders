@@ -1,6 +1,5 @@
 use super::utils::parse_cubic_bezier;
 use serde::Deserialize;
-use serde_plain2::from_str;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::str::FromStr;
@@ -102,9 +101,6 @@ impl FromStr for AnimationEasing {
     type Err = String;
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
-        if let Ok(easing) = from_str::<AnimationEasing>(input) {
-            return Ok(easing);
-        }
         match input {
             // Pascal Case
             "Linear" | "linear" => Ok(AnimationEasing::Linear),

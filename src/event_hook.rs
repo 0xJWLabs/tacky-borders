@@ -1,3 +1,4 @@
+use crate::log_if_err;
 use crate::windows_api::WindowsApi;
 use crate::windows_api::WM_APP_FOCUS;
 use crate::windows_api::WM_APP_LOCATIONCHANGE;
@@ -5,6 +6,7 @@ use crate::windows_api::WM_APP_MINIMIZEEND;
 use crate::windows_api::WM_APP_MINIMIZESTART;
 use crate::windows_api::WM_APP_REORDER;
 use crate::BORDERS;
+use anyhow::Context;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Foundation::LPARAM;
 use windows::Win32::Foundation::WPARAM;
@@ -44,13 +46,14 @@ pub extern "system" fn handle_win_event(
                 return;
             }
 
-            if let Some(hwnd) = WindowsApi::get_border_from_window(_hwnd) {
-                let _ = WindowsApi::send_notify_message_w(
-                    hwnd,
+            if let Some(border) = WindowsApi::get_border_from_window(_hwnd) {
+                log_if_err!(WindowsApi::send_notify_message_w(
+                    border,
                     WM_APP_LOCATIONCHANGE,
                     WPARAM(0),
-                    LPARAM(0),
-                );
+                    LPARAM(0)
+                )
+                .context("EVENT_OBJECT_LOCATIONCHANGE"));
             }
         }
         EVENT_OBJECT_REORDER => {
@@ -63,12 +66,13 @@ pub extern "system" fn handle_win_event(
             for value in borders.values() {
                 let border_window: HWND = HWND(*value as _);
                 if WindowsApi::is_window_visible(border_window) {
-                    let _ = WindowsApi::post_message_w(
+                    log_if_err!(WindowsApi::post_message_w(
                         border_window,
                         WM_APP_REORDER,
                         WPARAM(0),
-                        LPARAM(0),
-                    );
+                        LPARAM(0)
+                    )
+                    .context("EVENT_OBJECT_REORDER"));
                 }
             }
             drop(borders);
@@ -84,17 +88,20 @@ pub extern "system" fn handle_win_event(
             for (key, val) in BORDERS.lock().unwrap().iter() {
                 let border_window: HWND = HWND(*val as _);
                 if WindowsApi::is_window_visible(border_window) || key == &(parent.0 as isize) {
-                    let _ = WindowsApi::post_message_w(
+                    log_if_err!(WindowsApi::post_message_w(
                         border_window,
                         WM_APP_FOCUS,
                         WPARAM(0),
-                        LPARAM(0),
-                    );
+                        LPARAM(0)
+                    )
+                    .context("EVENT_OBJECT_FOCUS"));
                 }
             }
         }
         EVENT_OBJECT_SHOW | EVENT_OBJECT_UNCLOAKED => {
-            WindowsApi::show_border_for_window(_hwnd);
+            if _id_object == OBJID_WINDOW.0 {
+                WindowsApi::show_border_for_window(_hwnd);
+            }
         }
         EVENT_OBJECT_HIDE | EVENT_OBJECT_CLOAKED => {
             if _id_object == OBJID_WINDOW.0 {
@@ -103,14 +110,24 @@ pub extern "system" fn handle_win_event(
         }
         EVENT_SYSTEM_MINIMIZESTART => {
             if let Some(border) = WindowsApi::get_border_from_window(_hwnd) {
-                let _ =
-                    WindowsApi::post_message_w(border, WM_APP_MINIMIZESTART, WPARAM(0), LPARAM(0));
+                log_if_err!(WindowsApi::post_message_w(
+                    border,
+                    WM_APP_MINIMIZESTART,
+                    WPARAM(0),
+                    LPARAM(0)
+                )
+                .context("EVENT_SYSTEM_MINIMIZESTART"));
             }
         }
         EVENT_SYSTEM_MINIMIZEEND => {
             if let Some(border) = WindowsApi::get_border_from_window(_hwnd) {
-                let _ =
-                    WindowsApi::post_message_w(border, WM_APP_MINIMIZEEND, WPARAM(0), LPARAM(0));
+                log_if_err!(WindowsApi::post_message_w(
+                    border,
+                    WM_APP_MINIMIZEEND,
+                    WPARAM(0),
+                    LPARAM(0)
+                )
+                .context("EVENT_SYSTEM_MINIMIZEEND"));
             }
         }
         // TODO this is called an unnecessary number of times which may hurt performance?
@@ -118,7 +135,7 @@ pub extern "system" fn handle_win_event(
             if (_id_object == OBJID_WINDOW.0 || _id_object == OBJID_CLIENT.0)
                 && !WindowsApi::has_filtered_style(_hwnd)
             {
-                let _ = WindowsApi::destroy_border_for_window(_hwnd);
+                WindowsApi::destroy_border_for_window(_hwnd);
             }
         }
         _ => {}

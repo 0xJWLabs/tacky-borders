@@ -254,7 +254,7 @@ impl ToColor for String {
                 unsafe { DwmGetColorizationColor(&mut pcr_colorization, &mut pf_opaqueblend) };
 
             if result.is_err() {
-                error!("could not retrieve Windows accent color!");
+                error!("could not retrieve windows accent color!");
             }
 
             let r = ((pcr_colorization & 0x00FF0000) >> 16) as f32 / 255.0;
@@ -273,7 +273,7 @@ impl ToColor for String {
             };
         } else if self.starts_with("#") {
             if self.len() != 7 && self.len() != 9 && self.len() != 4 && self.len() != 5 {
-                error!("{}", format!("Invalid hex color format: {}", self).as_str());
+                error!("invalid hex color format: {self}");
                 return D2D1_COLOR_F::default();
             }
 

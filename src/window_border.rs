@@ -3,6 +3,7 @@ use crate::animations::Animations;
 use crate::animations::HashMapAnimationExt;
 use crate::animations::ANIM_FADE;
 use crate::colors::color::Color;
+use crate::log_if_err;
 use crate::timer::KillCustomTimer;
 use crate::timer::SetCustomTimer;
 use crate::windows_api::ErrorMsg;
@@ -15,19 +16,18 @@ use crate::windows_api::WM_APP_MINIMIZESTART;
 use crate::windows_api::WM_APP_REORDER;
 use crate::windows_api::WM_APP_SHOWUNCLOAKED;
 use crate::windows_api::WM_APP_TIMER;
-
+use crate::BORDERS;
+use anyhow::anyhow;
+use anyhow::Context;
+use anyhow::Result as AnyResult;
 use std::ptr;
 use std::sync::LazyLock;
-use std::sync::OnceLock;
 use std::thread;
 use std::time;
-
 use windows::core::w;
 use windows::core::Result as WinResult;
-
 use windows::core::PCWSTR;
 use windows::Foundation::Numerics::Matrix3x2;
-
 use windows::Win32::Foundation::COLORREF;
 use windows::Win32::Foundation::D2DERR_RECREATE_TARGET;
 use windows::Win32::Foundation::FALSE;
@@ -121,11 +121,12 @@ pub struct WindowBorder {
     pub border_offset: i32,
     pub border_radius: f32,
     pub brush_properties: D2D1_BRUSH_PROPERTIES,
-    pub render_target: OnceLock<ID2D1HwndRenderTarget>,
+    pub render_target: Option<ID2D1HwndRenderTarget>,
     pub rounded_rect: D2D1_ROUNDED_RECT,
     pub animations: Animations,
     pub active_color: Color,
     pub inactive_color: Color,
+    pub initialize_delay: u64,
     pub unminimize_delay: u64,
     pub pause: bool,
     pub last_animation_time: Option<std::time::Instant>,
@@ -138,14 +139,15 @@ pub struct WindowBorder {
 
 impl WindowBorder {
     pub fn create_border_window(&mut self, hinstance: HINSTANCE) -> WinResult<()> {
+        let self_title = format!(
+            "{} | {} | {:?}",
+            "tacky-border",
+            WindowsApi::get_window_title(self.tracking_window),
+            self.tracking_window
+        );
+        let mut string: Vec<u16> = self_title.encode_utf16().collect();
+        string.push(0);
         unsafe {
-            let self_title = format!(
-                "{}{}",
-                "tacky-",
-                WindowsApi::get_window_title(self.tracking_window)
-            );
-            let mut string: Vec<u16> = self_title.encode_utf16().collect();
-            string.push(0);
             self.border_window = CreateWindowExW(
                 WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT,
                 w!("border"),
@@ -165,8 +167,8 @@ impl WindowBorder {
         Ok(())
     }
 
-    pub fn init(&mut self, initialize_delay: u64) -> Result<(), ()> {
-        thread::sleep(time::Duration::from_millis(initialize_delay));
+    pub fn init(&mut self) -> AnyResult<()> {
+        thread::sleep(time::Duration::from_millis(self.initialize_delay));
 
         unsafe {
             // Make the window border transparent
@@ -199,7 +201,8 @@ impl WindowBorder {
                 None,
             );
 
-            let _ = self.create_render_targets();
+            self.create_render_targets()
+                .context("could not create render target in init()")?;
 
             self.is_window_active = WindowsApi::is_window_active(self.tracking_window);
 
@@ -208,23 +211,25 @@ impl WindowBorder {
                 false => self.animations.inactive.clone(),
             };
 
-            let _ = self.update_color(Some(initialize_delay));
+            log_if_err!(self.update_color(Some(self.initialize_delay)));
 
-            let _ = self.update_window_rect();
+            log_if_err!(self.update_window_rect());
 
             if WindowsApi::has_native_border(self.tracking_window) {
-                let _ = self.update_position(Some(SWP_SHOWWINDOW));
-                let _ = self.render();
+                log_if_err!(self.update_position(Some(SWP_SHOWWINDOW)));
+                log_if_err!(self.render());
 
+                // Sometimes, it doesn't show the window at first, so we wait 5ms and update it.
+                // This is very hacky and needs to be looked into. It may be related to the issue
+                // detailed in the wnd_proc. TODO
                 thread::sleep(time::Duration::from_millis(5));
-                let _ = self.update_position(Some(SWP_SHOWWINDOW));
-                let _ = self.render();
+                log_if_err!(self.update_position(Some(SWP_SHOWWINDOW)));
+                log_if_err!(self.render());
             }
 
             self.set_anim_timer();
 
             let mut message = MSG::default();
-
             while WindowsApi::get_message_w(&mut message, HWND::default(), 0, 0).into() {
                 let _ = WindowsApi::translate_message(&message);
                 WindowsApi::dispatch_message_w(&message);
@@ -235,7 +240,7 @@ impl WindowBorder {
         Ok(())
     }
 
-    pub fn create_render_targets(&mut self) -> Result<(), ()> {
+    fn create_render_targets(&mut self) -> AnyResult<()> {
         let render_target_properties = D2D1_RENDER_TARGET_PROPERTIES {
             r#type: D2D1_RENDER_TARGET_TYPE_DEFAULT,
             pixelFormat: D2D1_PIXEL_FORMAT {
@@ -264,34 +269,27 @@ impl WindowBorder {
 
         // Initialize the actual border color assuming it is in focus
         unsafe {
-            if let Ok(render_target) = RENDER_FACTORY
-                .CreateHwndRenderTarget(&render_target_properties, &hwnd_render_target_properties)
-            {
-                render_target.SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-                if self.render_target.set(render_target).is_err() {
-                    error!("Could not set self.render_target!");
-                    return Err(());
-                };
-            } else {
-                error!("Could not create render target!");
-                return Err(());
-            }
+            let render_target = RENDER_FACTORY.CreateHwndRenderTarget(
+                &render_target_properties,
+                &hwnd_render_target_properties,
+            )?;
+
+            render_target.SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+
+            self.render_target = Some(render_target);
         }
 
         Ok(())
     }
 
-    pub fn update_window_rect(&mut self) -> Result<(), ()> {
+    fn update_window_rect(&mut self) -> AnyResult<()> {
         let _ = WindowsApi::dwm_get_window_attribute::<RECT, _>(
             self.tracking_window,
             DWMWA_EXTENDED_FRAME_BOUNDS,
             ptr::addr_of_mut!(self.window_rect) as _,
             Some(ErrorMsg::Fn(|| {
-                unsafe {
-                    // Temporarily borrow self mutably here, outside of the closure
-                    self.destroy_anim_timer();
-                    PostQuitMessage(0);
-                }
+                self.destroy_anim_timer();
+                self.exit_border_thread();
             })),
         );
 
@@ -303,7 +301,7 @@ impl WindowBorder {
         Ok(())
     }
 
-    pub fn update_position(&mut self, c_flags: Option<SET_WINDOW_POS_FLAGS>) -> Result<(), ()> {
+    fn update_position(&mut self, c_flags: Option<SET_WINDOW_POS_FLAGS>) -> AnyResult<()> {
         unsafe {
             // Place the window border above the tracking window
             let hwnd_above_tracking = GetWindow(self.tracking_window, GW_HWNDPREV);
@@ -314,7 +312,7 @@ impl WindowBorder {
                 u_flags |= SWP_NOZORDER;
             }
 
-            let result = SetWindowPos(
+            if let Err(e) = SetWindowPos(
                 self.border_window,
                 hwnd_above_tracking.unwrap_or(HWND_TOP),
                 self.window_rect.left,
@@ -322,18 +320,21 @@ impl WindowBorder {
                 WindowsApi::get_rect_width(self.window_rect),
                 WindowsApi::get_rect_height(self.window_rect),
                 u_flags,
-            );
-            if result.is_err() {
-                warn!("Could not set window position! This is normal for elevated/admin windows.");
+            )
+            .context(format!(
+                "could not set window position for {:?}",
+                self.tracking_window
+            )) {
                 self.destroy_anim_timer();
-                PostQuitMessage(0);
-                return Err(());
+                self.exit_border_thread();
+
+                return Err(e);
             }
         }
         Ok(())
     }
 
-    pub fn update_color(&mut self, check_delay: Option<u64>) -> Result<(), ()> {
+    fn update_color(&mut self, check_delay: Option<u64>) -> AnyResult<()> {
         match self.animations.current.has(&AnimationType::Fade) && check_delay != Some(0) {
             true => {
                 self.event_anim = ANIM_FADE;
@@ -355,11 +356,11 @@ impl WindowBorder {
         Ok(())
     }
 
-    pub fn render(&mut self) -> Result<(), ()> {
+    pub fn render(&mut self) -> AnyResult<()> {
         self.last_render_time = Some(std::time::Instant::now());
 
-        let Some(render_target) = self.render_target.get() else {
-            return Ok(());
+        let Some(ref render_target) = self.render_target else {
+            return Err(anyhow!("render_target has not been set yet"));
         };
 
         let rect_width = WindowsApi::get_rect_width(self.window_rect) as f32;
@@ -372,6 +373,7 @@ impl WindowBorder {
 
         let width = self.border_width as f32;
         let offset = self.border_offset as f32;
+
         self.rounded_rect.rect = D2D_RECT_F {
             left: width / 2.0 - offset,
             top: width / 2.0 - offset,
@@ -380,7 +382,9 @@ impl WindowBorder {
         };
 
         unsafe {
-            let _ = render_target.Resize(&pixel_size);
+            render_target
+                .Resize(&pixel_size)
+                .context("could not resize render_target")?;
 
             let active_opacity = self.active_color.get_opacity();
             let inactive_opacity = self.inactive_color.get_opacity();
@@ -399,20 +403,17 @@ impl WindowBorder {
             render_target.Clear(None);
 
             if bottom_opacity > 0.0 {
-                let Some(brush) =
-                    bottom_color.to_brush(render_target, &self.window_rect, &self.brush_properties)
-                else {
-                    return Err(());
-                };
-                self.draw_rectangle(render_target, &brush);
+                let bottom_brush = bottom_color
+                    .to_brush(render_target, &self.window_rect, &self.brush_properties)
+                    .context("could not create ID2D1Brush")?;
+                self.draw_rectangle(render_target, &bottom_brush);
             }
             if top_opacity > 0.0 {
-                let Some(brush) =
-                    top_color.to_brush(render_target, &self.window_rect, &self.brush_properties)
-                else {
-                    return Err(());
-                };
-                self.draw_rectangle(render_target, &brush);
+                let top_brush = top_color
+                    .to_brush(render_target, &self.window_rect, &self.brush_properties)
+                    .context("could not create ID2D1Brush")?;
+
+                self.draw_rectangle(render_target, &top_brush);
             }
 
             match render_target.EndDraw(None, None) {
@@ -421,22 +422,19 @@ impl WindowBorder {
                     // D2DERR_RECREATE_TARGET is recoverable if we just recreate the render target.
                     // This error can be caused by things like waking up from sleep, updating GPU
                     // drivers, screen resolution changing, etc.
-                    error!("Recoverable: render_target has been lost; attempting to recreate");
+                    warn!("Recoverable: render_target has been lost; attempting to recreate");
 
                     match self.create_render_targets() {
                         Ok(_) => info!("Successfully recreated render_target; resuming thread"),
                         Err(e_2) => {
-                            error!(
-                                "Critical: could not recreate render_target due to: {:?}",
-                                e_2
-                            );
-                            PostQuitMessage(0);
+                            error!("could not recreate render_target; exiting thread: {e_2}");
+                            self.exit_border_thread();
                         }
                     }
                 }
                 Err(other) => {
-                    error!("Critical: unrecoverable error with EndDraw(): {}", other);
-                    PostQuitMessage(0);
+                    error!("render_target.EndDraw() failed; exiting thread: {other}");
+                    self.exit_border_thread();
                 }
             }
         }
@@ -444,7 +442,7 @@ impl WindowBorder {
         Ok(())
     }
 
-    pub fn draw_rectangle(&self, render_target: &ID2D1HwndRenderTarget, brush: &ID2D1Brush) {
+    fn draw_rectangle(&self, render_target: &ID2D1HwndRenderTarget, brush: &ID2D1Brush) {
         unsafe {
             match self.border_radius {
                 0.0 => render_target.DrawRectangle(
@@ -463,7 +461,7 @@ impl WindowBorder {
         }
     }
 
-    pub fn set_anim_timer(&mut self) {
+    fn set_anim_timer(&mut self) {
         if !self.animations.active.is_empty()
             || !self.animations.inactive.is_empty() && self.timer_id.is_none()
         {
@@ -474,15 +472,19 @@ impl WindowBorder {
         }
     }
 
-    pub fn destroy_anim_timer(&mut self) {
+    fn destroy_anim_timer(&mut self) {
         KillCustomTimer(self.border_window, 1);
         self.timer_id = None;
     }
 
-    // When CreateWindowExW is called, we can optionally pass a value to its LPARAM field which will
-    // get sent to the window process on creation. In our code, we've passed a pointer to the
-    // WindowBorder structure during the window creation process, and here we are getting that pointer
-    // and attaching it to the window using SetWindowLongPtrW.
+    fn exit_border_thread(&mut self) {
+        BORDERS
+            .lock()
+            .unwrap()
+            .remove(&(self.tracking_window.0 as isize));
+        unsafe { PostQuitMessage(0) };
+    }
+
     pub unsafe extern "system" fn s_wnd_proc(
         window: HWND,
         message: u32,
@@ -525,8 +527,8 @@ impl WindowBorder {
                 }
 
                 let old_rect = self.window_rect;
-                let _ = self.update_window_rect();
-                let _ = self.update_position(None);
+                log_if_err!(self.update_window_rect());
+                log_if_err!(self.update_position(None));
 
                 // TODO When a window is minimized, all four points of the rect go way below 0. For
                 // some reason, after unminimizing/restoring, render() will sometimes render at
@@ -535,19 +537,15 @@ impl WindowBorder {
                     self.window_rect = old_rect;
                 } else if !WindowsApi::are_rects_same_size(&self.window_rect, &old_rect) {
                     // Only re-render the border when its size changes
-                    let _ = self.render();
+                    log_if_err!(self.render());
                 }
             }
             // EVENT_OBJECT_REORDER
             WM_APP_REORDER => {
-                if self.pause {
-                    return LRESULT(0);
-                }
-
                 // For apps like firefox, when you hover over a tab, a popup window spawns that
                 // changes the z-order and causes the border to sit under the tracking window. To
                 // remedy that, we just re-update the position/z-order when windows are reordered.
-                let _ = self.update_position(None);
+                log_if_err!(self.update_position(None));
             }
             WM_APP_FOCUS => {
                 self.is_window_active = WindowsApi::is_window_active(self.tracking_window);
@@ -557,9 +555,9 @@ impl WindowBorder {
                     false => self.animations.inactive.clone(),
                 };
 
-                let _ = self.update_color(None);
-                let _ = self.update_position(None);
-                let _ = self.render();
+                log_if_err!(self.update_color(None));
+                log_if_err!(self.update_position(None));
+                log_if_err!(self.render());
             }
             // EVENT_OBJECT_SHOW / EVENT_OBJECT_UNCLOAKED
             WM_APP_SHOWUNCLOAKED => {
@@ -567,15 +565,15 @@ impl WindowBorder {
                 // switch back, then we will receive this message even though the window is not yet
                 // visible. And, the window rect will be all weird. So, we apply the following fix.
                 let old_rect = self.window_rect;
-                let _ = self.update_window_rect();
+                log_if_err!(self.update_window_rect());
                 if !WindowsApi::is_rect_visible(&self.window_rect) {
                     self.window_rect = old_rect;
                     return LRESULT(0);
                 }
 
                 if WindowsApi::has_native_border(self.tracking_window) {
-                    let _ = self.update_position(Some(SWP_SHOWWINDOW));
-                    let _ = self.render();
+                    log_if_err!(self.update_position(Some(SWP_SHOWWINDOW)));
+                    log_if_err!(self.render());
                 }
 
                 self.set_anim_timer();
@@ -592,7 +590,7 @@ impl WindowBorder {
             }
             // EVENT_OBJECT_MINIMIZESTART
             WM_APP_MINIMIZESTART => {
-                let _ = self.update_position(Some(SWP_HIDEWINDOW));
+                log_if_err!(self.update_position(Some(SWP_HIDEWINDOW)));
 
                 // TODO this is scuffed to work with fade animations
                 self.active_color.set_opacity(0.0);
@@ -611,10 +609,10 @@ impl WindowBorder {
                 self.last_animation_time = Some(time::Instant::now());
 
                 if WindowsApi::has_native_border(self.tracking_window) {
-                    let _ = self.update_color(Some(self.unminimize_delay));
-                    let _ = self.update_window_rect();
-                    let _ = self.update_position(Some(SWP_SHOWWINDOW));
-                    let _ = self.render();
+                    log_if_err!(self.update_color(Some(self.unminimize_delay)));
+                    log_if_err!(self.update_window_rect());
+                    log_if_err!(self.update_position(Some(SWP_SHOWWINDOW)));
+                    log_if_err!(self.render());
                 }
 
                 self.set_anim_timer();
@@ -669,7 +667,7 @@ impl WindowBorder {
                 let interval = 1.0 / self.animations.fps as f32;
                 let diff = render_elapsed.as_secs_f32() - interval;
                 if animations_updated && (diff.abs() <= 0.001 || diff >= 0.0) {
-                    let _ = self.render();
+                    log_if_err!(self.render());
                 }
             }
             WM_PAINT => {
@@ -677,9 +675,8 @@ impl WindowBorder {
             }
             WM_NCDESTROY => {
                 self.destroy_anim_timer();
-
                 SetWindowLongPtrW(window, GWLP_USERDATA, 0);
-                PostQuitMessage(0);
+                self.exit_border_thread();
             }
             // Ignore these window position messages
             WM_WINDOWPOSCHANGING | WM_WINDOWPOSCHANGED => {}

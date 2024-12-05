@@ -15,6 +15,18 @@ use windows::Win32::UI::Shell::FOLDERID_Profile;
 use windows::Win32::UI::Shell::SHGetKnownFolderPath;
 use windows::Win32::UI::Shell::KNOWN_FOLDER_FLAG;
 
+#[macro_export]
+macro_rules! log_if_err {
+    ($err:expr) => {
+        if let Err(e) = $err {
+            // TODO for some reason if I use {:#} or {:?}, some errors will repeatedly print (like
+            // the one in main.rs for tray_icon_result). It could have something to do with how they
+            // implement .source()
+            error!("{e:#}");
+        }
+    };
+}
+
 // Log File
 pub fn get_log() -> AnyResult<File, Error> {
     let log_dir = border_config::Config::get_config_dir()?;

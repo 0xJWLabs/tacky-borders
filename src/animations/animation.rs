@@ -7,10 +7,17 @@ use simple_bezier_easing::bezier;
 use std::time::Duration;
 use windows::Foundation::Numerics::Matrix3x2;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Deserialize)]
 pub enum AnimationType {
+    #[serde(alias = "spiral")]
     Spiral,
+    #[serde(alias = "fade")]
     Fade,
+    #[serde(
+        alias = "reverse_spiral",
+        alias = "reverseSpiral",
+        alias = "reverse-spiral"
+    )]
     ReverseSpiral,
     #[default]
     None,
@@ -126,7 +133,7 @@ fn animate_fade(
     let y_coord = match ease(border.animations.fade_progress) {
         Ok(coord) => coord,
         Err(err) => {
-            error!("{:?}", err);
+            error!("{err}");
             return;
         }
     };

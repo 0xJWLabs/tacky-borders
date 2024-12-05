@@ -47,7 +47,10 @@ where
 
     // If deserialize returns an error, it's possible that an invalid AnimationType was listed
     let map = match result {
-        Ok(val) => val,
+        Ok(val) => val
+            .into_iter() // Convert into iterator
+            .filter(|(animation_type, _)| *animation_type != AnimationType::None) // Filter out AnimationType::None
+            .collect::<FxHashMap<_, _>>(), // Collect back into a map
         Err(err) => return Err(err),
     };
 
@@ -81,8 +84,6 @@ where
                 _ => AnimationEasing::Linear,
             };
 
-            println!("{:?}", easing);
-
             let default_speed = match animation_type {
                 AnimationType::Spiral | AnimationType::ReverseSpiral | AnimationType::Fade => 50.0,
                 _ => 0.0, // Default fallback for other types
@@ -97,7 +98,7 @@ where
             deserialized.insert(animation_type, animation);
         } else {
             return Err(D::Error::custom(format!(
-                "Invalid value type: {:?}",
+                "invalid value type: {:?}",
                 anim_value
             )));
         }

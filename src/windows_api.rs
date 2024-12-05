@@ -1,4 +1,7 @@
+use anyhow::Context;
+use core::fmt;
 use regex::Regex;
+use std::any::type_name;
 use std::ffi::c_void;
 use std::ptr;
 use std::thread;
@@ -74,6 +77,7 @@ use crate::border_config::CONFIG;
 use crate::colors::color::Color;
 use crate::colors::color::ColorConfig;
 use crate::enum_windows_callback;
+use crate::log_if_err;
 use crate::window_border::WindowBorder;
 use crate::BORDERS;
 use crate::INITIAL_WINDOWS;
@@ -98,6 +102,24 @@ where
 {
     Fn(F),
     String(String),
+}
+
+impl<F> fmt::Debug for ErrorMsg<F>
+where
+    F: FnOnce(),
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ErrorMsg::Fn(_) => {
+                // Display the type name of the function
+                write!(f, "ErrorMsg::Fn({})", type_name::<F>())
+            }
+            ErrorMsg::String(ref s) => {
+                // Display the string
+                write!(f, "ErrorMsg::String({:?})", s)
+            }
+        }
+    }
 }
 
 pub struct WindowsApi;
@@ -233,8 +255,8 @@ impl WindowsApi {
         if result.is_err() {
             match err {
                 Some(ErrorMsg::Fn(f)) => f(), // Call the function if it's a `Fn` variant
-                Some(ErrorMsg::String(msg)) => println!("Error: {}", msg), // Print the message if it's a `String` variant,
-                None => println!("Error: Getting window attribute"),
+                Some(ErrorMsg::String(ref msg)) => error!("Error: {msg}"), // Print the message if it's a `String` variant,
+                None => error!("Error: Getting window attribute"),
             };
         }
 
@@ -261,7 +283,9 @@ impl WindowsApi {
             hwnd,
             DWMWA_CLOAKED,
             ptr::addr_of_mut!(is_cloaked) as _,
-            Some(ErrorMsg::String("Getting is_window_cloaked".to_string())),
+            Some(ErrorMsg::String(
+                "could not check if window is cloaked".to_string(),
+            )),
         );
 
         is_cloaked.as_bool()
@@ -412,12 +436,15 @@ impl WindowsApi {
         // If the border already exists, simply post a 'SHOW' message to its message queue. Otherwise,
         // create a new border.
         if let Some(border) = Self::get_border_from_window(hwnd) {
-            let _ = Self::post_message_w(border, WM_APP_SHOWUNCLOAKED, WPARAM(0), LPARAM(0));
+            log_if_err!(
+                Self::post_message_w(border, WM_APP_SHOWUNCLOAKED, WPARAM(0), LPARAM(0))
+                    .context("show_border_for_window")
+            );
         } else if Self::is_window_visible(hwnd)
             && !Self::is_window_cloaked(hwnd)
             && !Self::has_filtered_style(hwnd)
         {
-            let _ = Self::create_border_for_window(hwnd);
+            Self::create_border_for_window(hwnd);
         }
     }
 
@@ -427,160 +454,145 @@ impl WindowsApi {
         let _ = thread::spawn(move || {
             let window_sent = window;
             if let Some(border) = Self::get_border_from_window(window_sent.0) {
-                let _ =
-                    WindowsApi::post_message_w(border, WM_APP_HIDECLOAKED, WPARAM(0), LPARAM(0));
+                log_if_err!(
+                    Self::post_message_w(border, WM_APP_HIDECLOAKED, WPARAM(0), LPARAM(0))
+                        .context("hide_border_for_window")
+                );
             }
         });
         true
     }
 
-    pub fn create_border_for_window(tracking_window: HWND) -> Result<(), ()> {
+    pub fn create_border_for_window(tracking_window: HWND) {
+        debug!("creating border for: {:?}", tracking_window);
         let window = SendHWND(tracking_window);
 
         let _ = std::thread::spawn(move || {
             let window_sent = window;
+            let window_isize = window_sent.0 .0 as isize;
 
             let window_rule = Self::get_window_rule(window_sent.0);
-
             if window_rule.rule_match.border_enabled == Some(false) {
-                error!("border is disabled for this window, exiting!");
+                info!("border is disabled for {:?}!", window_sent.0);
                 return;
             }
 
-            let config = CONFIG.lock().unwrap();
-
-            let config_width = window_rule
-                .rule_match
-                .border_width
-                .unwrap_or(config.global_rule.border_width);
-            let border_offset = window_rule
-                .rule_match
-                .border_offset
-                .unwrap_or(config.global_rule.border_offset);
-            let config_radius = window_rule
-                .rule_match
-                .border_radius
-                .unwrap_or(config.global_rule.border_radius.clone());
-
-            let config_active = window_rule
-                .rule_match
-                .active_color
-                .unwrap_or(config.global_rule.active_color.clone());
-
-            let config_inactive = window_rule
-                .rule_match
-                .inactive_color
-                .unwrap_or(config.global_rule.inactive_color.clone());
-
-            let border_colors = convert_config_colors(&config_active, &config_inactive);
-
-            let animations = window_rule
-                .rule_match
-                .animations
-                .unwrap_or(config.global_rule.animations.clone().unwrap_or_default());
-
-            let dpi = unsafe { GetDpiForWindow(window_sent.0) } as f32;
-            let border_width = (config_width * dpi / 96.0) as i32;
-            let border_radius =
-                convert_config_radius(border_width, config_radius, window_sent.0, dpi);
-
-            let window_isize = window_sent.0 .0 as isize;
-
-            let initialize_delay = if INITIAL_WINDOWS.lock().unwrap().contains(&window_isize) {
-                0
-            } else {
-                window_rule
-                    .rule_match
-                    .initialize_delay
-                    .unwrap_or(config.global_rule.initialize_delay.unwrap_or(250))
-            };
-
-            let unminimize_delay = window_rule
-                .rule_match
-                .unminimize_delay
-                .unwrap_or(config.global_rule.unminimize_delay.unwrap_or(200));
-
-            //println!("time it takes to get colors: {:?}", before.elapsed());
-
-            let mut border = WindowBorder {
-                tracking_window: window_sent.0,
-                border_width,
-                border_offset,
-                border_radius,
-                active_color: border_colors.0,
-                inactive_color: border_colors.1,
-                animations,
-                unminimize_delay,
-                ..Default::default()
-            };
-            drop(config);
+            let mut border = create_border_struct(window_sent.0, &window_rule);
 
             let mut borders_hashmap = BORDERS.lock().unwrap();
-            let window_isize = window_sent.0 .0 as isize;
 
-            // Check to see if the key already exists in the hashmap. I don't think this should ever
-            // return true, but it's just in case.
+            // Check to see if there is already a border for the given tracking window
             if borders_hashmap.contains_key(&window_isize) {
-                drop(borders_hashmap);
                 return;
             }
 
             let hinstance: HINSTANCE = unsafe { std::mem::transmute(&__ImageBase) };
-            match border.create_border_window(hinstance) {
-                Ok(_) => {}
-                Err(err) => {
-                    error!("Could not create border window! {:?}", err);
-                    return;
-                }
+            if let Err(e) = border.create_border_window(hinstance) {
+                error!("could not create border window: {e:?}");
+                return;
             };
 
-            // Insert the border and its tracking window into the hashmap to keep track of them
             borders_hashmap.insert(window_isize, border.border_window.0 as isize);
 
-            // Drop these values (to save some RAM?) before calling init and entering a message loop
             drop(borders_hashmap);
             let _ = window_sent;
-            let _ = window_rule;
-            let _ = config_width;
-            let _ = border_offset;
-            let _ = config_radius;
-            let _ = config_active;
-            let _ = config_inactive;
-            let _ = border_colors;
-            let _ = animations;
             let _ = window_isize;
-            let _ = initialize_delay;
-            let _ = unminimize_delay;
+            let _ = window_rule;
             let _ = hinstance;
 
-            let _ = border.init(initialize_delay);
-
-            drop(border);
+            if let Err(e) = border.init() {
+                error!("{e}");
+            }
         });
-
-        Ok(())
     }
 
-    pub fn destroy_border_for_window(tracking_window: HWND) -> Result<(), ()> {
-        let mut borders_hashmap = BORDERS.lock().unwrap();
-
+    pub fn destroy_border_for_window(tracking_window: HWND) {
         let window_isize = tracking_window.0 as isize;
-        let Some(border_isize) = borders_hashmap.get(&window_isize) else {
-            drop(borders_hashmap);
-            return Ok(());
+        let Some(&border_isize) = BORDERS.lock().unwrap().get(&window_isize) else {
+            return;
         };
 
-        let border_window: HWND = HWND(*border_isize as _);
-        let _ = WindowsApi::post_message_w(border_window, WM_NCDESTROY, WPARAM(0), LPARAM(0));
-        borders_hashmap.remove(&window_isize);
-
-        drop(borders_hashmap);
-
-        Ok(())
+        let border_window: HWND = HWND(border_isize as _);
+        log_if_err!(
+            Self::post_message_w(border_window, WM_NCDESTROY, WPARAM(0), LPARAM(0))
+                .context("destroy_border_for_window")
+        );
     }
 }
 
 // Helpers
+fn create_border_struct(tracking_window: HWND, window_rule: &WindowRule) -> WindowBorder {
+    let config = CONFIG.lock().unwrap();
+
+    let config_width = window_rule
+        .rule_match
+        .border_width
+        .unwrap_or(config.global_rule.border_width);
+    let border_offset = window_rule
+        .rule_match
+        .border_offset
+        .unwrap_or(config.global_rule.border_offset);
+    let config_radius = window_rule
+        .rule_match
+        .border_radius
+        .clone()
+        .unwrap_or(config.global_rule.border_radius.clone());
+
+    let config_active = window_rule
+        .rule_match
+        .active_color
+        .clone()
+        .unwrap_or(config.global_rule.active_color.clone());
+
+    let config_inactive = window_rule
+        .rule_match
+        .inactive_color
+        .clone()
+        .unwrap_or(config.global_rule.inactive_color.clone());
+
+    let (active_color, inactive_color) = convert_config_colors(&config_active, &config_inactive);
+
+    let animations = window_rule
+        .rule_match
+        .animations
+        .clone()
+        .unwrap_or(config.global_rule.animations.clone().unwrap_or_default());
+
+    let dpi = unsafe { GetDpiForWindow(tracking_window) } as f32;
+    let border_width = (config_width * dpi / 96.0) as i32;
+    let border_radius = convert_config_radius(border_width, config_radius, tracking_window, dpi);
+
+    let initialize_delay = match INITIAL_WINDOWS
+        .lock()
+        .unwrap()
+        .contains(&(tracking_window.0 as isize))
+    {
+        true => 0,
+        false => window_rule
+            .rule_match
+            .initialize_delay
+            .unwrap_or(config.global_rule.initialize_delay.unwrap_or(250)),
+    };
+
+    let unminimize_delay = window_rule
+        .rule_match
+        .unminimize_delay
+        .unwrap_or(config.global_rule.unminimize_delay.unwrap_or(200));
+
+    WindowBorder {
+        tracking_window,
+        border_width,
+        border_offset,
+        border_radius,
+        active_color,
+        inactive_color,
+        animations,
+        unminimize_delay,
+        initialize_delay,
+        ..Default::default()
+    }
+}
+
 fn match_rule(name: &str, pattern: &str, strategy: &Option<MatchStrategy>) -> bool {
     match strategy {
         Some(MatchStrategy::Contains) => name.to_lowercase().contains(&pattern.to_lowercase()),

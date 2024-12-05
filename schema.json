@@ -133,7 +133,7 @@
                       },
                       {
                         "type": "string",
-                        "pattern": "^cubic-bezier\\([0-9\\.\\,\\s]+\\)$",
+                        "pattern": "^[Cc]ubic[-_]?[Bb]ezier\\([0-9\\.\\,\\s]+\\)$",
                         "description": "A cubic-bezier function, e.g., cubic-bezier(0.42, 0.0, 0.58, 1.0)."
                       }
                     ]
@@ -226,7 +226,7 @@
                       },
                       {
                         "type": "string",
-                        "pattern": "^cubic-bezier\\([0-9\\.\\,\\s]+\\)$",
+                        "pattern": "^[Cc]ubic[-_]?[Bb]ezier\\([0-9\\.\\,\\s]+\\)$",
                         "description": "A cubic-bezier function, e.g., cubic-bezier(0.42, 0.0, 0.58, 1.0)."
                       }
                     ]

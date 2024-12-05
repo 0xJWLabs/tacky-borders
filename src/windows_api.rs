@@ -2,6 +2,7 @@ use regex::Regex;
 use std::ffi::c_void;
 use std::ptr;
 use std::thread;
+use windows::core::Param;
 use windows::Win32::Foundation::LRESULT;
 use windows::Win32::UI::HiDpi::SetProcessDpiAwarenessContext;
 use windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT;
@@ -102,7 +103,10 @@ where
 pub struct WindowsApi;
 
 impl WindowsApi {
-    pub fn post_message_w(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> WinResult<()> {
+    pub fn post_message_w<P>(hwnd: P, msg: u32, wparam: WPARAM, lparam: LPARAM) -> WinResult<()>
+    where
+        P: Param<HWND>,
+    {
         unsafe { PostMessageW(hwnd, msg, wparam, lparam) }
     }
 

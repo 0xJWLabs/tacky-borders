@@ -115,6 +115,7 @@ impl Config {
             format!("Failed to found config.yaml in {:?}", config_path.display())
         })? {
             Self::create_default_config(&config_path.clone())?;
+            info!(r"generating default config in {}", config_path.display());
         }
 
         let contents = read_to_string(&config_path).with_context(|| {

@@ -1,6 +1,10 @@
 #![allow(non_snake_case)]
 use crate::windows_api::SendHWND;
+use crate::windows_api::WindowsApi;
 use crate::windows_api::WM_APP_TIMER;
+use rustc_hash::FxHashMap;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::sync::Mutex;
@@ -12,27 +16,25 @@ use windows::core::Param;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Foundation::LPARAM;
 use windows::Win32::Foundation::WPARAM;
-use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
 
 #[derive(Debug)]
 pub struct TimerHandle {
-    stop_flag: Arc<Mutex<bool>>,
+    stop_flag: Arc<AtomicBool>,
     thread_handle: Option<JoinHandle<()>>,
     hwnd: Option<SendHWND>,
-    timer_id: usize,
     ns_event_id: usize,
 }
 
 impl TimerHandle {
     pub fn stop(&mut self) {
-        // Signal the worker thread to stop
-        if let Ok(mut flag) = self.stop_flag.lock() {
-            *flag = true;
-        }
+        // Set the stop flag to true atomically
+        self.stop_flag.store(true, Ordering::SeqCst);
 
-        // Wait for the worker thread to finish
+        // Attempt to join the thread and log any errors
         if let Some(handle) = self.thread_handle.take() {
-            handle.join().unwrap();
+            if let Err(e) = handle.join() {
+                error!("Failed to join timer thread: {:?}", e);
+            }
         }
     }
 }
@@ -40,7 +42,7 @@ impl TimerHandle {
 // Timer manager to store and retrieve timers by ID
 #[derive(Debug)]
 pub struct TimerManager {
-    timers: Mutex<Vec<TimerHandle>>,
+    timers: Mutex<FxHashMap<usize, TimerHandle>>,
     next_timer_id: Mutex<usize>,
 }
 
@@ -52,50 +54,71 @@ impl TimerManager {
         id
     }
 
-    fn add_timer(&self, timer_handle: TimerHandle) {
-        let mut timers = self.timers.lock().unwrap();
+    fn find_timer(&self, hwnd: Option<&SendHWND>, ns_event_id: usize) -> Option<usize> {
+        let timers = self.timers.lock().unwrap();
 
-        if let Some(pos) = timers
-            .iter()
-            .position(|timer| match (&timer.hwnd, &timer_handle.hwnd) {
-                (Some(timer_hwnd), Some(handle_hwnd)) => {
-                    timer_hwnd.0 == handle_hwnd.0 && timer.ns_event_id == timer_handle.ns_event_id
-                }
-                (None, Some(_)) | (Some(_), None) | (None, None) => {
-                    timer.timer_id == timer_handle.timer_id
+        if let Some(hwnd) = hwnd {
+            // If hwnd is provided, find a timer by matching ns_event_id and hwnd
+            timers.iter().find_map(|(&timer_id, timer)| {
+                if timer.ns_event_id == ns_event_id
+                    && timer.hwnd.as_ref().map_or(false, |th| th.0 == hwnd.0)
+                {
+                    Some(timer_id)
+                } else {
+                    None
                 }
             })
-        {
-            // Stop and replace the existing timer
-            timers.remove(pos).stop();
-            timers.insert(pos, timer_handle);
         } else {
-            timers.push(timer_handle);
+            // If hwnd is None, treat ns_event_id as the timer_id (key)
+            if timers.contains_key(&ns_event_id) {
+                Some(ns_event_id)
+            } else {
+                None
+            }
         }
     }
 
-    fn remove_timer(&self, hwnd: Option<SendHWND>, u_id_event: usize) {
+    fn add_timer(&self, timer_handle: TimerHandle, next_timer_id: usize) {
+        let timer_id = match timer_handle.hwnd.as_ref() {
+            Some(hwnd) => self.find_timer(Some(hwnd), timer_handle.ns_event_id),
+            None => self.find_timer(None, next_timer_id),
+        };
+
         let mut timers = self.timers.lock().unwrap();
-        if let Some(pos) = timers.iter().position(|timer| match &hwnd {
-            Some(handle_hwnd) => {
-                timer
-                    .hwnd
-                    .as_ref()
-                    .map_or(false, |timer_hwnd| timer_hwnd.0 == handle_hwnd.0)
-                    && timer.ns_event_id == u_id_event
+
+        match timer_id {
+            Some(id) => {
+                if let Some(existing_timer) = timers.get_mut(&id) {
+                    existing_timer.stop();
+                    *existing_timer = timer_handle;
+                }
             }
-            None => timer.timer_id == u_id_event,
-        }) {
-            // Stop and remove the timer
-            timers.remove(pos).stop();
+            None => {
+                timers.insert(next_timer_id, timer_handle);
+            }
+        };
+    }
+
+    fn remove_timer(&self, hwnd: Option<SendHWND>, u_event_id: usize) {
+        let mut timers = self.timers.lock().unwrap();
+        let timer_id = match hwnd.as_ref() {
+            Some(hwnd) => self.find_timer(Some(hwnd), u_event_id),
+            None => self.find_timer(None, u_event_id),
+        };
+
+        if let Some(id) = timer_id {
+            if let Some(timer) = timers.get_mut(&id) {
+                timer.stop();
+            }
+            timers.remove(&id);
         } else {
-            error!("Timer ID: {} not found", u_id_event);
+            error!("Timer with event id {u_event_id} not found");
         }
     }
 }
 
 static TIMER_MANAGER: LazyLock<TimerManager> = LazyLock::new(|| TimerManager {
-    timers: Mutex::new(Vec::new()),
+    timers: Mutex::new(FxHashMap::default()),
     next_timer_id: Mutex::new(0),
 });
 
@@ -104,7 +127,7 @@ where
     P0: Param<HWND>,
 {
     // Create a stop flag
-    let stop_flag = Arc::new(Mutex::new(false));
+    let stop_flag = Arc::new(AtomicBool::new(false));
     let stop_flag_clone = stop_flag.clone();
 
     let timer_id = TIMER_MANAGER.next_timer_id();
@@ -114,16 +137,23 @@ where
     let win_clone = win.clone();
 
     let handle = spawn(move || {
+        let stop_f = stop_flag_clone;
+        let window_sent = win;
         let interval = Duration::from_millis(interval_ms as u64);
 
-        while !*stop_flag_clone.lock().unwrap() {
-            if let Some(win) = win.clone() {
-                if PostMessageW(win.0, WM_APP_TIMER, WPARAM(0), LPARAM(0)).is_err() {
-                    eprintln!("Error sending message in anim timer");
+        while !stop_f.load(Ordering::SeqCst) {
+            if let Some(win) = window_sent.clone() {
+                if let Err(e) =
+                    WindowsApi::post_message_w(win.0, WM_APP_TIMER, WPARAM(0), LPARAM(0))
+                {
+                    error!("could not send animation timer message: {e}");
                     break;
                 }
-            } else if PostMessageW(None, WM_APP_TIMER, WPARAM(0), LPARAM(0)).is_err() {
-                eprintln!("Error sending message in anim timer");
+            } else if let Err(e) =
+                WindowsApi::post_message_w(None, WM_APP_TIMER, WPARAM(0), LPARAM(0))
+            {
+                error!("could not send animation timer message: {e}");
+
                 break;
             }
             sleep(interval);
@@ -131,13 +161,15 @@ where
     });
 
     // Add the timer handle to the manager
-    TIMER_MANAGER.add_timer(TimerHandle {
-        stop_flag,
-        thread_handle: Some(handle),
-        hwnd: win_clone,
-        ns_event_id,
+    TIMER_MANAGER.add_timer(
+        TimerHandle {
+            stop_flag,
+            thread_handle: Some(handle),
+            hwnd: win_clone,
+            ns_event_id,
+        },
         timer_id,
-    });
+    );
 
     timer_id
 }

@@ -106,45 +106,102 @@ impl FromStr for AnimationEasing {
             return Ok(easing);
         }
         match input {
-            "linear" => Ok(AnimationEasing::Linear),
+            // Pascal Case
+            "Linear" | "linear" => Ok(AnimationEasing::Linear),
 
-            // EaseIn variants
-            "ease-in" => Ok(AnimationEasing::EaseIn),
-            "ease-in-sine" => Ok(AnimationEasing::EaseInSine),
-            "ease-in-quad" => Ok(AnimationEasing::EaseInQuad),
-            "ease-in-cubic" => Ok(AnimationEasing::EaseInCubic),
-            "ease-in-quart" => Ok(AnimationEasing::EaseInQuart),
-            "ease-in-quint" => Ok(AnimationEasing::EaseInQuint),
-            "ease-in-expo" => Ok(AnimationEasing::EaseInExpo),
-            "ease-in-circ" => Ok(AnimationEasing::EaseInCirc),
-            "ease-in-back" => Ok(AnimationEasing::EaseInBack),
+            // EaseIn variants (PascalCase | camelCase | snake_case | kebab-case)
+            "EaseIn" | "easeIn" | "ease_in" | "ease-in" => Ok(AnimationEasing::EaseIn),
+            "EaseInSine" | "easeInSine" | "ease_in_sine" | "ease-in-sine" => {
+                Ok(AnimationEasing::EaseInSine)
+            }
+            "EaseInQuad" | "easeInQuad" | "ease_in_quad" | "ease-in-quad" => {
+                Ok(AnimationEasing::EaseInQuad)
+            }
+            "EaseInCubic" | "easeInCubic" | "ease_in_cubic" | "ease-in-cubic" => {
+                Ok(AnimationEasing::EaseInCubic)
+            }
+            "EaseInQuart" | "easeInQuart" | "ease_in_quart" | "ease-in-quart" => {
+                Ok(AnimationEasing::EaseInQuart)
+            }
+            "EaseInQuint" | "easeInQuint" | "ease_in_quint" | "ease-in-quint" => {
+                Ok(AnimationEasing::EaseInQuint)
+            }
+            "EaseInExpo" | "easeInExpo" | "ease_in_expo" | "ease-in-expo" => {
+                Ok(AnimationEasing::EaseInExpo)
+            }
+            "EaseInCirc" | "easeInCirc" | "ease_in_circ" | "ease-in-circ" => {
+                Ok(AnimationEasing::EaseInCirc)
+            }
+            "EaseInBack" | "easeInBack" | "ease_in_back" | "ease-in-back" => {
+                Ok(AnimationEasing::EaseInBack)
+            }
 
             // EaseOut variants
-            "ease-out" => Ok(AnimationEasing::EaseOut),
-            "ease-out-sine" => Ok(AnimationEasing::EaseOutSine),
-            "ease-out-quad" => Ok(AnimationEasing::EaseOutQuad),
-            "ease-out-cubic" => Ok(AnimationEasing::EaseOutCubic),
-            "ease-out-quart" => Ok(AnimationEasing::EaseOutQuart),
-            "ease-out-quint" => Ok(AnimationEasing::EaseOutQuint),
-            "ease-out-expo" => Ok(AnimationEasing::EaseOutExpo),
-            "ease-out-circ" => Ok(AnimationEasing::EaseOutCirc),
-            "ease-out-back" => Ok(AnimationEasing::EaseOutBack),
+            "EaseOut" | "easeOut" | "ease_out" | "ease-out" => Ok(AnimationEasing::EaseOut),
+            "EaseOutSine" | "easeOutSine" | "ease_out_sine" | "ease-out-sine" => {
+                Ok(AnimationEasing::EaseOutSine)
+            }
+            "EaseOutQuad" | "easeOutQuad" | "ease_out_quad" | "ease-out-quad" => {
+                Ok(AnimationEasing::EaseOutQuad)
+            }
+            "EaseOutCubic" | "easeOutCubic" | "ease_out_cubic" | "ease-out-cubic" => {
+                Ok(AnimationEasing::EaseOutCubic)
+            }
+            "EaseOutQuart" | "easeOutQuart" | "ease_out_quart" | "ease-out-quart" => {
+                Ok(AnimationEasing::EaseOutQuart)
+            }
+            "EaseOutQuint" | "easeOutQuint" | "ease_out_quint" | "ease-out-quint" => {
+                Ok(AnimationEasing::EaseOutQuint)
+            }
+            "EaseOutExpo" | "easeOutExpo" | "ease_out_expo" | "ease-out-expo" => {
+                Ok(AnimationEasing::EaseOutExpo)
+            }
+            "EaseOutCirc" | "easeOutCirc" | "ease_out_circ" | "ease-out-circ" => {
+                Ok(AnimationEasing::EaseOutCirc)
+            }
+            "EaseOutBack" | "easeOutBack" | "ease_out_back" | "ease-out-back" => {
+                Ok(AnimationEasing::EaseOutBack)
+            }
 
             // EaseInOut variants
-            "ease-in-out" => Ok(AnimationEasing::EaseInOut),
-            "ease-in-out-sine" => Ok(AnimationEasing::EaseInOutSine),
-            "ease-in-out-quad" => Ok(AnimationEasing::EaseInOutQuad),
-            "ease-in-out-cubic" => Ok(AnimationEasing::EaseInOutCubic),
-            "ease-in-out-quart" => Ok(AnimationEasing::EaseInOutQuart),
-            "ease-in-out-quint" => Ok(AnimationEasing::EaseInOutQuint),
-            "ease-in-out-expo" => Ok(AnimationEasing::EaseInOutExpo),
-            "ease-in-out-circ" => Ok(AnimationEasing::EaseInOutCirc),
-            "ease-in-out-back" => Ok(AnimationEasing::EaseInOutBack),
+            "EaseInOut" | "easeInOut" | "ease_in_out" | "ease-in-out" => {
+                Ok(AnimationEasing::EaseInOut)
+            }
+            "EaseInOutSine" | "easeInOutSine" | "ease_in_out_sine" | "ease-in-out-sine" => {
+                Ok(AnimationEasing::EaseInOutSine)
+            }
+            "EaseInOutQuad" | "easeInOutQuad" | "ease_in_out_quad" | "ease-in-out-quad" => {
+                Ok(AnimationEasing::EaseInOutQuad)
+            }
+            "EaseInOutCubic" | "easeInOutCubic" | "ease_in_out_cubic" | "ease-in-out-cubic" => {
+                Ok(AnimationEasing::EaseInOutCubic)
+            }
+            "EaseInOutQuart" | "easeInOutQuart" | "ease_in_out_quart" | "ease-in-out-quart" => {
+                Ok(AnimationEasing::EaseInOutQuart)
+            }
+            "EaseInOutQuint" | "easeInOutQuint" | "ease_in_out_quint" | "ease-in-out-quint" => {
+                Ok(AnimationEasing::EaseInOutQuint)
+            }
+            "EaseInOutExpo" | "easeInOutExpo" | "ease_in_out_expo" | "ease-in-out-expo" => {
+                Ok(AnimationEasing::EaseInOutExpo)
+            }
+            "EaseInOutCirc" | "easeInOutCirc" | "ease_in_out_circ" | "ease-in-out-circ" => {
+                Ok(AnimationEasing::EaseInOutCirc)
+            }
+            "EaseInOutBack" | "easeInOutBack" | "ease_in_out_back" | "ease-in-out-back" => {
+                Ok(AnimationEasing::EaseInOutBack)
+            }
 
             // Cubic-bezier parsing
-            _ if input.starts_with("cubic-bezier") => parse_cubic_bezier(input)
-                .map(AnimationEasing::CubicBezier)
-                .ok_or_else(|| format!("Invalid cubic-bezier format: {}", input)),
+            _ if input.starts_with("cubic-bezier")
+                || input.starts_with("CubicBezier")
+                || input.starts_with("cubicBezier")
+                || input.starts_with("cubic_bezier") =>
+            {
+                parse_cubic_bezier(input)
+                    .map(AnimationEasing::CubicBezier)
+                    .ok_or_else(|| format!("Invalid cubic-bezier format: {}", input))
+            }
 
             // Default case for invalid input
             _ => Err(format!("Invalid easing type: {}", input)),

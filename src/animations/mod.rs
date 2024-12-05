@@ -5,7 +5,6 @@ use rustc_hash::FxHashMap;
 use serde::de::Error;
 use serde::Deserialize;
 use serde::Deserializer;
-use serde_plain2::from_str;
 use serde_yaml_ng::Value;
 use std::str::FromStr;
 
@@ -44,73 +43,62 @@ fn animation<'de, D>(deserializer: D) -> Result<FxHashMap<AnimationType, Animati
 where
     D: Deserializer<'de>,
 {
-    let result = FxHashMap::<String, Value>::deserialize(deserializer);
-    let hashmap = match result {
+    let result = FxHashMap::<AnimationType, Value>::deserialize(deserializer);
+
+    // If deserialize returns an error, it's possible that an invalid AnimationType was listed
+    let map = match result {
         Ok(val) => val,
         Err(err) => return Err(err),
     };
 
     let mut deserialized: FxHashMap<AnimationType, Animation> = FxHashMap::default();
 
-    for (anim_type_str, anim_value) in hashmap {
-        let animation_type: Result<AnimationType, _> = from_str(&anim_type_str);
+    for (animation_type, anim_value) in map {
+        let default_speed = match animation_type {
+            AnimationType::Spiral | AnimationType::ReverseSpiral | AnimationType::Fade => 50.0,
+            _ => 0.0, // Default fallback for other types
+        };
 
-        if let Ok(animation_type) = animation_type {
-            if animation_type == AnimationType::None {
-                continue;
-            }
+        if let Value::Null = anim_value {
+            deserialized.insert(
+                animation_type.clone(),
+                Animation {
+                    animation_type: animation_type.clone(),
+                    speed: default_speed,
+                    easing: AnimationEasing::Linear,
+                },
+            );
+        } else if let Value::Mapping(ref obj) = anim_value {
+            let speed = match obj.get("speed") {
+                Some(Value::Number(n)) => n.as_f64().map(|f| f as f32),
+                _ => None,
+            };
+
+            let easing = match obj.get("easing") {
+                Some(Value::String(s)) => {
+                    AnimationEasing::from_str(s).unwrap_or(AnimationEasing::Linear)
+                }
+                _ => AnimationEasing::Linear,
+            };
+
+            println!("{:?}", easing);
 
             let default_speed = match animation_type {
                 AnimationType::Spiral | AnimationType::ReverseSpiral | AnimationType::Fade => 50.0,
                 _ => 0.0, // Default fallback for other types
             };
 
-            if let Value::Null = anim_value {
-                deserialized.insert(
-                    animation_type.clone(),
-                    Animation {
-                        animation_type: animation_type.clone(),
-                        speed: default_speed,
-                        easing: AnimationEasing::Linear,
-                    },
-                );
-            } else if let Value::Mapping(ref obj) = anim_value {
-                let speed = match obj.get("speed") {
-                    Some(Value::Number(n)) => n.as_f64().map(|f| f as f32),
-                    _ => None,
-                };
+            let animation = Animation {
+                animation_type: animation_type.clone(),
+                speed: speed.unwrap_or(default_speed),
+                easing,
+            };
 
-                let easing = match obj.get("easing") {
-                    Some(Value::String(s)) => {
-                        AnimationEasing::from_str(s).unwrap_or(AnimationEasing::Linear)
-                    }
-                    _ => AnimationEasing::Linear,
-                };
-
-                let default_speed = match animation_type {
-                    AnimationType::Spiral | AnimationType::ReverseSpiral | AnimationType::Fade => {
-                        50.0
-                    }
-                    _ => 0.0, // Default fallback for other types
-                };
-
-                let animation = Animation {
-                    animation_type: animation_type.clone(),
-                    speed: speed.unwrap_or(default_speed),
-                    easing,
-                };
-
-                deserialized.insert(animation_type, animation);
-            } else {
-                return Err(D::Error::custom(format!(
-                    "Invalid value type: {:?}",
-                    anim_value
-                )));
-            }
+            deserialized.insert(animation_type, animation);
         } else {
             return Err(D::Error::custom(format!(
-                "Invalid animation type: {}",
-                anim_type_str
+                "Invalid value type: {:?}",
+                anim_value
             )));
         }
     }

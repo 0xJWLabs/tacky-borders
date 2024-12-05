@@ -2,6 +2,7 @@ use animation::Animation;
 use animation::AnimationType;
 use easing::AnimationEasing;
 use rustc_hash::FxHashMap;
+use serde::de::Error;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde_plain2::from_str;
@@ -101,10 +102,16 @@ where
 
                 deserialized.insert(animation_type, animation);
             } else {
-                println!("Invalid value type: {:?}", anim_value);
+                return Err(D::Error::custom(format!(
+                    "Invalid value type: {:?}",
+                    anim_value
+                )));
             }
         } else {
-            println!("Invalid animation type: {}", anim_type_str);
+            return Err(D::Error::custom(format!(
+                "Invalid animation type: {}",
+                anim_type_str
+            )));
         }
     }
 

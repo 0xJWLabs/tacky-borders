@@ -3,6 +3,9 @@ name = "tacky-borders"
 version = "0.1.0"
 edition = "2021"
 
+[package.metadata.winresource]
+LegalCopyRight = "Copyright © 2024 0xJWLabs"
+
 [profile.dev]
 debug = true
 
@@ -10,7 +13,6 @@ debug = true
 serde = "1.0.215"
 tray-icon = "0.19.2"
 open = "5.3.1"
-dirs = "5.0.1"
 regex = "1.11.1"
 serde_yaml_ng = "0.10.0"
 serde_plain2 = "0.1.0"
@@ -18,7 +20,6 @@ sp_log = "0.1.0"
 log = "0.4.22"
 rustc-hash = "2.0.0"
 win-hotkey = "0.1.5"
-thiserror = "2.0.4"
 anyhow = "1.0.94"
 simple-bezier-easing = "0.1.0"
 
@@ -27,22 +28,21 @@ version = "0.58.0"
 features = [
   "Win32_Foundation",
   "Foundation_Numerics",
+  "Win32_Globalization",
   "Win32_Graphics_Dwm",
   "Win32_Graphics_Gdi",
   "Win32_Graphics_Direct2D",
   "Win32_Graphics_Direct2D_Common",
   "Win32_Graphics_Dxgi_Common",
   "Win32_System_Threading",
+  "Win32_System_Com",
   "Win32_UI_Accessibility",
   "Win32_UI_HiDpi",
+  "Win32_UI_Shell",
   "Win32_UI_Input_Ime",
   "Win32_UI_WindowsAndMessaging",
   "Win32_System_SystemServices",
 ]
 
 [build-dependencies]
-winres = "0.1.12"
-
-[features]
-rust150 = []
-rust180 = []
+winresource = "0.1.19"

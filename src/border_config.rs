@@ -1,8 +1,9 @@
 use crate::animations::Animations;
 use crate::colors::color::ColorConfig;
+use crate::utils::home_dir;
+use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result as AnyResult;
-use dirs::home_dir;
 use serde::Deserialize;
 use serde::Serialize;
 use std::fs::exists;
@@ -12,7 +13,6 @@ use std::fs::DirBuilder;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 use std::sync::Mutex;
-use thiserror::Error;
 
 pub static CONFIG: LazyLock<Mutex<Config>> = LazyLock::new(|| {
     Mutex::new(match Config::new() {
@@ -110,57 +110,63 @@ impl Config {
     fn new() -> AnyResult<Self> {
         let config_dir = Self::get_config_dir()?;
         let config_path = config_dir.join("config.yaml");
-        if !exists(&config_path).context("Could not find config file in path")? {
-            write(&config_path, DEFAULT_CONFIG.as_bytes())
-                .context("could not generate default config.yaml")?;
+
+        if !exists(config_path.clone()).with_context(|| {
+            format!("Failed to found config.yaml in {:?}", config_path.display())
+        })? {
+            Self::create_default_config(&config_path.clone())?;
         }
 
-        let contents = read_to_string(&config_path).context("Could not read config.yaml")?;
+        let contents = read_to_string(&config_path).with_context(|| {
+            format!(
+                "Failed to read config.yaml file in {}",
+                config_path.display()
+            )
+        })?;
 
-        let config = serde_yaml_ng::from_str(&contents)?;
+        let config = serde_yaml_ng::from_str(&contents)
+            .with_context(|| "Failed to deserialize config.yaml")?;
+
         Ok(config)
     }
 
-    pub fn get_config_dir() -> AnyResult<PathBuf, ConfigError> {
-        let Some(home_dir) = home_dir() else {
-            return Err(ConfigError::HomeDir);
-        };
+    fn create_default_config(path: &PathBuf) -> AnyResult<()> {
+        write(path, DEFAULT_CONFIG.as_bytes())
+            .with_context(|| format!("Failed to write default config to {}", path.display()))?;
+        Ok(())
+    }
+
+    pub fn get_config_dir() -> AnyResult<PathBuf> {
+        let home_dir = home_dir()?;
 
         let config_dir = home_dir.join(".config").join("tacky-borders");
         let fallback_dir = home_dir.join(".tacky-borders");
 
-        if config_dir.exists() {
+        if exists(config_dir.clone())
+            .with_context(|| format!("Could not find {}", config_dir.display()))?
+        {
             return Ok(config_dir);
-        }
-
-        if fallback_dir.exists() {
+        } else if exists(fallback_dir.clone())
+            .with_context(|| format!("Could not find {}", fallback_dir.display()))?
+        {
             return Ok(fallback_dir);
         }
 
         DirBuilder::new()
             .recursive(true)
             .create(&config_dir)
-            .map_err(|_| ConfigError::ConfigDir)?;
+            .map_err(|_| anyhow!("Could not create config directory"))?;
 
         Ok(config_dir)
     }
 
     pub fn reload() {
-        let new_config = match Self::new() {
-            Ok(config) => config,
+        match Self::new() {
+            Ok(config) => *CONFIG.lock().unwrap() = config,
             Err(err) => {
-                error!("Error: {}", err);
-                Config::default()
+                error!("Error reloading config: {}", err);
+                *CONFIG.lock().unwrap() = Config::default();
             }
-        };
-        *CONFIG.lock().unwrap() = new_config;
+        }
     }
-}
-
-#[derive(Error, Debug)]
-pub enum ConfigError {
-    #[error("Could not find home directory")]
-    HomeDir,
-    #[error("Could not create config directory")]
-    ConfigDir,
 }

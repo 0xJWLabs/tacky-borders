@@ -117,7 +117,7 @@ impl Config {
 
         let contents = read_to_string(&config_path).context("Could not read config.yaml")?;
 
-        let config = serde_yml::from_str(&contents)?;
+        let config = serde_yaml_ng::from_str(&contents)?;
         Ok(config)
     }
 

@@ -4,13 +4,11 @@ use easing::AnimationEasing;
 use rustc_hash::FxHashMap;
 use serde::Deserialize;
 use serde::Deserializer;
-use serde_yml::Value;
+use serde_plain2::from_str;
+use serde_yaml_ng::Value;
 use std::str::FromStr;
 
-use crate::deserializer::from_str;
-
 pub mod animation;
-pub mod bezier;
 pub mod easing;
 pub mod utils;
 

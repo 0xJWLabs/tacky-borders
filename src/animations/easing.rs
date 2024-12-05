@@ -1,6 +1,6 @@
 use super::utils::parse_cubic_bezier;
-use crate::deserializer::from_str;
 use serde::Deserialize;
+use serde_plain2::from_str;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::str::FromStr;

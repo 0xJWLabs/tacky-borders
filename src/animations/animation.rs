@@ -1,9 +1,9 @@
-use super::bezier::bezier;
 use super::easing::AnimationEasing;
 use super::ANIM_NONE;
 use crate::window_border::WindowBorder;
 use crate::windows_api::WindowsApi;
 use serde::Deserialize;
+use simple_bezier_easing::bezier;
 use std::time::Duration;
 use windows::Foundation::Numerics::Matrix3x2;
 
@@ -29,11 +29,13 @@ impl Animation {
         let points = self.easing.to_points();
 
         match self.animation_type {
-            AnimationType::Spiral => {
+            AnimationType::Spiral | AnimationType::ReverseSpiral => {
+                let anim_speed = if self.animation_type == AnimationType::ReverseSpiral {
+                    -anim_speed
+                } else {
+                    anim_speed
+                };
                 animate_spiral(points, border, anim_elapsed, anim_speed)
-            }
-            AnimationType::ReverseSpiral => {
-                animate_spiral(points, border, anim_elapsed, -anim_speed)
             }
             AnimationType::Fade => {
                 animate_fade(points, border, anim_elapsed, anim_speed);
@@ -61,7 +63,13 @@ fn animate_spiral(
     };
 
     // Calculate the eased curve value
-    let curve_value = ease(border.animations.spiral_progress);
+    let curve_value = match ease(border.animations.spiral_progress) {
+        Ok(val) => val,
+        Err(err) => {
+            error!("{:?}", err);
+            return;
+        }
+    };
 
     // Adjust the spiral angle based on the direction
     let angle_delta = curve_value * (anim_speed / 20.0);
@@ -115,7 +123,13 @@ fn animate_fade(
         return;
     };
 
-    let y_coord = ease(border.animations.fade_progress);
+    let y_coord = match ease(border.animations.fade_progress) {
+        Ok(coord) => coord,
+        Err(err) => {
+            error!("{:?}", err);
+            return;
+        }
+    };
 
     let (new_active_opacity, new_inactive_opacity) = match border.animations.fade_to_visible {
         true => match border.is_window_active {

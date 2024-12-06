@@ -14,6 +14,7 @@ use std::sync::Mutex;
 use tray_icon::menu::Menu;
 use tray_icon::menu::MenuEvent;
 use tray_icon::menu::MenuItem;
+use tray_icon::menu::PredefinedMenuItem;
 use tray_icon::Icon;
 use tray_icon::TrayIcon;
 use tray_icon::TrayIconBuilder;
@@ -55,9 +56,10 @@ pub fn create_tray_icon() -> AnyResult<TrayIcon> {
 
     let tray_menu = Menu::new();
     tray_menu.append_items(&[
-        &MenuItem::with_id("0", "Open Config", true, None),
-        &MenuItem::with_id("1", "Reload", true, None),
-        &MenuItem::with_id("2", "Close", true, None),
+        &MenuItem::with_id("0", "Open config", true, None),
+        &MenuItem::with_id("1", "Reload config", true, None),
+        &PredefinedMenuItem::separator(),
+        &MenuItem::with_id("2", "Exit", true, None),
     ])?;
 
     let tray_icon = TrayIconBuilder::new()

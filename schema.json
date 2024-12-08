@@ -522,8 +522,7 @@
             "pattern": "^(?:[a-zA-Z]+(?:[-_][a-zA-Z]+)*|[Cc]ubic[-_]?[Bb]ezier\\([0-9\\.\\,\\s]+\\))\\s+[\\d.]+(ms|s)$",
             "description": "A string representing an alternative option for 'additionalProperties'."
           }
-        ],
-        "additionalProperties": false
+        ]
       }
     }
   }

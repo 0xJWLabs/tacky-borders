@@ -8,7 +8,6 @@ use serde::Deserialize;
 use serde::Deserializer;
 use serde_yaml_ng::Mapping;
 use serde_yaml_ng::Value;
-use std::any::type_name;
 use std::str::FromStr;
 
 pub mod animation;
@@ -65,7 +64,6 @@ where
             AnimationType::Fade => 200.0,
         };
         let default_easing = AnimationEasing::Linear;
-        println!("A: {}", type_name::<Value>());
         let (duration, easing) = match anim_value {
             Value::Null => (default_duration, default_easing),
             Value::Mapping(ref obj) => {
@@ -75,7 +73,6 @@ where
             }
             Value::String(ref s) => {
                 if let Some((easing_str, duration_str)) = parse_easing_and_duration(s) {
-                    println!("{}", easing_str);
                     let duration = parse_duration_from_string(duration_str, default_duration);
                     let easing = AnimationEasing::from_str(easing_str).unwrap_or(default_easing);
                     (duration, easing)
@@ -93,8 +90,6 @@ where
                 )));
             }
         };
-
-        println!("duration: {}, easing: {:?}", duration, easing);
 
         // Insert the deserialized animation data into the map
         deserialized.insert(

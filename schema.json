@@ -255,118 +255,118 @@
   "definitions": {
     "colorProperties": {
       "oneOf": [
-            {
-              "type": "string",
-              "examples": [
-                "#F5C2E7",
-                "#F5E0DCFF",
-                "rgb(137, 180, 250)",
-                "rgba(243, 139, 168, 1)",
-                "#89B4FA, #F5C2E7, to right",
-                "gradient(#89B4FA, #F5C2E7, to right)"
-              ]
+        {
+          "type": "string",
+          "examples": [
+            "#F5C2E7",
+            "#F5E0DCFF",
+            "rgb(137, 180, 250)",
+            "rgba(243, 139, 168, 1)",
+            "#89B4FA, #F5C2E7, to right",
+            "gradient(#89B4FA, #F5C2E7, to right)"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "colors": {
+              "type": "array",
+              "description": "Array of color stops for gradient. Minimum of 2 colors required.",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 2
             },
-            {
-              "type": "object",
-              "properties": {
-                "colors": {
-                  "type": "array",
-                  "description": "Array of color stops for gradient. Minimum of 2 colors required.",
-                  "items": {
-                    "type": "string"
-                  },
-                  "minItems": 2
-                },
-                "direction": {
-                  "oneOf": [
+            "direction": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "description": "Represents the direction in which the gradient is applied. It is defined as a vector with start and end points, where the direction is indicated by coordinates ranging from (0,0) to (1,1), representing the normalized space of the gradient.",
+                  "required": [
+                    "start",
+                    "end"
+                  ],
+                  "examples": [
                     {
-                      "type": "object",
-                      "description": "Represents the direction in which the gradient is applied. It is defined as a vector with start and end points, where the direction is indicated by coordinates ranging from (0,0) to (1,1), representing the normalized space of the gradient.",
-                      "required": [
-                        "start",
-                        "end"
+                      "start": [
+                        0.0,
+                        0.0
                       ],
-                      "examples": [
-                        {
-                          "start": [
-                            0.0,
-                            0.0
-                          ],
-                          "end": [
-                            1.0,
-                            0.0
-                          ]
-                        }
-                      ],
-                      "properties": {
-                        "start": {
-                          "type": "array",
-                          "maxItems": 2,
-                          "minItems": 2,
-                          "description": "The starting point of the gradient, specified as sequence [x, y]. It determines where the gradient begins.",
-                          "items": {
-                            "type": "number",
-                            "format": "float",
-                            "description": "The coordinate of the starting point of the gradient, represented as a float value between 0 and 1."
-                          }
-                        },
-                        "end": {
-                          "type": "array",
-                          "maxItems": 2,
-                          "minItems": 2,
-                          "description": "The ending point of the gradient, specified as sequence [x, y]. It determines where the gradient begins.",
-                          "items": {
-                            "type": "number",
-                            "format": "float",
-                            "description": "The coordinate of the ending point of the gradient, represented as a float value between 0 and 1."
-                          }
-                        }
-                      }
-                    },
-                    {
-                      "type": "string",
-                      "description": "Represents the direction in which the gradient is applied. It is defined as direction string",
-                      "examples": [
-                        "to right",
-                        "to left",
-                        "45deg",
-                        "90deg"
+                      "end": [
+                        1.0,
+                        0.0
                       ]
                     }
-                  ]
-                }
-              },
-              "examples": [
-                {
-                  "colors": [
-                    "#F5C2E7",
-                    "#F5E0DCFF"
                   ],
-                  "direction": {
-                    "start": [
-                      0.0,
-                      0.0
-                    ],
-                    "end": [
-                      1.0,
-                      1.0
-                    ]
+                  "properties": {
+                    "start": {
+                      "type": "array",
+                      "maxItems": 2,
+                      "minItems": 2,
+                      "description": "The starting point of the gradient, specified as sequence [x, y]. It determines where the gradient begins.",
+                      "items": {
+                        "type": "number",
+                        "format": "float",
+                        "description": "The coordinate of the starting point of the gradient, represented as a float value between 0 and 1."
+                      }
+                    },
+                    "end": {
+                      "type": "array",
+                      "maxItems": 2,
+                      "minItems": 2,
+                      "description": "The ending point of the gradient, specified as sequence [x, y]. It determines where the gradient begins.",
+                      "items": {
+                        "type": "number",
+                        "format": "float",
+                        "description": "The coordinate of the ending point of the gradient, represented as a float value between 0 and 1."
+                      }
+                    }
                   }
                 },
                 {
-                  "colors": [
-                    "#F5C2E7",
-                    "#F5E0DCFF"
-                  ],
-                  "direction": "to right"
+                  "type": "string",
+                  "description": "Represents the direction in which the gradient is applied. It is defined as direction string",
+                  "examples": [
+                    "to right",
+                    "to left",
+                    "45deg",
+                    "90deg"
+                  ]
                 }
-              ],
-              "required": [
-                "colors",
-                "direction"
               ]
             }
+          },
+          "examples": [
+            {
+              "colors": [
+                "#F5C2E7",
+                "#F5E0DCFF"
+              ],
+              "direction": {
+                "start": [
+                  0.0,
+                  0.0
+                ],
+                "end": [
+                  1.0,
+                  1.0
+                ]
+              }
+            },
+            {
+              "colors": [
+                "#F5C2E7",
+                "#F5E0DCFF"
+              ],
+              "direction": "to right"
+            }
+          ],
+          "required": [
+            "colors",
+            "direction"
           ]
+        }
+      ]
     },
     "animationProperties": {
       "description": "The animation properties for both active and inactive states.",

@@ -221,7 +221,7 @@
             },
             "inactive": {
               "type": "object",
-              "description": "A list of animations to apply when the border is in the inactive state. These animations will be applied when the window or component is focused or active.",
+              "description": "A list of animations to apply when the border is in the active state. These animations will be applied when the window or component is focused or active.",
               "propertyNames": {
                 "enum": [
                   "Fade",
@@ -852,7 +852,7 @@
                   },
                   "inactive": {
                     "type": "object",
-                    "description": "A list of animations to apply when the border is in the inactive state. These animations will be applied when the window or component is focused or active.",
+                    "description": "A list of animations to apply when the border is in the active state. These animations will be applied when the window or component is focused or active.",
                     "propertyNames": {
                       "enum": [
                         "Fade",

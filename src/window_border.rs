@@ -642,8 +642,7 @@ impl WindowBorder {
                     self.animations.current.clone().to_iter().any(|animation| {
                         match animation.animation_type {
                             AnimationType::Spiral | AnimationType::ReverseSpiral => {
-                                let anim_speed = animation.speed;
-                                animation.play(self, &anim_elapsed, anim_speed * 2.0);
+                                animation.play(self, &anim_elapsed, animation.duration);
                                 true
                             }
                             _ => false,
@@ -658,7 +657,7 @@ impl WindowBorder {
                         .find(&AnimationType::Fade)
                         .unwrap()
                         .clone();
-                    anim.play(self, &anim_elapsed, anim.speed / 20.0);
+                    anim.play(self, &anim_elapsed, anim.duration);
                     animations_updated = true;
                 }
 

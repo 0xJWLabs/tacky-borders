@@ -8,7 +8,7 @@ use std::time::Duration;
 use win_color::ColorImpl;
 use windows::Foundation::Numerics::Matrix3x2;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
 pub enum AnimationType {
     #[serde(alias = "spiral")]
     Spiral,
@@ -20,15 +20,12 @@ pub enum AnimationType {
         alias = "reverse-spiral"
     )]
     ReverseSpiral,
-    #[default]
-    None,
 }
 
 #[derive(Debug, PartialEq, Clone, Deserialize)]
 pub struct Animation {
-    #[serde(skip)]
     pub animation_type: AnimationType,
-    pub speed: f32,
+    pub duration: f32,
     pub easing: AnimationEasing,
 }
 
@@ -48,7 +45,6 @@ impl Animation {
             AnimationType::Fade => {
                 animate_fade(points, border, anim_elapsed, anim_speed);
             }
-            _ => {}
         }
     }
 }
@@ -97,7 +93,7 @@ fn animate_fade(
     points: [f32; 4],
     border: &mut WindowBorder,
     anim_elapsed: &Duration,
-    anim_speed: f32,
+    anim_duration: f32,
 ) {
     if border.active_color.get_opacity() == 0.0 && border.inactive_color.get_opacity() == 0.0 {
         border.animations.fade_progress = match border.is_window_active {
@@ -112,8 +108,8 @@ fn animate_fade(
         false => -1.0,
     };
 
-    let delta_t = anim_elapsed.as_secs_f32() * anim_speed * direction;
-    border.animations.fade_progress += delta_t;
+    let delta_x = anim_elapsed.as_secs_f32() * 1000.0 / anim_duration * direction;
+    border.animations.fade_progress += delta_x;
 
     if !(0.0..=1.0).contains(&border.animations.fade_progress) {
         let final_opacity = border.animations.fade_progress.clamp(0.0, 1.0);

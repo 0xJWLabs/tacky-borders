@@ -1,11 +1,14 @@
 use animation::Animation;
 use animation::AnimationType;
 use easing::AnimationEasing;
+use regex::Regex;
 use rustc_hash::FxHashMap;
 use serde::de::Error;
 use serde::Deserialize;
 use serde::Deserializer;
+use serde_yaml_ng::Mapping;
 use serde_yaml_ng::Value;
+use std::any::type_name;
 use std::str::FromStr;
 
 pub mod animation;
@@ -50,7 +53,6 @@ where
     let map = match result {
         Ok(val) => val
             .into_iter() // Convert into iterator
-            .filter(|(animation_type, _)| *animation_type != AnimationType::None) // Filter out AnimationType::None
             .collect::<FxHashMap<_, _>>(), // Collect back into a map
         Err(err) => return Err(err),
     };
@@ -58,54 +60,108 @@ where
     let mut deserialized: FxHashMap<AnimationType, Animation> = FxHashMap::default();
 
     for (animation_type, anim_value) in map {
-        let default_speed = match animation_type {
-            AnimationType::Spiral | AnimationType::ReverseSpiral | AnimationType::Fade => 50.0,
-            _ => 0.0, // Default fallback for other types
+        let default_duration = match animation_type {
+            AnimationType::Spiral | AnimationType::ReverseSpiral => 1800.0,
+            AnimationType::Fade => 200.0,
+        };
+        let default_easing = AnimationEasing::Linear;
+        println!("A: {}", type_name::<Value>());
+        let (duration, easing) = match anim_value {
+            Value::Null => (default_duration, default_easing),
+            Value::Mapping(ref obj) => {
+                let duration = parse_duration_from_object(obj, default_duration);
+                let easing = parse_easing_from_object(obj).unwrap_or(default_easing);
+                (duration, easing)
+            }
+            Value::String(ref s) => {
+                if let Some((easing_str, duration_str)) = parse_easing_and_duration(s) {
+                    println!("{}", easing_str);
+                    let duration = parse_duration_from_string(duration_str, default_duration);
+                    let easing = AnimationEasing::from_str(easing_str).unwrap_or(default_easing);
+                    (duration, easing)
+                } else {
+                    return Err(D::Error::custom(format!(
+                        "Invalid value for easing and duration: {}",
+                        s
+                    )));
+                }
+            }
+            _ => {
+                return Err(D::Error::custom(format!(
+                    "Invalid value type for animation: {:?}",
+                    anim_value
+                )));
+            }
         };
 
-        if let Value::Null = anim_value {
-            deserialized.insert(
-                animation_type.clone(),
-                Animation {
-                    animation_type: animation_type.clone(),
-                    speed: default_speed,
-                    easing: AnimationEasing::Linear,
-                },
-            );
-        } else if let Value::Mapping(ref obj) = anim_value {
-            let speed = match obj.get("speed") {
-                Some(Value::Number(n)) => n.as_f64().map(|f| f as f32),
-                _ => None,
-            };
+        println!("duration: {}, easing: {:?}", duration, easing);
 
-            let easing = match obj.get("easing") {
-                Some(Value::String(s)) => {
-                    AnimationEasing::from_str(s).unwrap_or(AnimationEasing::Linear)
-                }
-                _ => AnimationEasing::Linear,
-            };
-
-            let default_speed = match animation_type {
-                AnimationType::Spiral | AnimationType::ReverseSpiral | AnimationType::Fade => 50.0,
-                _ => 0.0, // Default fallback for other types
-            };
-
-            let animation = Animation {
+        // Insert the deserialized animation data into the map
+        deserialized.insert(
+            animation_type.clone(),
+            Animation {
                 animation_type: animation_type.clone(),
-                speed: speed.unwrap_or(default_speed),
+                duration,
                 easing,
-            };
-
-            deserialized.insert(animation_type, animation);
-        } else {
-            return Err(D::Error::custom(format!(
-                "invalid value type: {:?}",
-                anim_value
-            )));
-        }
+            },
+        );
     }
 
     Ok(deserialized)
+}
+
+/// Helper function to parse the `duration` from a `Value::Mapping`
+fn parse_duration_from_object(obj: &Mapping, default_duration: f32) -> f32 {
+    obj.get("duration")
+        .and_then(|v| match v {
+            Value::String(s) => Some(parse_duration_from_string(s, default_duration)),
+            Value::Number(n) => n.as_f64().map(|f| f as f32),
+            _ => None,
+        })
+        .unwrap_or(default_duration) // If no "duration" key or parsing fails, return default_duration
+}
+
+/// Helper function to parse the `duration` from a `String` value like "30ms" or "3s"
+fn parse_duration_from_string(s: &str, default_duration: f32) -> f32 {
+    let regex = Regex::new(r"(?i)^([\d.]+)(ms|s)$").unwrap();
+    if let Some(captures) = regex.captures(s) {
+        let duration_num = captures
+            .get(1)
+            .map(|m| m.as_str().parse::<f32>().unwrap_or(default_duration)) // Default duration if parsing fails
+            .unwrap_or(default_duration);
+        let unit = captures.get(2).map(|m| m.as_str()).unwrap_or("ms");
+
+        // Convert seconds to milliseconds if necessary
+        if unit == "s" {
+            duration_num * 1000.0
+        } else {
+            duration_num
+        }
+    } else {
+        default_duration
+    }
+}
+
+fn parse_easing_and_duration(s: &str) -> Option<(&str, &str)> {
+    let re = Regex::new(r"^([a-zA-Z\-]+)\s+([\d.]+(ms|s))$").unwrap();
+    if let Some(captures) = re.captures(s) {
+        Some((captures.get(1)?.as_str(), captures.get(2)?.as_str()))
+    } else {
+        // Check for cubic-bezier(...) string
+        let re_cubic =
+            Regex::new(r"^([Cc]ubic[-_]?[Bb]ezier\([^\)]+\))\s+([\d.]+(ms|s))$").unwrap();
+        if let Some(captures) = re_cubic.captures(s) {
+            Some((captures.get(1)?.as_str(), captures.get(2)?.as_str()))
+        } else {
+            None
+        }
+    }
+}
+
+fn parse_easing_from_object(obj: &Mapping) -> Option<AnimationEasing> {
+    obj.get("easing")
+        .and_then(|v| v.as_str())
+        .map(|s| AnimationEasing::from_str(s).unwrap_or(AnimationEasing::Linear))
 }
 
 pub trait HashMapAnimationExt {

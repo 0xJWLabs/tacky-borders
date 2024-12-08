@@ -1,5 +1,4 @@
 use crate::animations::Animations;
-use crate::colors::color::ColorConfig;
 use crate::utils::home_dir;
 use anyhow::anyhow;
 use anyhow::Context;
@@ -13,6 +12,7 @@ use std::fs::DirBuilder;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 use std::sync::Mutex;
+use win_color::GlobalColor;
 
 pub static CONFIG: LazyLock<Mutex<Config>> = LazyLock::new(|| {
     Mutex::new(match Config::new() {
@@ -69,8 +69,8 @@ pub struct MatchDetails {
     pub match_value: Option<String>,
     #[serde(rename = "strategy")]
     pub match_strategy: Option<MatchStrategy>,
-    pub active_color: Option<ColorConfig>,
-    pub inactive_color: Option<ColorConfig>,
+    pub active_color: Option<GlobalColor>,
+    pub inactive_color: Option<GlobalColor>,
     pub animations: Option<Animations>,
     pub border_radius: Option<BorderRadius>,
     pub border_width: Option<f32>,
@@ -92,8 +92,8 @@ pub struct GlobalRule {
     pub border_width: f32,
     pub border_offset: i32,
     pub border_radius: BorderRadius,
-    pub active_color: ColorConfig,
-    pub inactive_color: ColorConfig,
+    pub active_color: GlobalColor,
+    pub inactive_color: GlobalColor,
     pub animations: Option<Animations>,
     pub initialize_delay: Option<u64>,
     pub unminimize_delay: Option<u64>,

@@ -47,21 +47,6 @@ pub fn get_log() -> AnyResult<File, Error> {
     Ok(file)
 }
 
-pub fn strip_string(input: String, prefixes: &[&str], suffix: char) -> String {
-    let mut result = input;
-
-    // Remove matching prefix (if any)
-    for &prefix in prefixes {
-        if let Some(stripped) = result.strip_prefix(prefix) {
-            result = stripped.to_string();
-            break; // Only remove the first matching prefix
-        }
-    }
-
-    // Remove suffix (if it exists)
-    result.strip_suffix(suffix).unwrap_or(&result).to_string()
-}
-
 pub fn home_dir() -> AnyResult<PathBuf> {
     unsafe {
         // Call SHGetKnownFolderPath with NULL token (default user)

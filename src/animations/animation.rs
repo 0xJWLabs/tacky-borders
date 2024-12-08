@@ -5,6 +5,7 @@ use crate::windows_api::WindowsApi;
 use serde::Deserialize;
 use simple_bezier_easing::bezier;
 use std::time::Duration;
+use win_color::ColorImpl;
 use windows::Foundation::Numerics::Matrix3x2;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Deserialize)]
@@ -73,7 +74,8 @@ fn animate_spiral(
     let curve_value = match ease(border.animations.spiral_progress) {
         Ok(val) => val,
         Err(err) => {
-            error!("{:?}", err);
+            error!("{err}");
+            border.event_anim = ANIM_NONE;
             return;
         }
     };
@@ -134,6 +136,7 @@ fn animate_fade(
         Ok(coord) => coord,
         Err(err) => {
             error!("{err}");
+            border.event_anim = ANIM_NONE;
             return;
         }
     };

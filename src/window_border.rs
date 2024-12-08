@@ -3,7 +3,6 @@ use crate::animations::timer::AnimationTimer;
 use crate::animations::Animations;
 use crate::animations::HashMapAnimationExt;
 use crate::animations::ANIM_FADE;
-use crate::colors::color::Color;
 use crate::log_if_err;
 use crate::windows_api::ErrorMsg;
 use crate::windows_api::WindowsApi;
@@ -23,6 +22,8 @@ use std::ptr;
 use std::sync::LazyLock;
 use std::thread;
 use std::time;
+use win_color::Color;
+use win_color::ColorImpl;
 use windows::core::w;
 use windows::core::Result as WinResult;
 use windows::core::PCWSTR;
@@ -403,13 +404,13 @@ impl WindowBorder {
 
             if bottom_opacity > 0.0 {
                 let bottom_brush = bottom_color
-                    .to_brush(render_target, &self.window_rect, &self.brush_properties)
+                    .to_d2d1_brush(render_target, &self.window_rect, &self.brush_properties)
                     .context("could not create ID2D1Brush")?;
                 self.draw_rectangle(render_target, &bottom_brush);
             }
             if top_opacity > 0.0 {
                 let top_brush = top_color
-                    .to_brush(render_target, &self.window_rect, &self.brush_properties)
+                    .to_d2d1_brush(render_target, &self.window_rect, &self.brush_properties)
                     .context("could not create ID2D1Brush")?;
 
                 self.draw_rectangle(render_target, &top_brush);

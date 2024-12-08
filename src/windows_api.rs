@@ -5,6 +5,9 @@ use std::any::type_name;
 use std::ffi::c_void;
 use std::ptr;
 use std::thread;
+use win_color::Color;
+use win_color::ColorImpl;
+use win_color::GlobalColor;
 use windows::core::Param;
 use windows::Win32::Foundation::LRESULT;
 use windows::Win32::UI::HiDpi::SetProcessDpiAwarenessContext;
@@ -74,8 +77,6 @@ use crate::border_config::MatchKind;
 use crate::border_config::MatchStrategy;
 use crate::border_config::WindowRule;
 use crate::border_config::CONFIG;
-use crate::colors::color::Color;
-use crate::colors::color::ColorConfig;
 use crate::enum_windows_callback;
 use crate::log_if_err;
 use crate::window_border::WindowBorder;
@@ -650,11 +651,11 @@ fn convert_config_radius(
 }
 
 fn convert_config_colors(
-    color_active: &ColorConfig,
-    color_inactive: &ColorConfig,
+    color_active: &GlobalColor,
+    color_inactive: &GlobalColor,
 ) -> (Color, Color) {
     (
-        Color::from(color_active, Some(true)),
-        Color::from(color_inactive, Some(false)),
+        Color::fetch(color_active, Some(true)).unwrap(),
+        Color::fetch(color_inactive, Some(false)).unwrap(),
     )
 }

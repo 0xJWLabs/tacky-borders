@@ -4,9 +4,10 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::str::FromStr;
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Default, Clone, Deserialize, PartialEq)]
 pub enum AnimationEasing {
     // Linear
+    #[default]
     Linear,
 
     // EaseIn variants
@@ -199,8 +200,7 @@ impl FromStr for AnimationEasing {
                     .ok_or_else(|| format!("Invalid cubic-bezier format: {}", input))
             }
 
-            // Default case for invalid input
-            _ => Err(format!("Invalid easing type: {}", input)),
+            _ => Ok(AnimationEasing::default()),
         }
     }
 }

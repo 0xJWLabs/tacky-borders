@@ -64,160 +64,7 @@
                   "reverse_spiral"
                 ]
               },
-              "additionalProperties": {
-                "description": "An object that may contain optional 'speed' and 'easing' values.",
-                "anyOf": [
-                  {
-                    "type": "object",
-                    "properties": {
-                      "duration": {
-                        "anyOf": [
-                          {
-                            "type": "number",
-                            "description": "The speed of the animation (a numeric value)."
-                          },
-                          {
-                            "type": "string",
-                            "pattern": "^[\\d.]+(ms|s)$",
-                            "description": "The duration as a string, e.g., '3s' or '3ms'."
-                          }
-                        ]
-                      },
-                      "easing": {
-                        "type": "string",
-                        "anyOf": [
-                          {
-                            "enum": [
-                              "linear",
-                              "Linear",
-                              "EaseIn",
-                              "EaseInSine",
-                              "EaseInQuad",
-                              "EaseInCubic",
-                              "EaseInQuart",
-                              "EaseInQuint",
-                              "EaseInExpo",
-                              "EaseInCirc",
-                              "EaseInBack",
-                              "EaseOut",
-                              "EaseOutSine",
-                              "EaseOutQuad",
-                              "EaseOutCubic",
-                              "EaseOutQuart",
-                              "EaseOutQuint",
-                              "EaseOutExpo",
-                              "EaseOutCirc",
-                              "EaseOutBack",
-                              "EaseInOut",
-                              "EaseInOutSine",
-                              "EaseInOutQuad",
-                              "EaseInOutCubic",
-                              "EaseInOutQuart",
-                              "EaseInOutQuint",
-                              "EaseInOutExpo",
-                              "EaseInOutCirc",
-                              "EaseInOutBack",
-                              "ease-in",
-                              "ease-in-sine",
-                              "ease-in-quad",
-                              "ease-in-cubic",
-                              "ease-in-quart",
-                              "ease-in-quint",
-                              "ease-in-expo",
-                              "ease-in-circ",
-                              "ease-in-back",
-                              "ease-out",
-                              "ease-out-sine",
-                              "ease-out-quad",
-                              "ease-out-cubic",
-                              "ease-out-quart",
-                              "ease-out-quint",
-                              "ease-out-expo",
-                              "ease-out-circ",
-                              "ease-out-back",
-                              "ease-in-out",
-                              "ease-in-out-sine",
-                              "ease-in-out-quad",
-                              "ease-in-out-cubic",
-                              "ease-in-out-quart",
-                              "ease-in-out-quint",
-                              "ease-in-out-expo",
-                              "ease-in-out-circ",
-                              "ease-in-out-back",
-                              "easeIn",
-                              "easeInSine",
-                              "easeInQuad",
-                              "easeInCubic",
-                              "easeInQuart",
-                              "easeInQuint",
-                              "easeInExpo",
-                              "easeInCirc",
-                              "easeInBack",
-                              "easeOut",
-                              "easeOutSine",
-                              "easeOutQuad",
-                              "easeOutCubic",
-                              "easeOutQuart",
-                              "easeOutQuint",
-                              "easeOutExpo",
-                              "easeOutCirc",
-                              "easeOutBack",
-                              "easeInOut",
-                              "easeInOutSine",
-                              "easeInOutQuad",
-                              "easeInOutCubic",
-                              "easeInOutQuart",
-                              "easeInOutQuint",
-                              "easeInOutExpo",
-                              "easeInOutCirc",
-                              "easeInOutBack",
-                              "ease_in",
-                              "ease_in_sine",
-                              "ease_in_quad",
-                              "ease_in_cubic",
-                              "ease_in_quart",
-                              "ease_in_quint",
-                              "ease_in_expo",
-                              "ease_in_circ",
-                              "ease_in_back",
-                              "ease_out",
-                              "ease_out_sine",
-                              "ease_out_quad",
-                              "ease_out_cubic",
-                              "ease_out_quart",
-                              "ease_out_quint",
-                              "ease_out_expo",
-                              "ease_out_circ",
-                              "ease_out_back",
-                              "ease_in_out",
-                              "ease_in_out_sine",
-                              "ease_in_out_quad",
-                              "ease_in_out_cubic",
-                              "ease_in_out_quart",
-                              "ease_in_out_quint",
-                              "ease_in_out_expo",
-                              "ease_in_out_circ",
-                              "ease_in_out_back"
-                            ],
-                            "description": "The easing of the animation."
-                          },
-                          {
-                            "type": "string",
-                            "pattern": "^[Cc]ubic[-_]?[Bb]ezier\\([0-9\\.\\,\\s]+\\)$",
-                            "description": "A cubic-bezier function, e.g., cubic-bezier(0.42, 0.0, 0.58, 1.0)."
-                          }
-                        ]
-                      }
-                    }
-                  },
-                  {
-                    "type": "string",
-                    "pattern": "^(?:[a-zA-Z]+(?:[-_][a-zA-Z]+)*|[Cc]ubic[-_]?[Bb]ezier\\([0-9\\.\\,\\s]+\\))\\s+[\\d.]+(ms|s)$",
-                    "description": "A string representing an alternative option for 'additionalProperties'."
-                  }
-                ],
-                "additionalProperties": false
-              }
+              "$ref": "#/definitions/animationProperties" 
             },
             "inactive": {
               "type": "object",
@@ -234,160 +81,7 @@
                   "reverse_spiral"
                 ]
               },
-              "additionalProperties": {
-                "description": "An object that may contain optional 'speed' and 'easing' values.",
-                "anyOf": [
-                  {
-                    "type": "object",
-                    "properties": {
-                      "duration": {
-                        "anyOf": [
-                          {
-                            "type": "number",
-                            "description": "The speed of the animation (a numeric value)."
-                          },
-                          {
-                            "type": "string",
-                            "pattern": "^[\\d.]+(ms|s)$",
-                            "description": "The duration as a string, e.g., '3s' or '3ms'."
-                          }
-                        ]
-                      },
-                      "easing": {
-                        "type": "string",
-                        "anyOf": [
-                          {
-                            "enum": [
-                              "linear",
-                              "Linear",
-                              "EaseIn",
-                              "EaseInSine",
-                              "EaseInQuad",
-                              "EaseInCubic",
-                              "EaseInQuart",
-                              "EaseInQuint",
-                              "EaseInExpo",
-                              "EaseInCirc",
-                              "EaseInBack",
-                              "EaseOut",
-                              "EaseOutSine",
-                              "EaseOutQuad",
-                              "EaseOutCubic",
-                              "EaseOutQuart",
-                              "EaseOutQuint",
-                              "EaseOutExpo",
-                              "EaseOutCirc",
-                              "EaseOutBack",
-                              "EaseInOut",
-                              "EaseInOutSine",
-                              "EaseInOutQuad",
-                              "EaseInOutCubic",
-                              "EaseInOutQuart",
-                              "EaseInOutQuint",
-                              "EaseInOutExpo",
-                              "EaseInOutCirc",
-                              "EaseInOutBack",
-                              "ease-in",
-                              "ease-in-sine",
-                              "ease-in-quad",
-                              "ease-in-cubic",
-                              "ease-in-quart",
-                              "ease-in-quint",
-                              "ease-in-expo",
-                              "ease-in-circ",
-                              "ease-in-back",
-                              "ease-out",
-                              "ease-out-sine",
-                              "ease-out-quad",
-                              "ease-out-cubic",
-                              "ease-out-quart",
-                              "ease-out-quint",
-                              "ease-out-expo",
-                              "ease-out-circ",
-                              "ease-out-back",
-                              "ease-in-out",
-                              "ease-in-out-sine",
-                              "ease-in-out-quad",
-                              "ease-in-out-cubic",
-                              "ease-in-out-quart",
-                              "ease-in-out-quint",
-                              "ease-in-out-expo",
-                              "ease-in-out-circ",
-                              "ease-in-out-back",
-                              "easeIn",
-                              "easeInSine",
-                              "easeInQuad",
-                              "easeInCubic",
-                              "easeInQuart",
-                              "easeInQuint",
-                              "easeInExpo",
-                              "easeInCirc",
-                              "easeInBack",
-                              "easeOut",
-                              "easeOutSine",
-                              "easeOutQuad",
-                              "easeOutCubic",
-                              "easeOutQuart",
-                              "easeOutQuint",
-                              "easeOutExpo",
-                              "easeOutCirc",
-                              "easeOutBack",
-                              "easeInOut",
-                              "easeInOutSine",
-                              "easeInOutQuad",
-                              "easeInOutCubic",
-                              "easeInOutQuart",
-                              "easeInOutQuint",
-                              "easeInOutExpo",
-                              "easeInOutCirc",
-                              "easeInOutBack",
-                              "ease_in",
-                              "ease_in_sine",
-                              "ease_in_quad",
-                              "ease_in_cubic",
-                              "ease_in_quart",
-                              "ease_in_quint",
-                              "ease_in_expo",
-                              "ease_in_circ",
-                              "ease_in_back",
-                              "ease_out",
-                              "ease_out_sine",
-                              "ease_out_quad",
-                              "ease_out_cubic",
-                              "ease_out_quart",
-                              "ease_out_quint",
-                              "ease_out_expo",
-                              "ease_out_circ",
-                              "ease_out_back",
-                              "ease_in_out",
-                              "ease_in_out_sine",
-                              "ease_in_out_quad",
-                              "ease_in_out_cubic",
-                              "ease_in_out_quart",
-                              "ease_in_out_quint",
-                              "ease_in_out_expo",
-                              "ease_in_out_circ",
-                              "ease_in_out_back"
-                            ],
-                            "description": "The easing of the animation."
-                          },
-                          {
-                            "type": "string",
-                            "pattern": "^[Cc]ubic[-_]?[Bb]ezier\\([0-9\\.\\,\\s]+\\)$",
-                            "description": "A cubic-bezier function, e.g., cubic-bezier(0.42, 0.0, 0.58, 1.0)."
-                          }
-                        ]
-                      }
-                    }
-                  },
-                  {
-                    "type": "string",
-                    "pattern": "^(?:[a-zA-Z]+(?:[-_][a-zA-Z]+)*|[Cc]ubic[-_]?[Bb]ezier\\([0-9\\.\\,\\s]+\\))\\s+[\\d.]+(ms|s)$",
-                    "description": "A string representing an alternative option for 'additionalProperties'."
-                  }
-                ],
-                "additionalProperties": false
-              }
+              "$ref": "#/definitions/animationProperties" 
             },
             "fps": {
               "type": "integer",
@@ -398,119 +92,7 @@
         },
         "active_color": {
           "description": "Color or gradient for active (focused) window borders. Can be a single color string, gradient string or a gradient object.",
-          "oneOf": [
-            {
-              "type": "string",
-              "examples": [
-                "#F5C2E7",
-                "#F5E0DCFF",
-                "rgb(137, 180, 250)",
-                "rgba(243, 139, 168, 1)",
-                "#89B4FA, #F5C2E7, to right",
-                "gradient(#89B4FA, #F5C2E7, to right)"
-              ]
-            },
-            {
-              "type": "object",
-              "properties": {
-                "colors": {
-                  "type": "array",
-                  "description": "Array of color stops for gradient. Minimum of 2 colors required.",
-                  "items": {
-                    "type": "string"
-                  },
-                  "minItems": 2
-                },
-                "direction": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "description": "Represents the direction in which the gradient is applied. It is defined as a vector with start and end points, where the direction is indicated by coordinates ranging from (0,0) to (1,1), representing the normalized space of the gradient.",
-                      "required": [
-                        "start",
-                        "end"
-                      ],
-                      "examples": [
-                        {
-                          "start": [
-                            0.0,
-                            0.0
-                          ],
-                          "end": [
-                            1.0,
-                            0.0
-                          ]
-                        }
-                      ],
-                      "properties": {
-                        "start": {
-                          "type": "array",
-                          "maxItems": 2,
-                          "minItems": 2,
-                          "description": "The starting point of the gradient, specified as sequence [x, y]. It determines where the gradient begins.",
-                          "items": {
-                            "type": "number",
-                            "format": "float",
-                            "description": "The coordinate of the starting point of the gradient, represented as a float value between 0 and 1."
-                          }
-                        },
-                        "end": {
-                          "type": "array",
-                          "maxItems": 2,
-                          "minItems": 2,
-                          "description": "The ending point of the gradient, specified as sequence [x, y]. It determines where the gradient begins.",
-                          "items": {
-                            "type": "number",
-                            "format": "float",
-                            "description": "The coordinate of the ending point of the gradient, represented as a float value between 0 and 1."
-                          }
-                        }
-                      }
-                    },
-                    {
-                      "type": "string",
-                      "description": "Represents the direction in which the gradient is applied. It is defined as direction string",
-                      "examples": [
-                        "to right",
-                        "to left",
-                        "45deg",
-                        "90deg"
-                      ]
-                    }
-                  ]
-                }
-              },
-              "examples": [
-                {
-                  "colors": [
-                    "#F5C2E7",
-                    "#F5E0DCFF"
-                  ],
-                  "direction": {
-                    "start": [
-                      0.0,
-                      0.0
-                    ],
-                    "end": [
-                      1.0,
-                      1.0
-                    ]
-                  }
-                },
-                {
-                  "colors": [
-                    "#F5C2E7",
-                    "#F5E0DCFF"
-                  ],
-                  "direction": "to right"
-                }
-              ],
-              "required": [
-                "colors",
-                "direction"
-              ]
-            }
-          ]
+          "$ref": "#definitions/colorProperties" 
         },
         "initialize_delay": {
           "type": "integer",
@@ -522,119 +104,7 @@
         },
         "inactive_color": {
           "description": "Color or gradient for inactive (unfocused) window borders. Similar to 'active_color' format.",
-          "oneOf": [
-            {
-              "type": "string",
-              "examples": [
-                "#F5C2E7",
-                "#F5E0DCFF",
-                "rgb(137, 180, 250)",
-                "rgba(243, 139, 168, 1)",
-                "#89B4FA, #F5C2E7, to right",
-                "gradient(#89B4FA, #F5C2E7, to right)"
-              ]
-            },
-            {
-              "type": "object",
-              "properties": {
-                "colors": {
-                  "type": "array",
-                  "description": "Array of color stops for gradient. Minimum of 2 colors required.",
-                  "items": {
-                    "type": "string"
-                  },
-                  "minItems": 2
-                },
-                "direction": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "description": "Represents the direction in which the gradient is applied. It is defined as a vector with start and end points, where the direction is indicated by coordinates ranging from (0,0) to (1,1), representing the normalized space of the gradient.",
-                      "required": [
-                        "start",
-                        "end"
-                      ],
-                      "examples": [
-                        {
-                          "start": [
-                            0.0,
-                            0.0
-                          ],
-                          "end": [
-                            1.0,
-                            0.0
-                          ]
-                        }
-                      ],
-                      "properties": {
-                        "start": {
-                          "type": "array",
-                          "maxItems": 2,
-                          "minItems": 2,
-                          "description": "The starting point of the gradient, specified as sequence [x, y]. It determines where the gradient begins.",
-                          "items": {
-                            "type": "number",
-                            "format": "float",
-                            "description": "The coordinate of the starting point of the gradient, represented as a float value between 0 and 1."
-                          }
-                        },
-                        "end": {
-                          "type": "array",
-                          "maxItems": 2,
-                          "minItems": 2,
-                          "description": "The ending point of the gradient, specified as sequence [x, y]. It determines where the gradient begins.",
-                          "items": {
-                            "type": "number",
-                            "format": "float",
-                            "description": "The coordinate of the ending point of the gradient, represented as a float value between 0 and 1."
-                          }
-                        }
-                      }
-                    },
-                    {
-                      "type": "string",
-                      "description": "Represents the direction in which the gradient is applied. It is defined as direction string",
-                      "examples": [
-                        "to right",
-                        "to left",
-                        "45deg",
-                        "90deg"
-                      ]
-                    }
-                  ]
-                }
-              },
-              "examples": [
-                {
-                  "colors": [
-                    "#F5C2E7",
-                    "#F5E0DCFF"
-                  ],
-                  "direction": {
-                    "start": [
-                      0.0,
-                      0.0
-                    ],
-                    "end": [
-                      1.0,
-                      1.0
-                    ]
-                  }
-                },
-                {
-                  "colors": [
-                    "#F5C2E7",
-                    "#F5E0DCFF"
-                  ],
-                  "direction": "to right"
-                }
-              ],
-              "required": [
-                "colors",
-                "direction"
-              ]
-            }
-          ]
+          "$ref": "#definitions/colorProperties" 
         }
       }
     },
@@ -695,160 +165,7 @@
                         "reverse_spiral"
                       ]
                     },
-                    "additionalProperties": {
-                      "description": "An object that may contain optional 'speed' and 'easing' values.",
-                      "anyOf": [
-                        {
-                          "type": "object",
-                          "properties": {
-                            "duration": {
-                              "anyOf": [
-                                {
-                                  "type": "number",
-                                  "description": "The speed of the animation (a numeric value)."
-                                },
-                                {
-                                  "type": "string",
-                                  "pattern": "^[\\d.]+(ms|s)$",
-                                  "description": "The duration as a string, e.g., '3s' or '3ms'."
-                                }
-                              ]
-                            },
-                            "easing": {
-                              "type": "string",
-                              "anyOf": [
-                                {
-                                  "enum": [
-                                    "linear",
-                                    "Linear",
-                                    "EaseIn",
-                                    "EaseInSine",
-                                    "EaseInQuad",
-                                    "EaseInCubic",
-                                    "EaseInQuart",
-                                    "EaseInQuint",
-                                    "EaseInExpo",
-                                    "EaseInCirc",
-                                    "EaseInBack",
-                                    "EaseOut",
-                                    "EaseOutSine",
-                                    "EaseOutQuad",
-                                    "EaseOutCubic",
-                                    "EaseOutQuart",
-                                    "EaseOutQuint",
-                                    "EaseOutExpo",
-                                    "EaseOutCirc",
-                                    "EaseOutBack",
-                                    "EaseInOut",
-                                    "EaseInOutSine",
-                                    "EaseInOutQuad",
-                                    "EaseInOutCubic",
-                                    "EaseInOutQuart",
-                                    "EaseInOutQuint",
-                                    "EaseInOutExpo",
-                                    "EaseInOutCirc",
-                                    "EaseInOutBack",
-                                    "ease-in",
-                                    "ease-in-sine",
-                                    "ease-in-quad",
-                                    "ease-in-cubic",
-                                    "ease-in-quart",
-                                    "ease-in-quint",
-                                    "ease-in-expo",
-                                    "ease-in-circ",
-                                    "ease-in-back",
-                                    "ease-out",
-                                    "ease-out-sine",
-                                    "ease-out-quad",
-                                    "ease-out-cubic",
-                                    "ease-out-quart",
-                                    "ease-out-quint",
-                                    "ease-out-expo",
-                                    "ease-out-circ",
-                                    "ease-out-back",
-                                    "ease-in-out",
-                                    "ease-in-out-sine",
-                                    "ease-in-out-quad",
-                                    "ease-in-out-cubic",
-                                    "ease-in-out-quart",
-                                    "ease-in-out-quint",
-                                    "ease-in-out-expo",
-                                    "ease-in-out-circ",
-                                    "ease-in-out-back",
-                                    "easeIn",
-                                    "easeInSine",
-                                    "easeInQuad",
-                                    "easeInCubic",
-                                    "easeInQuart",
-                                    "easeInQuint",
-                                    "easeInExpo",
-                                    "easeInCirc",
-                                    "easeInBack",
-                                    "easeOut",
-                                    "easeOutSine",
-                                    "easeOutQuad",
-                                    "easeOutCubic",
-                                    "easeOutQuart",
-                                    "easeOutQuint",
-                                    "easeOutExpo",
-                                    "easeOutCirc",
-                                    "easeOutBack",
-                                    "easeInOut",
-                                    "easeInOutSine",
-                                    "easeInOutQuad",
-                                    "easeInOutCubic",
-                                    "easeInOutQuart",
-                                    "easeInOutQuint",
-                                    "easeInOutExpo",
-                                    "easeInOutCirc",
-                                    "easeInOutBack",
-                                    "ease_in",
-                                    "ease_in_sine",
-                                    "ease_in_quad",
-                                    "ease_in_cubic",
-                                    "ease_in_quart",
-                                    "ease_in_quint",
-                                    "ease_in_expo",
-                                    "ease_in_circ",
-                                    "ease_in_back",
-                                    "ease_out",
-                                    "ease_out_sine",
-                                    "ease_out_quad",
-                                    "ease_out_cubic",
-                                    "ease_out_quart",
-                                    "ease_out_quint",
-                                    "ease_out_expo",
-                                    "ease_out_circ",
-                                    "ease_out_back",
-                                    "ease_in_out",
-                                    "ease_in_out_sine",
-                                    "ease_in_out_quad",
-                                    "ease_in_out_cubic",
-                                    "ease_in_out_quart",
-                                    "ease_in_out_quint",
-                                    "ease_in_out_expo",
-                                    "ease_in_out_circ",
-                                    "ease_in_out_back"
-                                  ],
-                                  "description": "The easing of the animation."
-                                },
-                                {
-                                  "type": "string",
-                                  "pattern": "^[Cc]ubic[-_]?[Bb]ezier\\([0-9\\.\\,\\s]+\\)$",
-                                  "description": "A cubic-bezier function, e.g., cubic-bezier(0.42, 0.0, 0.58, 1.0)."
-                                }
-                              ]
-                            }
-                          }
-                        },
-                        {
-                          "type": "string",
-                          "pattern": "^(?:[a-zA-Z]+(?:[-_][a-zA-Z]+)*|[Cc]ubic[-_]?[Bb]ezier\\([0-9\\.\\,\\s]+\\))\\s+[\\d.]+(ms|s)$",
-                          "description": "A string representing an alternative option for 'additionalProperties'."
-                        }
-                      ],
-                      "additionalProperties": false
-                    }
+                    "$ref": "#/definitions/animationProperties" 
                   },
                   "inactive": {
                     "type": "object",
@@ -865,160 +182,7 @@
                         "reverse_spiral"
                       ]
                     },
-                    "additionalProperties": {
-                      "description": "An object that may contain optional 'speed' and 'easing' values.",
-                      "anyOf": [
-                        {
-                          "type": "object",
-                          "properties": {
-                            "duration": {
-                              "anyOf": [
-                                {
-                                  "type": "number",
-                                  "description": "The speed of the animation (a numeric value)."
-                                },
-                                {
-                                  "type": "string",
-                                  "pattern": "^[\\d.]+(ms|s)$",
-                                  "description": "The duration as a string, e.g., '3s' or '3ms'."
-                                }
-                              ]
-                            },
-                            "easing": {
-                              "type": "string",
-                              "anyOf": [
-                                {
-                                  "enum": [
-                                    "linear",
-                                    "Linear",
-                                    "EaseIn",
-                                    "EaseInSine",
-                                    "EaseInQuad",
-                                    "EaseInCubic",
-                                    "EaseInQuart",
-                                    "EaseInQuint",
-                                    "EaseInExpo",
-                                    "EaseInCirc",
-                                    "EaseInBack",
-                                    "EaseOut",
-                                    "EaseOutSine",
-                                    "EaseOutQuad",
-                                    "EaseOutCubic",
-                                    "EaseOutQuart",
-                                    "EaseOutQuint",
-                                    "EaseOutExpo",
-                                    "EaseOutCirc",
-                                    "EaseOutBack",
-                                    "EaseInOut",
-                                    "EaseInOutSine",
-                                    "EaseInOutQuad",
-                                    "EaseInOutCubic",
-                                    "EaseInOutQuart",
-                                    "EaseInOutQuint",
-                                    "EaseInOutExpo",
-                                    "EaseInOutCirc",
-                                    "EaseInOutBack",
-                                    "ease-in",
-                                    "ease-in-sine",
-                                    "ease-in-quad",
-                                    "ease-in-cubic",
-                                    "ease-in-quart",
-                                    "ease-in-quint",
-                                    "ease-in-expo",
-                                    "ease-in-circ",
-                                    "ease-in-back",
-                                    "ease-out",
-                                    "ease-out-sine",
-                                    "ease-out-quad",
-                                    "ease-out-cubic",
-                                    "ease-out-quart",
-                                    "ease-out-quint",
-                                    "ease-out-expo",
-                                    "ease-out-circ",
-                                    "ease-out-back",
-                                    "ease-in-out",
-                                    "ease-in-out-sine",
-                                    "ease-in-out-quad",
-                                    "ease-in-out-cubic",
-                                    "ease-in-out-quart",
-                                    "ease-in-out-quint",
-                                    "ease-in-out-expo",
-                                    "ease-in-out-circ",
-                                    "ease-in-out-back",
-                                    "easeIn",
-                                    "easeInSine",
-                                    "easeInQuad",
-                                    "easeInCubic",
-                                    "easeInQuart",
-                                    "easeInQuint",
-                                    "easeInExpo",
-                                    "easeInCirc",
-                                    "easeInBack",
-                                    "easeOut",
-                                    "easeOutSine",
-                                    "easeOutQuad",
-                                    "easeOutCubic",
-                                    "easeOutQuart",
-                                    "easeOutQuint",
-                                    "easeOutExpo",
-                                    "easeOutCirc",
-                                    "easeOutBack",
-                                    "easeInOut",
-                                    "easeInOutSine",
-                                    "easeInOutQuad",
-                                    "easeInOutCubic",
-                                    "easeInOutQuart",
-                                    "easeInOutQuint",
-                                    "easeInOutExpo",
-                                    "easeInOutCirc",
-                                    "easeInOutBack",
-                                    "ease_in",
-                                    "ease_in_sine",
-                                    "ease_in_quad",
-                                    "ease_in_cubic",
-                                    "ease_in_quart",
-                                    "ease_in_quint",
-                                    "ease_in_expo",
-                                    "ease_in_circ",
-                                    "ease_in_back",
-                                    "ease_out",
-                                    "ease_out_sine",
-                                    "ease_out_quad",
-                                    "ease_out_cubic",
-                                    "ease_out_quart",
-                                    "ease_out_quint",
-                                    "ease_out_expo",
-                                    "ease_out_circ",
-                                    "ease_out_back",
-                                    "ease_in_out",
-                                    "ease_in_out_sine",
-                                    "ease_in_out_quad",
-                                    "ease_in_out_cubic",
-                                    "ease_in_out_quart",
-                                    "ease_in_out_quint",
-                                    "ease_in_out_expo",
-                                    "ease_in_out_circ",
-                                    "ease_in_out_back"
-                                  ],
-                                  "description": "The easing of the animation."
-                                },
-                                {
-                                  "type": "string",
-                                  "pattern": "^[Cc]ubic[-_]?[Bb]ezier\\([0-9\\.\\,\\s]+\\)$",
-                                  "description": "A cubic-bezier function, e.g., cubic-bezier(0.42, 0.0, 0.58, 1.0)."
-                                }
-                              ]
-                            }
-                          }
-                        },
-                        {
-                          "type": "string",
-                          "pattern": "^(?:[a-zA-Z]+(?:[-_][a-zA-Z]+)*|[Cc]ubic[-_]?[Bb]ezier\\([0-9\\.\\,\\s]+\\))\\s+[\\d.]+(ms|s)$",
-                          "description": "A string representing an alternative option for 'additionalProperties'."
-                        }
-                      ],
-                      "additionalProperties": false
-                    }
+                    "$ref": "#/definitions/animationProperties" 
                   },
                   "fps": {
                     "type": "integer",
@@ -1029,235 +193,11 @@
               },
               "active_color": {
                 "description": "Color or gradient for active (focused) window borders. Can be a single color string, gradient string or a gradient object.",
-                "oneOf": [
-                  {
-                    "type": "string",
-                    "examples": [
-                      "#F5C2E7",
-                      "#F5E0DCFF",
-                      "rgb(137, 180, 250)",
-                      "rgba(243, 139, 168, 1)",
-                      "#89B4FA, #F5C2E7, to right",
-                      "gradient(#89B4FA, #F5C2E7, to right)"
-                    ]
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "colors": {
-                        "type": "array",
-                        "description": "Array of color stops for gradient. Minimum of 2 colors required.",
-                        "items": {
-                          "type": "string"
-                        },
-                        "minItems": 2
-                      },
-                      "direction": {
-                        "oneOf": [
-                          {
-                            "type": "object",
-                            "description": "Represents the direction in which the gradient is applied. It is defined as a vector with start and end points, where the direction is indicated by coordinates ranging from (0,0) to (1,1), representing the normalized space of the gradient.",
-                            "required": [
-                              "start",
-                              "end"
-                            ],
-                            "examples": [
-                              {
-                                "start": [
-                                  0.0,
-                                  0.0
-                                ],
-                                "end": [
-                                  1.0,
-                                  0.0
-                                ]
-                              }
-                            ],
-                            "properties": {
-                              "start": {
-                                "type": "array",
-                                "maxItems": 2,
-                                "minItems": 2,
-                                "description": "The starting point of the gradient, specified as sequence [x, y]. It determines where the gradient begins.",
-                                "items": {
-                                  "type": "number",
-                                  "format": "float",
-                                  "description": "The coordinate of the starting point of the gradient, represented as a float value between 0 and 1."
-                                }
-                              },
-                              "end": {
-                                "type": "array",
-                                "maxItems": 2,
-                                "minItems": 2,
-                                "description": "The ending point of the gradient, specified as sequence [x, y]. It determines where the gradient begins.",
-                                "items": {
-                                  "type": "number",
-                                  "format": "float",
-                                  "description": "The coordinate of the ending point of the gradient, represented as a float value between 0 and 1."
-                                }
-                              }
-                            }
-                          },
-                          {
-                            "type": "string",
-                            "description": "Represents the direction in which the gradient is applied. It is defined as direction string",
-                            "examples": [
-                              "to right",
-                              "to left",
-                              "45deg",
-                              "90deg"
-                            ]
-                          }
-                        ]
-                      }
-                    },
-                    "examples": [
-                      {
-                        "colors": [
-                          "#F5C2E7",
-                          "#F5E0DCFF"
-                        ],
-                        "direction": {
-                          "start": [
-                            0.0,
-                            0.0
-                          ],
-                          "end": [
-                            1.0,
-                            1.0
-                          ]
-                        }
-                      },
-                      {
-                        "colors": [
-                          "#F5C2E7",
-                          "#F5E0DCFF"
-                        ],
-                        "direction": "to right"
-                      }
-                    ],
-                    "required": [
-                      "colors",
-                      "direction"
-                    ]
-                  }
-                ]
+                "$ref": "#/definitions/colorProperties"
               },
               "inactive_color": {
                 "description": "Color or gradient for inactive (unfocused) window borders. Similar to 'active_color' format.",
-                "oneOf": [
-                  {
-                    "type": "string",
-                    "examples": [
-                      "#F5C2E7",
-                      "#F5E0DCFF",
-                      "rgb(137, 180, 250)",
-                      "rgba(243, 139, 168, 1)",
-                      "#89B4FA, #F5C2E7, to right",
-                      "gradient(#89B4FA, #F5C2E7, to right)"
-                    ]
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "colors": {
-                        "type": "array",
-                        "description": "Array of color stops for gradient. Minimum of 2 colors required.",
-                        "items": {
-                          "type": "string"
-                        },
-                        "minItems": 2
-                      },
-                      "direction": {
-                        "oneOf": [
-                          {
-                            "type": "object",
-                            "description": "Represents the direction in which the gradient is applied. It is defined as a vector with start and end points, where the direction is indicated by coordinates ranging from (0,0) to (1,1), representing the normalized space of the gradient.",
-                            "required": [
-                              "start",
-                              "end"
-                            ],
-                            "examples": [
-                              {
-                                "start": [
-                                  0.0,
-                                  0.0
-                                ],
-                                "end": [
-                                  1.0,
-                                  0.0
-                                ]
-                              }
-                            ],
-                            "properties": {
-                              "start": {
-                                "type": "array",
-                                "maxItems": 2,
-                                "minItems": 2,
-                                "description": "The starting point of the gradient, specified as sequence [x, y]. It determines where the gradient begins.",
-                                "items": {
-                                  "type": "number",
-                                  "format": "float",
-                                  "description": "The coordinate of the starting point of the gradient, represented as a float value between 0 and 1."
-                                }
-                              },
-                              "end": {
-                                "type": "array",
-                                "maxItems": 2,
-                                "minItems": 2,
-                                "description": "The ending point of the gradient, specified as sequence [x, y]. It determines where the gradient begins.",
-                                "items": {
-                                  "type": "number",
-                                  "format": "float",
-                                  "description": "The coordinate of the ending point of the gradient, represented as a float value between 0 and 1."
-                                }
-                              }
-                            }
-                          },
-                          {
-                            "type": "string",
-                            "description": "Represents the direction in which the gradient is applied. It is defined as direction string",
-                            "examples": [
-                              "to right",
-                              "to left",
-                              "45deg",
-                              "90deg"
-                            ]
-                          }
-                        ]
-                      }
-                    },
-                    "examples": [
-                      {
-                        "colors": [
-                          "#F5C2E7",
-                          "#F5E0DCFF"
-                        ],
-                        "direction": {
-                          "start": [
-                            0.0,
-                            0.0
-                          ],
-                          "end": [
-                            1.0,
-                            1.0
-                          ]
-                        }
-                      },
-                      {
-                        "colors": [
-                          "#F5C2E7",
-                          "#F5E0DCFF"
-                        ],
-                        "direction": "to right"
-                      }
-                    ],
-                    "required": [
-                      "colors",
-                      "direction"
-                    ]
-                  }
-                ]
+                "$ref": "#/definitions/colorProperties"
               },
               "initialize_delay": {
                 "type": "integer",
@@ -1311,5 +251,280 @@
   "required": [
     "global",
     "window_rules"
-  ]
+  ],
+  "definitions": {
+    "colorProperties": {
+      "oneOf": [
+            {
+              "type": "string",
+              "examples": [
+                "#F5C2E7",
+                "#F5E0DCFF",
+                "rgb(137, 180, 250)",
+                "rgba(243, 139, 168, 1)",
+                "#89B4FA, #F5C2E7, to right",
+                "gradient(#89B4FA, #F5C2E7, to right)"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "colors": {
+                  "type": "array",
+                  "description": "Array of color stops for gradient. Minimum of 2 colors required.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "minItems": 2
+                },
+                "direction": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "description": "Represents the direction in which the gradient is applied. It is defined as a vector with start and end points, where the direction is indicated by coordinates ranging from (0,0) to (1,1), representing the normalized space of the gradient.",
+                      "required": [
+                        "start",
+                        "end"
+                      ],
+                      "examples": [
+                        {
+                          "start": [
+                            0.0,
+                            0.0
+                          ],
+                          "end": [
+                            1.0,
+                            0.0
+                          ]
+                        }
+                      ],
+                      "properties": {
+                        "start": {
+                          "type": "array",
+                          "maxItems": 2,
+                          "minItems": 2,
+                          "description": "The starting point of the gradient, specified as sequence [x, y]. It determines where the gradient begins.",
+                          "items": {
+                            "type": "number",
+                            "format": "float",
+                            "description": "The coordinate of the starting point of the gradient, represented as a float value between 0 and 1."
+                          }
+                        },
+                        "end": {
+                          "type": "array",
+                          "maxItems": 2,
+                          "minItems": 2,
+                          "description": "The ending point of the gradient, specified as sequence [x, y]. It determines where the gradient begins.",
+                          "items": {
+                            "type": "number",
+                            "format": "float",
+                            "description": "The coordinate of the ending point of the gradient, represented as a float value between 0 and 1."
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "type": "string",
+                      "description": "Represents the direction in which the gradient is applied. It is defined as direction string",
+                      "examples": [
+                        "to right",
+                        "to left",
+                        "45deg",
+                        "90deg"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "examples": [
+                {
+                  "colors": [
+                    "#F5C2E7",
+                    "#F5E0DCFF"
+                  ],
+                  "direction": {
+                    "start": [
+                      0.0,
+                      0.0
+                    ],
+                    "end": [
+                      1.0,
+                      1.0
+                    ]
+                  }
+                },
+                {
+                  "colors": [
+                    "#F5C2E7",
+                    "#F5E0DCFF"
+                  ],
+                  "direction": "to right"
+                }
+              ],
+              "required": [
+                "colors",
+                "direction"
+              ]
+            }
+          ]
+    },
+    "animationProperties": {
+      "description": "The animation properties for both active and inactive states.",
+      "type": "object",
+      "additionalProperties": {
+        "description": "An object that may contain optional 'speed' and 'easing' values.",
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "duration": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "description": "The speed of the animation (a numeric value)."
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^[\\d.]+(ms|s)$",
+                    "description": "The duration as a string, e.g., '3s' or '3ms'."
+                  }
+                ]
+              },
+              "easing": {
+                "type": "string",
+                "anyOf": [
+                  {
+                    "enum": [
+                      "linear",
+                      "Linear",
+                      "EaseIn",
+                      "EaseInSine",
+                      "EaseInQuad",
+                      "EaseInCubic",
+                      "EaseInQuart",
+                      "EaseInQuint",
+                      "EaseInExpo",
+                      "EaseInCirc",
+                      "EaseInBack",
+                      "EaseOut",
+                      "EaseOutSine",
+                      "EaseOutQuad",
+                      "EaseOutCubic",
+                      "EaseOutQuart",
+                      "EaseOutQuint",
+                      "EaseOutExpo",
+                      "EaseOutCirc",
+                      "EaseOutBack",
+                      "EaseInOut",
+                      "EaseInOutSine",
+                      "EaseInOutQuad",
+                      "EaseInOutCubic",
+                      "EaseInOutQuart",
+                      "EaseInOutQuint",
+                      "EaseInOutExpo",
+                      "EaseInOutCirc",
+                      "EaseInOutBack",
+                      "ease-in",
+                      "ease-in-sine",
+                      "ease-in-quad",
+                      "ease-in-cubic",
+                      "ease-in-quart",
+                      "ease-in-quint",
+                      "ease-in-expo",
+                      "ease-in-circ",
+                      "ease-in-back",
+                      "ease-out",
+                      "ease-out-sine",
+                      "ease-out-quad",
+                      "ease-out-cubic",
+                      "ease-out-quart",
+                      "ease-out-quint",
+                      "ease-out-expo",
+                      "ease-out-circ",
+                      "ease-out-back",
+                      "ease-in-out",
+                      "ease-in-out-sine",
+                      "ease-in-out-quad",
+                      "ease-in-out-cubic",
+                      "ease-in-out-quart",
+                      "ease-in-out-quint",
+                      "ease-in-out-expo",
+                      "ease-in-out-circ",
+                      "ease-in-out-back",
+                      "easeIn",
+                      "easeInSine",
+                      "easeInQuad",
+                      "easeInCubic",
+                      "easeInQuart",
+                      "easeInQuint",
+                      "easeInExpo",
+                      "easeInCirc",
+                      "easeInBack",
+                      "easeOut",
+                      "easeOutSine",
+                      "easeOutQuad",
+                      "easeOutCubic",
+                      "easeOutQuart",
+                      "easeOutQuint",
+                      "easeOutExpo",
+                      "easeOutCirc",
+                      "easeOutBack",
+                      "easeInOut",
+                      "easeInOutSine",
+                      "easeInOutQuad",
+                      "easeInOutCubic",
+                      "easeInOutQuart",
+                      "easeInOutQuint",
+                      "easeInOutExpo",
+                      "easeInOutCirc",
+                      "easeInOutBack",
+                      "ease_in",
+                      "ease_in_sine",
+                      "ease_in_quad",
+                      "ease_in_cubic",
+                      "ease_in_quart",
+                      "ease_in_quint",
+                      "ease_in_expo",
+                      "ease_in_circ",
+                      "ease_in_back",
+                      "ease_out",
+                      "ease_out_sine",
+                      "ease_out_quad",
+                      "ease_out_cubic",
+                      "ease_out_quart",
+                      "ease_out_quint",
+                      "ease_out_expo",
+                      "ease_out_circ",
+                      "ease_out_back",
+                      "ease_in_out",
+                      "ease_in_out_sine",
+                      "ease_in_out_quad",
+                      "ease_in_out_cubic",
+                      "ease_in_out_quart",
+                      "ease_in_out_quint",
+                      "ease_in_out_expo",
+                      "ease_in_out_circ",
+                      "ease_in_out_back"
+                    ],
+                    "description": "The easing of the animation."
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^[Cc]ubic[-_]?[Bb]ezier\\([0-9\\.\\,\\s]+\\)$",
+                    "description": "A cubic-bezier function, e.g., cubic-bezier(0.42, 0.0, 0.58, 1.0)."
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "string",
+            "pattern": "^(?:[a-zA-Z]+(?:[-_][a-zA-Z]+)*|[Cc]ubic[-_]?[Bb]ezier\\([0-9\\.\\,\\s]+\\))\\s+[\\d.]+(ms|s)$",
+            "description": "A string representing an alternative option for 'additionalProperties'."
+          }
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
 }

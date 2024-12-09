@@ -1,7 +1,8 @@
 use animation::Animation;
 use animation::AnimationType;
 use easing::AnimationEasing;
-use regex::Regex;
+use parser::parse_duration_str;
+use parser::parse_easing_and_duration;
 use rustc_hash::FxHashMap;
 use serde::de::Error;
 use serde::Deserialize;
@@ -10,9 +11,9 @@ use serde_yaml_ng::Value;
 use std::str::FromStr;
 
 pub mod animation;
-pub mod easing;
+mod easing;
+mod parser;
 pub mod timer;
-pub mod utils;
 
 pub const ANIM_NONE: i32 = 0;
 pub const ANIM_FADE: i32 = 1;
@@ -98,38 +99,6 @@ where
     }
 
     Ok(deserialized)
-}
-
-fn parse_easing_and_duration(
-    s: &str,
-    default_duration: f32,
-    default_easing: AnimationEasing,
-) -> Result<(f32, AnimationEasing), String> {
-    let re =
-        Regex::new(r"^([a-zA-Z\-]+|[Cc]ubic[-_]?[Bb]ezier\([^\)]+\))\s+([\d.]+(ms|s))$").unwrap();
-
-    re.captures(s)
-        .ok_or_else(|| format!("Invalid value for easing and duration: {}", s))
-        .map(|caps| {
-            let easing = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-            let duration = caps.get(2).map(|m| m.as_str()).unwrap_or("");
-            (
-                parse_duration_str(duration).unwrap_or(default_duration),
-                AnimationEasing::from_str(easing).unwrap_or(default_easing),
-            )
-        })
-}
-
-fn parse_duration_str(s: &str) -> Option<f32> {
-    let regex = Regex::new(r"(?i)^([\d.]+)(ms|s)$").unwrap();
-    regex.captures(s).and_then(|caps| {
-        let value = caps.get(1)?.as_str().parse::<f32>().ok()?;
-        Some(if caps.get(2)?.as_str() == "s" {
-            value * 1000.0
-        } else {
-            value
-        })
-    })
 }
 
 pub trait HashMapAnimationExt {

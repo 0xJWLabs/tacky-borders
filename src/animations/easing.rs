@@ -1,4 +1,4 @@
-use super::utils::parse_cubic_bezier;
+use super::parser::parse_cubic_bezier;
 use serde::Deserialize;
 use std::hash::Hash;
 use std::hash::Hasher;

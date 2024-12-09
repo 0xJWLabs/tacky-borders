@@ -1218,9 +1218,9 @@ checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
 
 [[package]]
 name = "sp_log"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6dbbbf1c1c4b30e172700df5c2117e7cb36844218eda4e457308b6db8d4d2060"
+checksum = "a90780350dca8c6b98ea267018f65c98bebb9c41aba7896af7017f00d7e102b3"
 dependencies = [
  "log",
  "termcolor",
@@ -1275,7 +1275,6 @@ dependencies = [
  "serde_yaml_ng",
  "simple-bezier-easing",
  "sp_log",
- "toml",
  "tray-icon",
  "win-color",
  "win-hotkey",

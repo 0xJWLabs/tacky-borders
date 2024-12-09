@@ -12,6 +12,7 @@ use std::fs::DirBuilder;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 use std::sync::Mutex;
+use std::sync::RwLock;
 use win_color::GlobalColor;
 
 pub static CONFIG: LazyLock<Mutex<Config>> = LazyLock::new(|| {
@@ -24,9 +25,16 @@ pub static CONFIG: LazyLock<Mutex<Config>> = LazyLock::new(|| {
     })
 });
 
-pub static CONFIG_TYPE: LazyLock<Mutex<&str>> = LazyLock::new(|| Mutex::new(""));
+pub static CONFIG_TYPE: RwLock<ConfigType> = RwLock::new(ConfigType::None);
 
 const DEFAULT_CONFIG: &str = include_str!("../resources/config.yaml");
+
+#[derive(Debug)]
+pub enum ConfigType {
+    Yaml,
+    Json,
+    None,
+}
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
 pub enum BorderRadiusOption {
@@ -115,40 +123,43 @@ impl Config {
 
         let json_path = config_path.with_extension("json");
         let yaml_path = config_path.with_extension("yaml");
-        let toml_path = config_path.with_extension("toml");
 
-        let config_file = if exists(yaml_path.clone())? {
-            *CONFIG_TYPE.lock().unwrap() = "yaml";
-            yaml_path
-        } else if exists(json_path.clone())? {
-            *CONFIG_TYPE.lock().unwrap() = "json";
-            json_path.clone()
-        } else if exists(toml_path.clone())? {
-            *CONFIG_TYPE.lock().unwrap() = "toml";
-            toml_path.clone()
-        } else {
-            *CONFIG_TYPE.lock().unwrap() = "yaml";
-            Self::create_default_config(&yaml_path.clone())?;
-            info!(r"generating default config in {}", yaml_path.display());
-            yaml_path.clone()
+        let config_file = {
+            // Lock the CONFIG_TYPE for setting its value
+            let mut config_type_lock = CONFIG_TYPE.write().unwrap(); // Write lock for deciding the config type
+
+            // Decide which file to use based on existence
+            if exists(yaml_path.clone())? {
+                *config_type_lock = ConfigType::Yaml;
+                yaml_path.clone()
+            } else if exists(json_path.clone())? {
+                *config_type_lock = ConfigType::Json;
+                json_path.clone()
+            } else {
+                *config_type_lock = ConfigType::Yaml;
+                Self::create_default_config(&yaml_path.clone())?;
+                info!(r"generating default config in {}", yaml_path.display());
+                yaml_path.clone()
+            }
         };
 
+        // Read the contents of the chosen config file
         let contents = read_to_string(&config_file)
             .with_context(|| format!("Failed to read config file: {}", config_file.display()))?;
 
-        let config: Config = match config_file
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .unwrap_or("")
-        {
-            "json" => serde_json::from_str(&contents)
-                .with_context(|| "Failed to deserialize config.json")?,
-            "yaml" => serde_yaml_ng::from_str(&contents)
-                .with_context(|| "Failed to deserialize config.yaml")?,
-            "toml" => {
-                toml::from_str(&contents).with_context(|| "Failed to deserialize config.toml")?
+        // Deserialize the config file based on the configuration type
+        let config: Config = {
+            let config_type_lock = CONFIG_TYPE
+                .read()
+                .map_err(|e| anyhow!("Failed to acquire read lock for CONFIG_TYPE: {}", e))?;
+
+            match *config_type_lock {
+                ConfigType::Json => serde_json::from_str(&contents)
+                    .with_context(|| "Failed to deserialize config.json")?,
+                ConfigType::Yaml => serde_yaml_ng::from_str(&contents)
+                    .with_context(|| "Failed to deserialize config.yaml")?,
+                _ => return Err(anyhow!("Unsupported config file format")),
             }
-            _ => return Err(anyhow!("Unsupported config file format")),
         };
 
         Ok(config)

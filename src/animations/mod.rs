@@ -1,3 +1,5 @@
+use crate::border_config::ConfigType;
+use crate::border_config::CONFIG_TYPE;
 use animation::AnimationParams;
 use animation::AnimationType;
 use animation::AnimationValue;
@@ -13,9 +15,6 @@ use serde_yaml_ng::Value as YamlValue;
 use simple_bezier_easing::bezier;
 use std::str::FromStr;
 use std::sync::Arc;
-use toml::Value as TomlValue;
-
-use crate::border_config::CONFIG_TYPE;
 
 pub mod animation;
 mod easing;
@@ -54,8 +53,8 @@ where
     D: Deserializer<'de>,
 {
     let mut deserialized: FxHashMap<AnimationType, AnimationValue> = FxHashMap::default();
-    match *CONFIG_TYPE.lock().unwrap() {
-        "json" => {
+    match *CONFIG_TYPE.read().unwrap() {
+        ConfigType::Json => {
             let result = FxHashMap::<AnimationType, JsonValue>::deserialize(deserializer);
 
             // If deserialize returns an error, it's possible that an invalid AnimationType was listed
@@ -121,7 +120,7 @@ where
 
             Ok(deserialized)
         }
-        "yaml" => {
+        ConfigType::Yaml => {
             let result = FxHashMap::<AnimationType, YamlValue>::deserialize(deserializer);
 
             // If deserialize returns an error, it's possible that an invalid AnimationType was listed
@@ -155,71 +154,6 @@ where
                             .unwrap_or(default_easing),
                     ),
                     YamlValue::String(s) => {
-                        parse_easing_and_duration(&s, default_duration, default_easing)
-                            .map_err(D::Error::custom)?
-                    } // Explicit conversion
-                    _ => {
-                        return Err(D::Error::custom(format!(
-                            "Invalid value type for animation: {:?}",
-                            anim_value
-                        )));
-                    }
-                };
-
-                let points = easing.to_points();
-
-                let easing_fn = bezier(points[0], points[1], points[2], points[3])
-                    .map_err(serde::de::Error::custom)?;
-
-                let animation_params = AnimationParams {
-                    duration,
-                    easing_fn: Arc::new(easing_fn),
-                };
-
-                let anim = AnimationValue {
-                    animation_type: animation_type.clone(),
-                    animation_params,
-                };
-
-                // Insert the deserialized animation data into the map
-                deserialized.insert(animation_type.clone(), anim);
-            }
-
-            Ok(deserialized)
-        }
-        "toml" => {
-            let result = FxHashMap::<AnimationType, TomlValue>::deserialize(deserializer);
-
-            // If deserialize returns an error, it's possible that an invalid AnimationType was listed
-            let map = match result {
-                Ok(val) => val
-                    .into_iter() // Convert into iterator
-                    .collect::<FxHashMap<_, _>>(), // Collect back into a map
-                Err(err) => return Err(err),
-            };
-
-            for (animation_type, anim_value) in map {
-                let default_duration = match animation_type {
-                    AnimationType::Spiral | AnimationType::ReverseSpiral => 1800.0,
-                    AnimationType::Fade => 200.0,
-                };
-                let default_easing = AnimationEasing::Linear;
-                let (duration, easing) = match anim_value {
-                    TomlValue::Table(ref obj) => (
-                        obj.get("duration")
-                            .and_then(|v| match v {
-                                TomlValue::String(s) => parse_duration_str(s),
-                                TomlValue::Float(n) => Some(*n as f32),
-                                _ => None,
-                            })
-                            .unwrap_or(default_duration),
-                        obj.get("easing")
-                            .and_then(|v| {
-                                v.as_str().and_then(|s| AnimationEasing::from_str(s).ok())
-                            })
-                            .unwrap_or(default_easing),
-                    ),
-                    TomlValue::String(s) => {
                         parse_easing_and_duration(&s, default_duration, default_easing)
                             .map_err(D::Error::custom)?
                     } // Explicit conversion

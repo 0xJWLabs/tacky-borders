@@ -13,11 +13,10 @@ use anyhow::Result as AnyResult;
 use sp_log::ColorChoice;
 use sp_log::CombinedLogger;
 use sp_log::Config;
-use sp_log::ConfigBuilder;
+use sp_log::FileLogger;
 use sp_log::LevelFilter;
 use sp_log::TermLogger;
 use sp_log::TerminalMode;
-use sp_log::WriteLogger;
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::mem::transmute;
@@ -111,6 +110,14 @@ fn main() {
 }
 
 fn create_logger() -> AnyResult<()> {
+    // Attempt to get the log file path
+    let log_file = match get_log() {
+        Ok(path) => path,
+        Err(e) => {
+            error!("Failed to get log file path: {}", e);
+            return Err(e); // Return the error if it occurred
+        }
+    };
     CombinedLogger::init(vec![
         TermLogger::new(
             LevelFilter::Warn,
@@ -124,12 +131,11 @@ fn create_logger() -> AnyResult<()> {
             TerminalMode::Mixed,
             ColorChoice::Auto,
         ),
-        WriteLogger::new(
+        FileLogger::new(
             LevelFilter::Info,
-            ConfigBuilder::default()
-                .set_max_file_size(10 * 1024 * 1024)
-                .build(),
-            get_log()?,
+            Config::default(),
+            log_file.as_str(),
+            Some(1024 * 1024 * 10),
         ),
     ])?;
 

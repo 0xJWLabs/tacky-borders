@@ -5,8 +5,6 @@ use anyhow::Result as AnyResult;
 use std::ffi::OsString;
 use std::fs::exists;
 use std::fs::write;
-use std::fs::File;
-use std::fs::OpenOptions;
 use std::os::windows::ffi::OsStringExt;
 use std::path::PathBuf;
 use windows::Win32::Foundation::HANDLE;
@@ -28,9 +26,9 @@ macro_rules! log_if_err {
 }
 
 // Log File
-pub fn get_log() -> AnyResult<File, Error> {
+pub fn get_log() -> AnyResult<String, Error> {
     let log_dir = border_config::Config::get_config_dir()?;
-    let log_path = log_dir.join("log.txt");
+    let log_path = log_dir.join("tacky.log");
 
     if !exists(&log_path).context("Could not find log file")? {
         write(&log_path, "").context("could not generate log file")?;
@@ -38,13 +36,9 @@ pub fn get_log() -> AnyResult<File, Error> {
 
     let _ = write(&log_path, "");
 
-    let file = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open(&log_path)
-        .context(format!("Failed to open log file: {:?}", log_path))?;
+    let log = log_path.to_str().unwrap().to_string();
 
-    Ok(file)
+    Ok(log)
 }
 
 pub fn home_dir() -> AnyResult<PathBuf> {

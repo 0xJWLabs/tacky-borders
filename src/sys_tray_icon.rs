@@ -27,6 +27,7 @@ static HOTKEY_HOOK: LazyLock<Arc<Mutex<GlobalHotkeyManager<()>>>> =
     LazyLock::new(|| Arc::new(Mutex::new(CreateHotkeyHook())));
 
 fn reload_config() {
+    debug!("reloading border...");
     Config::reload();
     reload_borders();
 }

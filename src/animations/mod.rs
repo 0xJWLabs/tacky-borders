@@ -6,7 +6,6 @@ use rustc_hash::FxHashMap;
 use serde::de::Error;
 use serde::Deserialize;
 use serde::Deserializer;
-use serde_yaml_ng::Mapping;
 use serde_yaml_ng::Value;
 use std::str::FromStr;
 
@@ -66,23 +65,20 @@ where
         let default_easing = AnimationEasing::Linear;
         let (duration, easing) = match anim_value {
             Value::Null => (default_duration, default_easing),
-            Value::Mapping(ref obj) => {
-                let duration = parse_duration_from_object(obj, default_duration);
-                let easing = parse_easing_from_object(obj).unwrap_or(default_easing);
-                (duration, easing)
-            }
-            Value::String(ref s) => {
-                if let Some((easing_str, duration_str)) = parse_easing_and_duration(s) {
-                    let duration = parse_duration_from_string(duration_str, default_duration);
-                    let easing = AnimationEasing::from_str(easing_str).unwrap_or(default_easing);
-                    (duration, easing)
-                } else {
-                    return Err(D::Error::custom(format!(
-                        "Invalid value for easing and duration: {}",
-                        s
-                    )));
-                }
-            }
+            Value::Mapping(ref obj) => (
+                obj.get("duration")
+                    .and_then(|v| match v {
+                        Value::String(s) => parse_duration_str(s),
+                        Value::Number(n) => n.as_f64().map(|f| f as f32),
+                        _ => None,
+                    })
+                    .unwrap_or(default_duration),
+                obj.get("easing")
+                    .and_then(|v| v.as_str().and_then(|s| AnimationEasing::from_str(s).ok()))
+                    .unwrap_or(default_easing),
+            ),
+            Value::String(s) => parse_easing_and_duration(&s, default_duration, default_easing)
+                .map_err(D::Error::custom)?, // Explicit conversion
             _ => {
                 return Err(D::Error::custom(format!(
                     "Invalid value type for animation: {:?}",
@@ -91,72 +87,49 @@ where
             }
         };
 
+        let anim = Animation {
+            animation_type: animation_type.clone(),
+            duration,
+            easing,
+        };
+
         // Insert the deserialized animation data into the map
-        deserialized.insert(
-            animation_type.clone(),
-            Animation {
-                animation_type: animation_type.clone(),
-                duration,
-                easing,
-            },
-        );
+        deserialized.insert(animation_type.clone(), anim);
     }
 
     Ok(deserialized)
 }
 
-/// Helper function to parse the `duration` from a `Value::Mapping`
-fn parse_duration_from_object(obj: &Mapping, default_duration: f32) -> f32 {
-    obj.get("duration")
-        .and_then(|v| match v {
-            Value::String(s) => Some(parse_duration_from_string(s, default_duration)),
-            Value::Number(n) => n.as_f64().map(|f| f as f32),
-            _ => None,
+fn parse_easing_and_duration(
+    s: &str,
+    default_duration: f32,
+    default_easing: AnimationEasing,
+) -> Result<(f32, AnimationEasing), String> {
+    let re =
+        Regex::new(r"^([a-zA-Z\-]+|[Cc]ubic[-_]?[Bb]ezier\([^\)]+\))\s+([\d.]+(ms|s))$").unwrap();
+
+    re.captures(s)
+        .ok_or_else(|| format!("Invalid value for easing and duration: {}", s))
+        .map(|caps| {
+            let easing = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            let duration = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+            (
+                parse_duration_str(duration).unwrap_or(default_duration),
+                AnimationEasing::from_str(easing).unwrap_or(default_easing),
+            )
         })
-        .unwrap_or(default_duration) // If no "duration" key or parsing fails, return default_duration
 }
 
-/// Helper function to parse the `duration` from a `String` value like "30ms" or "3s"
-fn parse_duration_from_string(s: &str, default_duration: f32) -> f32 {
+fn parse_duration_str(s: &str) -> Option<f32> {
     let regex = Regex::new(r"(?i)^([\d.]+)(ms|s)$").unwrap();
-    if let Some(captures) = regex.captures(s) {
-        let duration_num = captures
-            .get(1)
-            .map(|m| m.as_str().parse::<f32>().unwrap_or(default_duration)) // Default duration if parsing fails
-            .unwrap_or(default_duration);
-        let unit = captures.get(2).map(|m| m.as_str()).unwrap_or("ms");
-
-        // Convert seconds to milliseconds if necessary
-        if unit == "s" {
-            duration_num * 1000.0
+    regex.captures(s).and_then(|caps| {
+        let value = caps.get(1)?.as_str().parse::<f32>().ok()?;
+        Some(if caps.get(2)?.as_str() == "s" {
+            value * 1000.0
         } else {
-            duration_num
-        }
-    } else {
-        default_duration
-    }
-}
-
-fn parse_easing_and_duration(s: &str) -> Option<(&str, &str)> {
-    let re = Regex::new(r"^([a-zA-Z\-]+)\s+([\d.]+(ms|s))$").unwrap();
-    if let Some(captures) = re.captures(s) {
-        Some((captures.get(1)?.as_str(), captures.get(2)?.as_str()))
-    } else {
-        // Check for cubic-bezier(...) string
-        let re_cubic =
-            Regex::new(r"^([Cc]ubic[-_]?[Bb]ezier\([^\)]+\))\s+([\d.]+(ms|s))$").unwrap();
-        if let Some(captures) = re_cubic.captures(s) {
-            Some((captures.get(1)?.as_str(), captures.get(2)?.as_str()))
-        } else {
-            None
-        }
-    }
-}
-
-fn parse_easing_from_object(obj: &Mapping) -> Option<AnimationEasing> {
-    obj.get("easing")
-        .and_then(|v| v.as_str())
-        .map(|s| AnimationEasing::from_str(s).unwrap_or(AnimationEasing::Linear))
+            value
+        })
+    })
 }
 
 pub trait HashMapAnimationExt {

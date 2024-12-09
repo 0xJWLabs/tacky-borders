@@ -131,7 +131,6 @@ pub struct WindowBorder {
     pub pause: bool,
     pub last_animation_time: Option<std::time::Instant>,
     pub last_render_time: Option<std::time::Instant>,
-    pub spiral_anim_angle: f32,
     pub animation_timer: Option<AnimationTimer>,
     pub event_anim: i32,
     pub is_window_active: bool,
@@ -642,7 +641,7 @@ impl WindowBorder {
                     self.animations.current.clone().to_iter().any(|animation| {
                         match animation.animation_type {
                             AnimationType::Spiral | AnimationType::ReverseSpiral => {
-                                animation.play(self, &anim_elapsed, animation.duration);
+                                animation.play(self, &anim_elapsed);
                                 true
                             }
                             _ => false,
@@ -657,7 +656,7 @@ impl WindowBorder {
                         .find(&AnimationType::Fade)
                         .unwrap()
                         .clone();
-                    anim.play(self, &anim_elapsed, anim.duration);
+                    anim.play(self, &anim_elapsed);
                     animations_updated = true;
                 }
 

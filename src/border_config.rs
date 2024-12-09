@@ -24,7 +24,7 @@ pub static CONFIG: LazyLock<Mutex<Config>> = LazyLock::new(|| {
     })
 });
 
-pub static USE_JSON: LazyLock<Mutex<bool>> = LazyLock::new(|| Mutex::new(false));
+pub static CONFIG_TYPE: LazyLock<Mutex<&str>> = LazyLock::new(|| Mutex::new(""));
 
 const DEFAULT_CONFIG: &str = include_str!("../resources/config.yaml");
 
@@ -115,18 +115,19 @@ impl Config {
 
         let json_path = config_path.with_extension("json");
         let yaml_path = config_path.with_extension("yaml");
+        let toml_path = config_path.with_extension("toml");
 
         let config_file = if exists(yaml_path.clone())? {
-            *USE_JSON.lock().unwrap() = false;
-            println!("USE_JSON value changed to false!");
+            *CONFIG_TYPE.lock().unwrap() = "yaml";
             yaml_path
         } else if exists(json_path.clone())? {
-            *USE_JSON.lock().unwrap() = true;
-            println!("USE_JSON value changed to true!");
+            *CONFIG_TYPE.lock().unwrap() = "json";
             json_path.clone()
+        } else if exists(toml_path.clone())? {
+            *CONFIG_TYPE.lock().unwrap() = "toml";
+            toml_path.clone()
         } else {
-            *USE_JSON.lock().unwrap() = false;
-            println!("USE_JSON value changed to false default!");
+            *CONFIG_TYPE.lock().unwrap() = "yaml";
             Self::create_default_config(&yaml_path.clone())?;
             info!(r"generating default config in {}", yaml_path.display());
             yaml_path.clone()
@@ -135,18 +136,19 @@ impl Config {
         let contents = read_to_string(&config_file)
             .with_context(|| format!("Failed to read config file: {}", config_file.display()))?;
 
-        let config: Config = if config_file
+        let config: Config = match config_file
             .extension()
             .and_then(|ext| ext.to_str())
-            .map(|ext_str| ext_str == "json") // Convert Option<&str> to Option<bool>
-            .unwrap_or(false)
-        // If extension is None, assume it's not json
+            .unwrap_or("")
         {
-            serde_json::from_str(&contents).with_context(|| "Failed to deserialize config.json")?
-        } else {
-            println!("{}", contents);
-            serde_yaml_ng::from_str(&contents)
-                .with_context(|| "Failed to deserialize config.yaml")?
+            "json" => serde_json::from_str(&contents)
+                .with_context(|| "Failed to deserialize config.json")?,
+            "yaml" => serde_yaml_ng::from_str(&contents)
+                .with_context(|| "Failed to deserialize config.yaml")?,
+            "toml" => {
+                toml::from_str(&contents).with_context(|| "Failed to deserialize config.toml")?
+            }
+            _ => return Err(anyhow!("Unsupported config file format")),
         };
 
         Ok(config)

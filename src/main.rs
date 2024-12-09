@@ -13,6 +13,7 @@ use anyhow::Result as AnyResult;
 use sp_log::ColorChoice;
 use sp_log::CombinedLogger;
 use sp_log::Config;
+use sp_log::ConfigBuilder;
 use sp_log::LevelFilter;
 use sp_log::TermLogger;
 use sp_log::TerminalMode;
@@ -123,7 +124,13 @@ fn create_logger() -> AnyResult<()> {
             TerminalMode::Mixed,
             ColorChoice::Auto,
         ),
-        WriteLogger::new(LevelFilter::Info, Config::default(), get_log()?),
+        WriteLogger::new(
+            LevelFilter::Info,
+            ConfigBuilder::default()
+                .set_max_file_size(10 * 1024 * 1024)
+                .build(),
+            get_log()?,
+        ),
     ])?;
 
     Ok(())

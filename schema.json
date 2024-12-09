@@ -50,38 +50,12 @@
           "type": "object",
           "properties": {
             "active": {
-              "type": "object",
               "description": "A list of animations to apply when the border is in the active state. These animations will be applied when the window or component is focused or active.",
-              "propertyNames": {
-                "enum": [
-                  "Fade",
-                  "fade",
-                  "Spiral",
-                  "spiral",
-                  "ReverseSpiral",
-                  "reverseSpiral",
-                  "reverse-spiral",
-                  "reverse_spiral"
-                ]
-              },
-              "$ref": "#/definitions/animationProperties" 
+              "$ref": "#/definitions/animationProperties"
             },
             "inactive": {
-              "type": "object",
               "description": "A list of animations to apply when the border is in the active state. These animations will be applied when the window or component is focused or active.",
-              "propertyNames": {
-                "enum": [
-                  "Fade",
-                  "fade",
-                  "Spiral",
-                  "spiral",
-                  "ReverseSpiral",
-                  "reverseSpiral",
-                  "reverse-spiral",
-                  "reverse_spiral"
-                ]
-              },
-              "$ref": "#/definitions/animationProperties" 
+              "$ref": "#/definitions/animationProperties"
             },
             "fps": {
               "type": "integer",
@@ -92,7 +66,7 @@
         },
         "active_color": {
           "description": "Color or gradient for active (focused) window borders. Can be a single color string, gradient string or a gradient object.",
-          "$ref": "#definitions/colorProperties" 
+          "$ref": "#/definitions/colorProperties"
         },
         "initialize_delay": {
           "type": "integer",
@@ -104,7 +78,7 @@
         },
         "inactive_color": {
           "description": "Color or gradient for inactive (unfocused) window borders. Similar to 'active_color' format.",
-          "$ref": "#definitions/colorProperties" 
+          "$ref": "#/definitions/colorProperties"
         }
       }
     },
@@ -151,38 +125,12 @@
                 "type": "object",
                 "properties": {
                   "active": {
-                    "type": "object",
                     "description": "A list of animations to apply when the border is in the active state. These animations will be applied when the window or component is focused or active.",
-                    "propertyNames": {
-                      "enum": [
-                        "Fade",
-                        "fade",
-                        "Spiral",
-                        "spiral",
-                        "ReverseSpiral",
-                        "reverseSpiral",
-                        "reverse-spiral",
-                        "reverse_spiral"
-                      ]
-                    },
-                    "$ref": "#/definitions/animationProperties" 
+                    "$ref": "#/definitions/animationProperties"
                   },
                   "inactive": {
-                    "type": "object",
                     "description": "A list of animations to apply when the border is in the active state. These animations will be applied when the window or component is focused or active.",
-                    "propertyNames": {
-                      "enum": [
-                        "Fade",
-                        "fade",
-                        "Spiral",
-                        "spiral",
-                        "ReverseSpiral",
-                        "reverseSpiral",
-                        "reverse-spiral",
-                        "reverse_spiral"
-                      ]
-                    },
-                    "$ref": "#/definitions/animationProperties" 
+                    "$ref": "#/definitions/animationProperties"
                   },
                   "fps": {
                     "type": "integer",
@@ -369,7 +317,18 @@
       ]
     },
     "animationProperties": {
-      "description": "The animation properties for both active and inactive states.",
+      "propertyNames": {
+        "enum": [
+          "Fade",
+          "fade",
+          "Spiral",
+          "spiral",
+          "ReverseSpiral",
+          "reverseSpiral",
+          "reverse-spiral",
+          "reverse_spiral"
+        ]
+      },
       "type": "object",
       "additionalProperties": {
         "description": "An object that may contain optional 'speed' and 'easing' values.",

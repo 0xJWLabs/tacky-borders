@@ -7,8 +7,11 @@ use rustc_hash::FxHashMap;
 use serde::de::Error;
 use serde::Deserialize;
 use serde::Deserializer;
-use serde_yaml_ng::Value;
+use serde_json::Value as JsonValue;
+use serde_yaml_ng::Value as YamlValue;
 use std::str::FromStr;
+
+use crate::border_config::USE_JSON;
 
 pub mod animation;
 mod easing;
@@ -46,7 +49,64 @@ fn animation<'de, D>(deserializer: D) -> Result<FxHashMap<AnimationType, Animati
 where
     D: Deserializer<'de>,
 {
-    let result = FxHashMap::<AnimationType, Value>::deserialize(deserializer);
+    if *USE_JSON.lock().unwrap() {
+        let result = FxHashMap::<AnimationType, JsonValue>::deserialize(deserializer);
+
+        // If deserialize returns an error, it's possible that an invalid AnimationType was listed
+        let map = match result {
+            Ok(val) => val
+                .into_iter() // Convert into iterator
+                .collect::<FxHashMap<_, _>>(), // Collect back into a map
+            Err(err) => return Err(err),
+        };
+
+        let mut deserialized: FxHashMap<AnimationType, Animation> = FxHashMap::default();
+
+        for (animation_type, anim_value) in map {
+            let default_duration = match animation_type {
+                AnimationType::Spiral | AnimationType::ReverseSpiral => 1800.0,
+                AnimationType::Fade => 200.0,
+            };
+            let default_easing = AnimationEasing::Linear;
+            let (duration, easing) = match anim_value {
+                JsonValue::Null => (default_duration, default_easing),
+                JsonValue::Object(ref obj) => (
+                    obj.get("duration")
+                        .and_then(|v| match v {
+                            JsonValue::String(s) => parse_duration_str(s),
+                            JsonValue::Number(n) => n.as_f64().map(|f| f as f32),
+                            _ => None,
+                        })
+                        .unwrap_or(default_duration),
+                    obj.get("easing")
+                        .and_then(|v| v.as_str().and_then(|s| AnimationEasing::from_str(s).ok()))
+                        .unwrap_or(default_easing),
+                ),
+                JsonValue::String(s) => {
+                    parse_easing_and_duration(&s, default_duration, default_easing)
+                        .map_err(D::Error::custom)?
+                } // Explicit conversion
+                _ => {
+                    return Err(D::Error::custom(format!(
+                        "Invalid value type for animation: {:?}",
+                        anim_value
+                    )));
+                }
+            };
+
+            let anim = Animation {
+                animation_type: animation_type.clone(),
+                duration,
+                easing,
+            };
+
+            // Insert the deserialized animation data into the map
+            deserialized.insert(animation_type.clone(), anim);
+        }
+
+        return Ok(deserialized);
+    }
+    let result = FxHashMap::<AnimationType, YamlValue>::deserialize(deserializer);
 
     // If deserialize returns an error, it's possible that an invalid AnimationType was listed
     let map = match result {
@@ -65,12 +125,12 @@ where
         };
         let default_easing = AnimationEasing::Linear;
         let (duration, easing) = match anim_value {
-            Value::Null => (default_duration, default_easing),
-            Value::Mapping(ref obj) => (
+            YamlValue::Null => (default_duration, default_easing),
+            YamlValue::Mapping(ref obj) => (
                 obj.get("duration")
                     .and_then(|v| match v {
-                        Value::String(s) => parse_duration_str(s),
-                        Value::Number(n) => n.as_f64().map(|f| f as f32),
+                        YamlValue::String(s) => parse_duration_str(s),
+                        YamlValue::Number(n) => n.as_f64().map(|f| f as f32),
                         _ => None,
                     })
                     .unwrap_or(default_duration),
@@ -78,7 +138,7 @@ where
                     .and_then(|v| v.as_str().and_then(|s| AnimationEasing::from_str(s).ok()))
                     .unwrap_or(default_easing),
             ),
-            Value::String(s) => parse_easing_and_duration(&s, default_duration, default_easing)
+            YamlValue::String(s) => parse_easing_and_duration(&s, default_duration, default_easing)
                 .map_err(D::Error::custom)?, // Explicit conversion
             _ => {
                 return Err(D::Error::custom(format!(

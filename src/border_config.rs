@@ -24,6 +24,8 @@ pub static CONFIG: LazyLock<Mutex<Config>> = LazyLock::new(|| {
     })
 });
 
+pub static USE_JSON: LazyLock<Mutex<bool>> = LazyLock::new(|| Mutex::new(false));
+
 const DEFAULT_CONFIG: &str = include_str!("../resources/config.yaml");
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
@@ -109,24 +111,43 @@ pub struct Config {
 impl Config {
     fn new() -> AnyResult<Self> {
         let config_dir = Self::get_config_dir()?;
-        let config_path = config_dir.join("config.yaml");
+        let config_path = config_dir.join("config");
 
-        if !exists(config_path.clone()).with_context(|| {
-            format!("Failed to found config.yaml in {:?}", config_path.display())
-        })? {
-            Self::create_default_config(&config_path.clone())?;
-            info!(r"generating default config in {}", config_path.display());
-        }
+        let json_path = config_path.with_extension("json");
+        let yaml_path = config_path.with_extension("yaml");
 
-        let contents = read_to_string(&config_path).with_context(|| {
-            format!(
-                "Failed to read config.yaml file in {}",
-                config_path.display()
-            )
-        })?;
+        let config_file = if exists(yaml_path.clone())? {
+            *USE_JSON.lock().unwrap() = false;
+            println!("USE_JSON value changed to false!");
+            yaml_path
+        } else if exists(json_path.clone())? {
+            *USE_JSON.lock().unwrap() = true;
+            println!("USE_JSON value changed to true!");
+            json_path.clone()
+        } else {
+            *USE_JSON.lock().unwrap() = false;
+            println!("USE_JSON value changed to false default!");
+            Self::create_default_config(&yaml_path.clone())?;
+            info!(r"generating default config in {}", yaml_path.display());
+            yaml_path.clone()
+        };
 
-        let config = serde_yaml_ng::from_str(&contents)
-            .with_context(|| "Failed to deserialize config.yaml")?;
+        let contents = read_to_string(&config_file)
+            .with_context(|| format!("Failed to read config file: {}", config_file.display()))?;
+
+        let config: Config = if config_file
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext_str| ext_str == "json") // Convert Option<&str> to Option<bool>
+            .unwrap_or(false)
+        // If extension is None, assume it's not json
+        {
+            serde_json::from_str(&contents).with_context(|| "Failed to deserialize config.json")?
+        } else {
+            println!("{}", contents);
+            serde_yaml_ng::from_str(&contents)
+                .with_context(|| "Failed to deserialize config.yaml")?
+        };
 
         Ok(config)
     }

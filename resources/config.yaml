@@ -46,20 +46,22 @@ global:
       start: [0.0, 0.0]
       end: [1.0, 0.0]
 
-# animations: Defines the animation properties for the border.
-#   - active: Specifies animations for the active window border. Can be a map with optional speed values 
-#             (e.g., `{ Spiral, Fade: { speed: 60, easing: Linear } }`) or a simple list (e.g., `{ Spiral, Fade }`).
-#   - inactive: Specifies animations for the inactive window border. Can be a map with optional speed values 
-#               (e.g., `{ Fade: 10 }`) or a simple list (e.g., `{ Fade }`).
-#   - fps: Defines the frames per second for the animations (default: 60).
-  animations:
-    active: { Spiral: { speed: 60, easing: linear }, Fade }
-    inactive: { Fade: { easing: "cubic-bezier(0.42, 0.0, 0.58, 1.0)" } }
-    fps: 60
-
-# inactive_color: Defines the color of the inactive window border.
 #   - This can also be specified as a string or a gradient map, similar to active_color.
   inactive_color: "#d2d2d2"
+
+# animations: Defines the animation properties for the window border.
+#   - active: Specifies animations for the active window border. This can be defined in multiple formats:
+#     - As a map with animation names as keys and optional settings for duration and easing (e.g., `{ Spiral: { duration: 1800ms, easing: linear }, Fade }`).
+#     - As a simple list of animation types (e.g., `{ Spiral, Fade }`), where default settings are applied for each animation.
+#     - As a list where each animation type can also include a string specifying easing and duration (e.g., `{ Spiral: "ease-in-out 300ms", Fade: "linear 500ms" }`).
+#   - inactive: Specifies animations for the inactive window border. Similar to `active`, this can be defined as:
+#     - A map with animation names and optional properties (e.g., `{ Fade: { easing: "cubic-bezier(0.42, 0.0, 0.58, 1.0)" } }`).
+#     - A simple list of animation types (e.g., `{ Fade }`).
+#   - fps: Defines the frames per second for the animations (default: 60).
+animations:
+  active: { Spiral: { duration: 1800ms, easing: linear }, Fade }
+  inactive: { Fade: { easing: "cubic-bezier(0.42, 0.0, 0.58, 1.0)" } }
+  fps: 60
 
 # initialize_delay: The initial delay (in milliseconds) before applying animations when the window is first rendered. 
 #             A reduced delay can be used to account for animations like fade, which take additional time.

@@ -1,10 +1,9 @@
 use super::parser::parse_cubic_bezier;
 use serde::Deserialize;
-use std::hash::Hash;
-use std::hash::Hasher;
 use std::str::FromStr;
 
-#[derive(Debug, Default, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Default, Clone, Deserialize)]
+// #[derive(Debug, Default, Clone, Deserialize, PartialEq)]
 pub enum AnimationEasing {
     // Linear
     #[default]
@@ -43,60 +42,9 @@ pub enum AnimationEasing {
     EaseInOutCirc,
     EaseInOutBack,
 
+    #[serde(untagged)]
     CubicBezier([f32; 4]),
 }
-
-impl Hash for AnimationEasing {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        match self {
-            // Linear
-            AnimationEasing::Linear => 0.hash(state),
-
-            // EaseIn and its variants
-            AnimationEasing::EaseIn => 1.hash(state),
-            AnimationEasing::EaseInSine => 2.hash(state),
-            AnimationEasing::EaseInQuad => 3.hash(state),
-            AnimationEasing::EaseInCubic => 4.hash(state),
-            AnimationEasing::EaseInQuart => 5.hash(state),
-            AnimationEasing::EaseInQuint => 6.hash(state),
-            AnimationEasing::EaseInExpo => 7.hash(state),
-            AnimationEasing::EaseInCirc => 8.hash(state),
-            AnimationEasing::EaseInBack => 9.hash(state),
-
-            // EaseOut and its variants
-            AnimationEasing::EaseOut => 10.hash(state),
-            AnimationEasing::EaseOutSine => 11.hash(state),
-            AnimationEasing::EaseOutQuad => 12.hash(state),
-            AnimationEasing::EaseOutCubic => 13.hash(state),
-            AnimationEasing::EaseOutQuart => 14.hash(state),
-            AnimationEasing::EaseOutQuint => 15.hash(state),
-            AnimationEasing::EaseOutExpo => 16.hash(state),
-            AnimationEasing::EaseOutCirc => 17.hash(state),
-            AnimationEasing::EaseOutBack => 18.hash(state),
-
-            // EaseInOut and its variants
-            AnimationEasing::EaseInOut => 19.hash(state),
-            AnimationEasing::EaseInOutSine => 20.hash(state),
-            AnimationEasing::EaseInOutQuad => 21.hash(state),
-            AnimationEasing::EaseInOutCubic => 22.hash(state),
-            AnimationEasing::EaseInOutQuart => 23.hash(state),
-            AnimationEasing::EaseInOutQuint => 24.hash(state),
-            AnimationEasing::EaseInOutExpo => 25.hash(state),
-            AnimationEasing::EaseInOutCirc => 26.hash(state),
-            AnimationEasing::EaseInOutBack => 27.hash(state),
-
-            // CubicBezier variant
-            AnimationEasing::CubicBezier(bezier) => {
-                28.hash(state); // Unique prefix for the CubicBezier variant
-                for &value in bezier.iter() {
-                    value.to_bits().hash(state); // Hash each float consistently
-                }
-            }
-        }
-    }
-}
-
-impl Eq for AnimationEasing {}
 
 impl FromStr for AnimationEasing {
     type Err = String;
@@ -205,11 +153,15 @@ impl FromStr for AnimationEasing {
     }
 }
 
-impl AnimationEasing {
+pub trait AnimationEasingImpl {
+    fn to_points(&self) -> [f32; 4];
+}
+
+impl AnimationEasingImpl for AnimationEasing {
     /// Converts the easing to a corresponding array of points.
     /// Linear and named easing variants will return predefined control points,
     /// while CubicBezier returns its own array.
-    pub fn to_points(&self) -> [f32; 4] {
+    fn to_points(&self) -> [f32; 4] {
         match self {
             // Linear
             AnimationEasing::Linear => [0.0, 0.0, 1.0, 1.0],

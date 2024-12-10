@@ -329,7 +329,7 @@
           "reverse_spiral"
         ]
       },
-      "type": "object",
+      "type": ["object", "null"],
       "additionalProperties": {
         "description": "An object that may contain optional 'speed' and 'easing' values.",
         "anyOf": [

@@ -3,7 +3,7 @@ use regex::Regex;
 use std::str::FromStr;
 
 pub fn parse_cubic_bezier(input: &str) -> Option<[f32; 4]> {
-    let re = Regex::new(r"^[Cc]ubic[-_]?[Bb]ezier\(([-+]?[0-9]*\.?[0-9]+),\s*([-+]?[0-9]*\.?[0-9]+),\s*([-+]?[0-9]*\.?[0-9]+),\s*([-+]?[0-9]*\.?[0-9]+)\)$").unwrap();
+    let re = Regex::new(r"(?i)^cubic[-_]?bezier\(([-+]?[0-9]*\.?[0-9]+),\s*([-+]?[0-9]*\.?[0-9]+),\s*([-+]?[0-9]*\.?[0-9]+),\s*([-+]?[0-9]*\.?[0-9]+)\)$").unwrap();
 
     if let Some(caps) = re.captures(input) {
         let x1 = caps[1].parse::<f32>().ok()?;
@@ -21,7 +21,7 @@ pub fn parse_easing_and_duration(
     default_easing: AnimationEasing,
 ) -> Result<(f32, AnimationEasing), String> {
     let re =
-        Regex::new(r"^([a-zA-Z\-]+|[Cc]ubic[-_]?[Bb]ezier\([^\)]+\))\s+([\d.]+(ms|s))$").unwrap();
+        Regex::new(r"(?i)^([a-zA-Z\-]+|cubic[-_]?bezier\([^\)]+\))\s+([\d.]+(ms|s))$").unwrap();
 
     re.captures(s)
         .ok_or_else(|| format!("Invalid value for easing and duration: {}", s))

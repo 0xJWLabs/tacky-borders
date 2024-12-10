@@ -4,6 +4,7 @@ use animation::AnimationParams;
 use animation::AnimationType;
 use animation::AnimationValue;
 use easing::AnimationEasing;
+use easing::AnimationEasingImpl;
 use parser::parse_duration_str;
 use parser::parse_easing_and_duration;
 use rustc_hash::FxHashMap;
@@ -53,6 +54,7 @@ where
     D: Deserializer<'de>,
 {
     let mut deserialized: FxHashMap<AnimationType, AnimationValue> = FxHashMap::default();
+
     match *CONFIG_TYPE.read().unwrap() {
         ConfigType::Json => {
             let result = FxHashMap::<AnimationType, JsonValue>::deserialize(deserializer);

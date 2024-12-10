@@ -329,7 +329,7 @@
           "reverse_spiral"
         ]
       },
-      "type": ["object", "null"],
+      "type": "object",
       "additionalProperties": {
         "description": "An object that may contain optional 'speed' and 'easing' values.",
         "anyOf": [
@@ -480,6 +480,10 @@
             "type": "string",
             "pattern": "^(?:[a-zA-Z]+(?:[-_][a-zA-Z]+)*|[Cc]ubic[-_]?[Bb]ezier\\([0-9\\.\\,\\s]+\\))\\s+[\\d.]+(ms|s)$",
             "description": "A string representing an alternative option for 'additionalProperties'."
+          },
+          {
+            "type": "null",
+            "description": "A no reprensentation option (will use default)"
           }
         ]
       }

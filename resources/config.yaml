@@ -1,5 +1,4 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/GlazeBar/tacky-borders/refs/heads/main/schema.json
-
 # Global Configuration for Tacky Borders
 
 global:
@@ -58,10 +57,10 @@ global:
 #     - A map with animation names and optional properties (e.g., `{ Fade: { easing: "cubic-bezier(0.42, 0.0, 0.58, 1.0)" } }`).
 #     - A simple list of animation types (e.g., `{ Fade }`).
 #   - fps: Defines the frames per second for the animations (default: 60).
-animations:
-  active: { Spiral: { duration: 1800ms, easing: linear }, Fade }
-  inactive: { Fade: { easing: "cubic-bezier(0.42, 0.0, 0.58, 1.0)" } }
-  fps: 60
+  animations:
+    active: { spiral: "cubic-bezier(0.42, 0.0, 0.58, 1.0) 1800ms", fade: { duration: 450ms, easing: "EaseInOut" } }
+    inactive: { reverse_spiral: "ease-in-out 1800ms", fade }
+    fps: 60
 
 # initialize_delay: The initial delay (in milliseconds) before applying animations when the window is first rendered. 
 #             A reduced delay can be used to account for animations like fade, which take additional time.

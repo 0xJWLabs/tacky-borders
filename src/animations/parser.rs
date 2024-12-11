@@ -1,24 +1,15 @@
-use super::animation::AnimationParams;
-use super::animation::AnimationType;
-use super::animation::AnimationValue;
 use super::easing::AnimationEasing;
-use super::easing::AnimationEasingImpl;
 use regex::Regex;
-use rustc_hash::FxHashMap;
-use serde::de::Deserialize as DeDeserialize;
 use serde::de::Error as SerdeError;
-use serde::Deserializer;
 use serde_json::Error as JsonError;
 use serde_json::Map;
 use serde_json::Value as JsonValue;
 use serde_yaml_ng::Error as YamlError;
 use serde_yaml_ng::Mapping;
 use serde_yaml_ng::Value as YamlValue;
-use simple_bezier_easing::bezier;
 use std::error::Error as StdError;
 use std::fmt;
 use std::str::FromStr;
-use std::sync::Arc;
 
 pub fn parse_cubic_bezier(input: &str) -> Option<[f32; 4]> {
     let re = Regex::new(r"(?i)^cubic[-_]?bezier\(([-+]?[0-9]*\.?[0-9]+),\s*([-+]?[0-9]*\.?[0-9]+),\s*([-+]?[0-9]*\.?[0-9]+),\s*([-+]?[0-9]*\.?[0-9]+)\)$").unwrap();
@@ -74,6 +65,46 @@ impl fmt::Display for AnimationParserError {
     }
 }
 
+pub fn parse_animation_from_json(
+    value: &JsonValue,
+    default_duration: f32,
+    default_easing: AnimationEasing,
+) -> Result<(f32, AnimationEasing), AnimationParserError> {
+    match value {
+        JsonValue::Null => Ok((default_duration, default_easing)),
+        JsonValue::String(s) => parse_animation_from_str(s, default_duration, default_easing),
+        JsonValue::Object(obj) => parse_animation_from_map(
+            &AnimationDataType::Json(obj.clone()),
+            default_duration,
+            default_easing,
+        ),
+        _ => Err(AnimationParserError::Json(JsonError::custom(format!(
+            "Invalid value type for animation: {:?}",
+            value
+        )))),
+    }
+}
+
+pub fn parse_animation_from_yaml(
+    value: &YamlValue,
+    default_duration: f32,
+    default_easing: AnimationEasing,
+) -> Result<(f32, AnimationEasing), AnimationParserError> {
+    match value {
+        YamlValue::Null => Ok((default_duration, default_easing)),
+        YamlValue::String(s) => parse_animation_from_str(s, default_duration, default_easing),
+        YamlValue::Mapping(obj) => parse_animation_from_map(
+            &AnimationDataType::Yaml(obj.clone()),
+            default_duration,
+            default_easing,
+        ),
+        _ => Err(AnimationParserError::Yaml(YamlError::custom(format!(
+            "Invalid value type for animation: {:?}",
+            value
+        )))),
+    }
+}
+
 fn parse_duration_str(s: &str) -> Option<f32> {
     let regex = Regex::new(r"(?i)^([\d.]+)(ms|s)$").unwrap();
     regex.captures(s).and_then(|caps| {
@@ -84,40 +115,6 @@ fn parse_duration_str(s: &str) -> Option<f32> {
             value
         })
     })
-}
-
-fn handle_animation_map<T, E>(
-    map: FxHashMap<AnimationType, T>,
-    parse_fn: impl Fn(&T, f32, AnimationEasing) -> Result<(f32, AnimationEasing), E>,
-    default_durations: &FxHashMap<AnimationType, f32>,
-    default_easing: AnimationEasing,
-) -> Result<FxHashMap<AnimationType, AnimationValue>, E>
-where
-    E: SerdeError,
-{
-    let mut deserialized: FxHashMap<AnimationType, AnimationValue> = FxHashMap::default();
-
-    for (animation_type, anim_value) in map {
-        let default_duration = *default_durations.get(&animation_type).unwrap_or(&200.0);
-        let (duration, easing) = parse_fn(&anim_value, default_duration, default_easing.clone())?;
-
-        let points = easing.to_points();
-        let easing_fn = bezier(points[0], points[1], points[2], points[3])
-            .map_err(|e| E::custom(e.to_string()))?; // Generic error mapping
-
-        deserialized.insert(
-            animation_type.clone(),
-            AnimationValue {
-                animation_type: animation_type.clone(),
-                animation_params: AnimationParams {
-                    duration,
-                    easing_fn: Arc::new(easing_fn),
-                },
-            },
-        );
-    }
-
-    Ok(deserialized)
 }
 
 fn parse_animation_from_str(
@@ -172,63 +169,5 @@ fn parse_animation_from_map(
                 .and_then(|v| v.as_str().and_then(|s| AnimationEasing::from_str(s).ok()))
                 .unwrap_or(default_easing),
         )),
-    }
-}
-
-pub fn parse_animation<'de, T, D>(
-    deserializer: D,
-    parse_fn: impl Fn(&T, f32, AnimationEasing) -> Result<(f32, AnimationEasing), AnimationParserError>,
-    default_durations: &FxHashMap<AnimationType, f32>,
-    default_easing: AnimationEasing,
-) -> Result<FxHashMap<AnimationType, AnimationValue>, AnimationParserError>
-where
-    D: Deserializer<'de>,
-    T: DeDeserialize<'de>,
-{
-    let result = FxHashMap::<AnimationType, T>::deserialize(deserializer);
-
-    match result {
-        Ok(map) => handle_animation_map(map, parse_fn, default_durations, default_easing),
-        Err(err) => Err(AnimationParserError::Custom(format!("{}", err))),
-    }
-}
-
-pub fn parse_fn_json(
-    value: &JsonValue,
-    default_duration: f32,
-    default_easing: AnimationEasing,
-) -> Result<(f32, AnimationEasing), AnimationParserError> {
-    match value {
-        JsonValue::Null => Ok((default_duration, default_easing)),
-        JsonValue::String(s) => parse_animation_from_str(s, default_duration, default_easing),
-        JsonValue::Object(obj) => parse_animation_from_map(
-            &AnimationDataType::Json(obj.clone()),
-            default_duration,
-            default_easing,
-        ),
-        _ => Err(AnimationParserError::Json(JsonError::custom(format!(
-            "Invalid value type for animation: {:?}",
-            value
-        )))),
-    }
-}
-
-pub fn parse_fn_yaml(
-    value: &YamlValue,
-    default_duration: f32,
-    default_easing: AnimationEasing,
-) -> Result<(f32, AnimationEasing), AnimationParserError> {
-    match value {
-        YamlValue::Null => Ok((default_duration, default_easing)),
-        YamlValue::String(s) => parse_animation_from_str(s, default_duration, default_easing),
-        YamlValue::Mapping(obj) => parse_animation_from_map(
-            &AnimationDataType::Yaml(obj.clone()),
-            default_duration,
-            default_easing,
-        ),
-        _ => Err(AnimationParserError::Yaml(YamlError::custom(format!(
-            "Invalid value type for animation: {:?}",
-            value
-        )))),
     }
 }

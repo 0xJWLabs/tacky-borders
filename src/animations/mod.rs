@@ -5,8 +5,9 @@ use animation::AnimationType;
 use animation::AnimationValue;
 use easing::AnimationEasing;
 use easing::AnimationEasingImpl;
-use parser::parse_duration_str;
-use parser::parse_easing_and_duration;
+use parser::parse_animation_from_object;
+use parser::parse_animation_from_str;
+use parser::AnimationDataType;
 use rustc_hash::FxHashMap;
 use serde::de::Error;
 use serde::Deserialize;
@@ -14,7 +15,6 @@ use serde::Deserializer;
 use serde_json::Value as JsonValue;
 use serde_yaml_ng::Value as YamlValue;
 use simple_bezier_easing::bezier;
-use std::str::FromStr;
 use std::sync::Arc;
 
 pub mod animation;
@@ -49,144 +49,120 @@ fn default_fps() -> i32 {
     60
 }
 
+fn handle_animation_map<T, E>(
+    map: FxHashMap<AnimationType, T>,
+    parse_fn: impl Fn(&T, f32, AnimationEasing) -> Result<(f32, AnimationEasing), E>,
+    default_durations: &FxHashMap<AnimationType, f32>,
+    default_easing: AnimationEasing,
+) -> Result<FxHashMap<AnimationType, AnimationValue>, E>
+where
+    E: serde::de::Error,
+{
+    let mut deserialized: FxHashMap<AnimationType, AnimationValue> = FxHashMap::default();
+
+    for (animation_type, anim_value) in map {
+        let default_duration = *default_durations.get(&animation_type).unwrap_or(&200.0);
+        let (duration, easing) = parse_fn(&anim_value, default_duration, default_easing.clone())?;
+
+        let points = easing.to_points();
+        let easing_fn = bezier(points[0], points[1], points[2], points[3])
+            .map_err(|e| E::custom(e.to_string()))?; // Generic error mapping
+
+        deserialized.insert(
+            animation_type.clone(),
+            AnimationValue {
+                animation_type: animation_type.clone(),
+                animation_params: AnimationParams {
+                    duration,
+                    easing_fn: Arc::new(easing_fn),
+                },
+            },
+        );
+    }
+
+    Ok(deserialized)
+}
+
+fn parse_map<'de, T, E, D>(
+    deserializer: D,
+    parse_fn: impl Fn(&T, f32, AnimationEasing) -> Result<(f32, AnimationEasing), E>,
+    default_durations: &FxHashMap<AnimationType, f32>,
+    default_easing: AnimationEasing,
+) -> Result<FxHashMap<AnimationType, AnimationValue>, E>
+where
+    E: serde::de::Error,
+    D: Deserializer<'de, Error = E>,
+    T: serde::de::Deserialize<'de>,
+{
+    let result = FxHashMap::<AnimationType, T>::deserialize(deserializer);
+
+    match result {
+        Ok(map) => handle_animation_map(map, parse_fn, default_durations, default_easing),
+        Err(err) => Err(err),
+    }
+}
+
 fn animation<'de, D>(deserializer: D) -> Result<FxHashMap<AnimationType, AnimationValue>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let mut deserialized: FxHashMap<AnimationType, AnimationValue> = FxHashMap::default();
+    let default_durations: FxHashMap<AnimationType, f32> = FxHashMap::from_iter([
+        (AnimationType::Spiral, 1800.0),
+        (AnimationType::ReverseSpiral, 1800.0),
+        (AnimationType::Fade, 200.0),
+    ]);
+    let default_easing = AnimationEasing::Linear;
 
     match *CONFIG_TYPE.read().unwrap() {
         ConfigType::Json => {
-            let result = FxHashMap::<AnimationType, JsonValue>::deserialize(deserializer);
-
-            // If deserialize returns an error, it's possible that an invalid AnimationType was listed
-            let map = match result {
-                Ok(val) => val
-                    .into_iter() // Convert into iterator
-                    .collect::<FxHashMap<_, _>>(), // Collect back into a map
-                Err(err) => return Err(err),
+            let parse_fn = |value: &JsonValue,
+                            default_duration: f32,
+                            default_easing: AnimationEasing|
+             -> Result<(f32, AnimationEasing), D::Error> {
+                match value {
+                    JsonValue::Null => Ok((default_duration, default_easing)),
+                    JsonValue::String(s) => {
+                        parse_animation_from_str(s, default_duration, default_easing)
+                            .map_err(serde::de::Error::custom)
+                    }
+                    JsonValue::Object(obj) => Ok(parse_animation_from_object(
+                        &AnimationDataType::Json(obj.clone()),
+                        default_duration,
+                        default_easing,
+                    )),
+                    _ => Err(serde::de::Error::custom(format!(
+                        "Invalid value type for animation: {:?}",
+                        value
+                    ))),
+                }
             };
 
-            for (animation_type, anim_value) in map {
-                let default_duration = match animation_type {
-                    AnimationType::Spiral | AnimationType::ReverseSpiral => 1800.0,
-                    AnimationType::Fade => 200.0,
-                };
-                let default_easing = AnimationEasing::Linear;
-                let (duration, easing) = match anim_value {
-                    JsonValue::Null => (default_duration, default_easing),
-                    JsonValue::Object(ref obj) => (
-                        obj.get("duration")
-                            .and_then(|v| match v {
-                                JsonValue::String(s) => parse_duration_str(s),
-                                JsonValue::Number(n) => n.as_f64().map(|f| f as f32),
-                                _ => None,
-                            })
-                            .unwrap_or(default_duration),
-                        obj.get("easing")
-                            .and_then(|v| {
-                                v.as_str().and_then(|s| AnimationEasing::from_str(s).ok())
-                            })
-                            .unwrap_or(default_easing),
-                    ),
-                    JsonValue::String(s) => {
-                        parse_easing_and_duration(&s, default_duration, default_easing)
-                            .map_err(D::Error::custom)?
-                    } // Explicit conversion
-                    _ => {
-                        return Err(D::Error::custom(format!(
-                            "Invalid value type for animation: {:?}",
-                            anim_value
-                        )));
-                    }
-                };
-
-                let points = easing.to_points();
-
-                let easing_fn = bezier(points[0], points[1], points[2], points[3])
-                    .map_err(serde::de::Error::custom)?;
-
-                let animation_params = AnimationParams {
-                    duration,
-                    easing_fn: Arc::new(easing_fn),
-                };
-
-                let anim = AnimationValue {
-                    animation_type: animation_type.clone(),
-                    animation_params,
-                };
-
-                // Insert the deserialized animation data into the map
-                deserialized.insert(animation_type.clone(), anim);
-            }
-
-            Ok(deserialized)
+            parse_map(deserializer, parse_fn, &default_durations, default_easing)
         }
         ConfigType::Yaml => {
-            let result = FxHashMap::<AnimationType, YamlValue>::deserialize(deserializer);
-
-            // If deserialize returns an error, it's possible that an invalid AnimationType was listed
-            let map = match result {
-                Ok(val) => val
-                    .into_iter() // Convert into iterator
-                    .collect::<FxHashMap<_, _>>(), // Collect back into a map
-                Err(err) => return Err(err),
+            let parse_fn = |value: &YamlValue,
+                            default_duration: f32,
+                            default_easing: AnimationEasing|
+             -> Result<(f32, AnimationEasing), D::Error> {
+                match value {
+                    YamlValue::Null => Ok((default_duration, default_easing)),
+                    YamlValue::String(s) => {
+                        parse_animation_from_str(s, default_duration, default_easing)
+                            .map_err(serde::de::Error::custom)
+                    }
+                    YamlValue::Mapping(obj) => Ok(parse_animation_from_object(
+                        &AnimationDataType::Yaml(obj.clone()),
+                        default_duration,
+                        default_easing,
+                    )),
+                    _ => Err(serde::de::Error::custom(format!(
+                        "Invalid value type for animation: {:?}",
+                        value
+                    ))),
+                }
             };
 
-            for (animation_type, anim_value) in map {
-                let default_duration = match animation_type {
-                    AnimationType::Spiral | AnimationType::ReverseSpiral => 1800.0,
-                    AnimationType::Fade => 200.0,
-                };
-                let default_easing = AnimationEasing::Linear;
-                let (duration, easing) = match anim_value {
-                    YamlValue::Null => (default_duration, default_easing),
-                    YamlValue::Mapping(ref obj) => (
-                        obj.get("duration")
-                            .and_then(|v| match v {
-                                YamlValue::String(s) => parse_duration_str(s),
-                                YamlValue::Number(n) => n.as_f64().map(|f| f as f32),
-                                _ => None,
-                            })
-                            .unwrap_or(default_duration),
-                        obj.get("easing")
-                            .and_then(|v| {
-                                v.as_str().and_then(|s| AnimationEasing::from_str(s).ok())
-                            })
-                            .unwrap_or(default_easing),
-                    ),
-                    YamlValue::String(s) => {
-                        parse_easing_and_duration(&s, default_duration, default_easing)
-                            .map_err(D::Error::custom)?
-                    } // Explicit conversion
-                    _ => {
-                        return Err(D::Error::custom(format!(
-                            "Invalid value type for animation: {:?}",
-                            anim_value
-                        )));
-                    }
-                };
-
-                let points = easing.to_points();
-
-                let easing_fn = bezier(points[0], points[1], points[2], points[3])
-                    .map_err(serde::de::Error::custom)?;
-
-                let animation_params = AnimationParams {
-                    duration,
-                    easing_fn: Arc::new(easing_fn),
-                };
-
-                let anim = AnimationValue {
-                    animation_type: animation_type.clone(),
-                    animation_params,
-                };
-
-                // Insert the deserialized animation data into the map
-                deserialized.insert(animation_type.clone(), anim);
-            }
-
-            Ok(deserialized)
+            parse_map(deserializer, parse_fn, &default_durations, default_easing)
         }
         _ => Err(D::Error::custom("invalid file type".to_string())),
     }

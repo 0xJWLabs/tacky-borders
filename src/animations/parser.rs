@@ -120,7 +120,7 @@ where
     Ok(deserialized)
 }
 
-pub fn parse_animation_from_str(
+fn parse_animation_from_str(
     s: &str,
     default_duration: f32,
     default_easing: AnimationEasing,
@@ -142,7 +142,7 @@ pub fn parse_animation_from_str(
         })
 }
 
-pub fn parse_animation_from_map(
+fn parse_animation_from_map(
     anim_value: &AnimationDataType,
     default_duration: f32,
     default_easing: AnimationEasing,
@@ -190,5 +190,45 @@ where
     match result {
         Ok(map) => handle_animation_map(map, parse_fn, default_durations, default_easing),
         Err(err) => Err(AnimationParserError::Custom(format!("{}", err))),
+    }
+}
+
+pub fn parse_fn_json(
+    value: &JsonValue,
+    default_duration: f32,
+    default_easing: AnimationEasing,
+) -> Result<(f32, AnimationEasing), AnimationParserError> {
+    match value {
+        JsonValue::Null => Ok((default_duration, default_easing)),
+        JsonValue::String(s) => parse_animation_from_str(s, default_duration, default_easing),
+        JsonValue::Object(obj) => parse_animation_from_map(
+            &AnimationDataType::Json(obj.clone()),
+            default_duration,
+            default_easing,
+        ),
+        _ => Err(AnimationParserError::Json(JsonError::custom(format!(
+            "Invalid value type for animation: {:?}",
+            value
+        )))),
+    }
+}
+
+pub fn parse_fn_yaml(
+    value: &YamlValue,
+    default_duration: f32,
+    default_easing: AnimationEasing,
+) -> Result<(f32, AnimationEasing), AnimationParserError> {
+    match value {
+        YamlValue::Null => Ok((default_duration, default_easing)),
+        YamlValue::String(s) => parse_animation_from_str(s, default_duration, default_easing),
+        YamlValue::Mapping(obj) => parse_animation_from_map(
+            &AnimationDataType::Yaml(obj.clone()),
+            default_duration,
+            default_easing,
+        ),
+        _ => Err(AnimationParserError::Yaml(YamlError::custom(format!(
+            "Invalid value type for animation: {:?}",
+            value
+        )))),
     }
 }

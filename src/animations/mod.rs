@@ -4,18 +4,12 @@ use animation::AnimationType;
 use animation::AnimationValue;
 use easing::AnimationEasing;
 use parser::parse_animation;
-use parser::parse_animation_from_map;
-use parser::parse_animation_from_str;
-use parser::AnimationDataType;
-use parser::AnimationParserError;
+use parser::parse_fn_json;
+use parser::parse_fn_yaml;
 use rustc_hash::FxHashMap;
 use serde::de::Error;
 use serde::Deserialize;
 use serde::Deserializer;
-use serde_json::Error as JsonError;
-use serde_json::Value as JsonValue;
-use serde_yaml_ng::Error as YamlError;
-use serde_yaml_ng::Value as YamlValue;
 
 pub mod animation;
 mod easing;
@@ -47,46 +41,6 @@ pub struct Animations {
 
 fn default_fps() -> i32 {
     60
-}
-
-fn parse_fn_json(
-    value: &JsonValue,
-    default_duration: f32,
-    default_easing: AnimationEasing,
-) -> Result<(f32, AnimationEasing), AnimationParserError> {
-    match value {
-        JsonValue::Null => Ok((default_duration, default_easing)),
-        JsonValue::String(s) => parse_animation_from_str(s, default_duration, default_easing),
-        JsonValue::Object(obj) => parse_animation_from_map(
-            &AnimationDataType::Json(obj.clone()),
-            default_duration,
-            default_easing,
-        ),
-        _ => Err(AnimationParserError::Json(JsonError::custom(format!(
-            "Invalid value type for animation: {:?}",
-            value
-        )))),
-    }
-}
-
-fn parse_fn_yaml(
-    value: &YamlValue,
-    default_duration: f32,
-    default_easing: AnimationEasing,
-) -> Result<(f32, AnimationEasing), AnimationParserError> {
-    match value {
-        YamlValue::Null => Ok((default_duration, default_easing)),
-        YamlValue::String(s) => parse_animation_from_str(s, default_duration, default_easing),
-        YamlValue::Mapping(obj) => parse_animation_from_map(
-            &AnimationDataType::Yaml(obj.clone()),
-            default_duration,
-            default_easing,
-        ),
-        _ => Err(AnimationParserError::Yaml(YamlError::custom(format!(
-            "Invalid value type for animation: {:?}",
-            value
-        )))),
-    }
 }
 
 fn animation<'de, D>(deserializer: D) -> Result<FxHashMap<AnimationType, AnimationValue>, D::Error>

@@ -83,7 +83,7 @@ where
                             easing_points[2],
                             easing_points[3],
                         )
-                        .map_err(serde::de::Error::custom)?;
+                        .map_err(|e| D::Error::custom(format!("{}", e)))?;
 
                         result.insert(
                             animation_type.clone(),
@@ -121,7 +121,7 @@ where
                             easing_points[2],
                             easing_points[3],
                         )
-                        .map_err(serde::de::Error::custom)?;
+                        .map_err(|e| D::Error::custom(format!("{}", e)))?;
 
                         result.insert(
                             animation_type.clone(),

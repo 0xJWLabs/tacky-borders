@@ -7,7 +7,7 @@ edition = "2021"
 debug = true
 
 [dependencies]
-serde = "1.0.215"
+serde = "1.0.216"
 tray-icon = "0.19.2"
 open = "5.3.1"
 regex = "1.11.1"

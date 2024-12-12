@@ -1,13 +1,11 @@
-use std::sync::Arc;
-
 use crate::border_config::ConfigType;
 use crate::border_config::CONFIG_TYPE;
 use animation::AnimationParameters;
 use animation::AnimationType;
-use easing::AnimationEasing;
 use easing::AnimationEasingImpl;
-use parser::parse_animation_from_json;
-use parser::parse_animation_from_yaml;
+use parser::parse_animation;
+use parser::AnimationParserError;
+use parser::IdentifiableAnimationValue;
 use rustc_hash::FxHashMap;
 use serde::de::Error;
 use serde::Deserialize;
@@ -15,6 +13,7 @@ use serde::Deserializer;
 use serde_jsonc2::Value as JsonValue;
 use serde_yaml_ng::Value as YamlValue;
 use simple_bezier_easing::bezier;
+use std::sync::Arc;
 
 pub mod animation;
 mod easing;
@@ -48,91 +47,54 @@ fn default_fps() -> i32 {
     60
 }
 
+fn handle_map<T>(
+    map: FxHashMap<AnimationType, T>,
+) -> Result<FxHashMap<AnimationType, AnimationParameters>, AnimationParserError>
+where
+    T: IdentifiableAnimationValue,
+{
+    map.iter()
+        .map(|(animation_type, animation_value)| {
+            let (duration, easing) = parse_animation(animation_type, animation_value)?;
+
+            let easing_points = easing.to_points();
+
+            let easing_fn = bezier(
+                easing_points[0],
+                easing_points[1],
+                easing_points[2],
+                easing_points[3],
+            )
+            .map_err(|e| AnimationParserError::Custom(e.to_string()))?;
+
+            Ok((
+                animation_type.clone(),
+                AnimationParameters {
+                    duration,
+                    easing_fn: Arc::new(easing_fn),
+                },
+            ))
+        })
+        .collect()
+}
+
 fn animation<'de, D>(
     deserializer: D,
 ) -> Result<FxHashMap<AnimationType, AnimationParameters>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let default_durations: FxHashMap<AnimationType, f32> = FxHashMap::from_iter([
-        (AnimationType::Spiral, 1800.0),
-        (AnimationType::ReverseSpiral, 1800.0),
-        (AnimationType::Fade, 200.0),
-    ]);
-    let default_easing = AnimationEasing::Linear;
-
     match *CONFIG_TYPE.read().unwrap() {
         ConfigType::Json | ConfigType::Jsonc => {
-            FxHashMap::<AnimationType, JsonValue>::deserialize(deserializer)
-                .map_err(D::Error::custom)
-                .and_then(|map| {
-                    // Iterate over the map and handle the deserialized values
-                    let mut result = FxHashMap::default();
-                    for (animation_type, animation_value) in map.iter() {
-                        let (duration, easing) = parse_animation_from_json(
-                            animation_value,
-                            default_durations[animation_type],
-                            default_easing.clone(),
-                        )
-                        .map_err(|e| D::Error::custom(format!("{}", e)))?;
-
-                        let easing_points = easing.to_points();
-
-                        let easing_fn = bezier(
-                            easing_points[0],
-                            easing_points[1],
-                            easing_points[2],
-                            easing_points[3],
-                        )
-                        .map_err(|e| D::Error::custom(format!("{}", e)))?;
-
-                        result.insert(
-                            animation_type.clone(),
-                            AnimationParameters {
-                                duration,
-                                easing_fn: Arc::new(easing_fn),
-                            },
-                        );
-                    }
-                    Ok(result)
-                })
+            let map: FxHashMap<AnimationType, JsonValue> =
+                FxHashMap::deserialize(deserializer).map_err(D::Error::custom)?;
+            handle_map(map).map_err(D::Error::custom)
         }
         ConfigType::Yaml => {
-            FxHashMap::<AnimationType, YamlValue>::deserialize(deserializer)
-                .map_err(D::Error::custom)
-                .and_then(|map| {
-                    // Iterate over the map and handle the deserialized values
-                    let mut result = FxHashMap::default();
-                    for (animation_type, animation_value) in map.iter() {
-                        let (duration, easing) = parse_animation_from_yaml(
-                            animation_value,
-                            default_durations[animation_type],
-                            default_easing.clone(),
-                        )
-                        .map_err(|e| D::Error::custom(format!("{}", e)))?;
-
-                        let easing_points = easing.to_points();
-
-                        let easing_fn = bezier(
-                            easing_points[0],
-                            easing_points[1],
-                            easing_points[2],
-                            easing_points[3],
-                        )
-                        .map_err(|e| D::Error::custom(format!("{}", e)))?;
-
-                        result.insert(
-                            animation_type.clone(),
-                            AnimationParameters {
-                                duration,
-                                easing_fn: Arc::new(easing_fn),
-                            },
-                        );
-                    }
-                    Ok(result)
-                })
+            let map: FxHashMap<AnimationType, YamlValue> =
+                FxHashMap::deserialize(deserializer).map_err(D::Error::custom)?;
+            handle_map(map).map_err(D::Error::custom)
         }
-        _ => Err(D::Error::custom("invalid file type".to_string())),
+        _ => Err(D::Error::custom("Invalid file type")),
     }
 }
-

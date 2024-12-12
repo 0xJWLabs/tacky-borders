@@ -1,3 +1,4 @@
+use super::animation::AnimationType;
 use super::easing::AnimationEasing;
 use regex::Regex;
 use serde::de::Error as SerdeError;
@@ -132,42 +133,74 @@ fn parse_animation_from_map(
     }
 }
 
-pub fn parse_animation_from_json(
-    value: &JsonValue,
-    default_duration: f32,
-    default_easing: AnimationEasing,
-) -> Result<(f32, AnimationEasing), AnimationParserError> {
-    match value {
-        JsonValue::Null => Ok((default_duration, default_easing)),
-        JsonValue::String(s) => parse_animation_from_str(s, default_duration, default_easing),
-        JsonValue::Object(obj) => parse_animation_from_map(
-            &AnimationDataType::Json(obj.clone()),
-            default_duration,
-            default_easing,
-        ),
-        _ => Err(AnimationParserError::Json(JsonError::custom(format!(
-            "Invalid value type for animation: {:?}",
-            value
-        )))),
+pub trait IdentifiableAnimationValue {
+    const TYPE_NAME: &'static str;
+
+    fn parse(
+        &self,
+        default_duration: f32,
+        default_easing: AnimationEasing,
+    ) -> Result<(f32, AnimationEasing), AnimationParserError>;
+}
+
+impl IdentifiableAnimationValue for JsonValue {
+    const TYPE_NAME: &'static str = "serde_json::Value";
+
+    fn parse(
+        &self,
+        default_duration: f32,
+        default_easing: AnimationEasing,
+    ) -> Result<(f32, AnimationEasing), AnimationParserError> {
+        match self {
+            JsonValue::Null => Ok((default_duration, default_easing)),
+            JsonValue::String(s) => parse_animation_from_str(s, default_duration, default_easing),
+            JsonValue::Object(obj) => parse_animation_from_map(
+                &AnimationDataType::Json(obj.clone()),
+                default_duration,
+                default_easing,
+            ),
+            _ => Err(AnimationParserError::Json(JsonError::custom(format!(
+                "Invalid value type for animation: {:?}",
+                self
+            )))),
+        }
     }
 }
 
-pub fn parse_animation_from_yaml(
-    value: &YamlValue,
-    default_duration: f32,
-    default_easing: AnimationEasing,
-) -> Result<(f32, AnimationEasing), AnimationParserError> {
-    match value {
-        YamlValue::Null => Ok((default_duration, default_easing)),
-        YamlValue::String(s) => parse_animation_from_str(s, default_duration, default_easing),
-        YamlValue::Mapping(obj) => parse_animation_from_map(
-            &AnimationDataType::Yaml(obj.clone()),
-            default_duration,
-            default_easing,
-        ),
-        _ => Err(AnimationParserError::Yaml(YamlError::custom(format!(
-            "Invalid value type for animation: {:?}",
-            value
-        )))),
+impl IdentifiableAnimationValue for YamlValue {
+    const TYPE_NAME: &'static str = "serde_yaml_ng::Value";
+
+    fn parse(
+        &self,
+        default_duration: f32,
+        default_easing: AnimationEasing,
+    ) -> Result<(f32, AnimationEasing), AnimationParserError> {
+        match self {
+            YamlValue::Null => Ok((default_duration, default_easing)),
+            YamlValue::String(s) => parse_animation_from_str(s, default_duration, default_easing),
+            YamlValue::Mapping(obj) => parse_animation_from_map(
+                &AnimationDataType::Yaml(obj.clone()),
+                default_duration,
+                default_easing,
+            ),
+            _ => Err(AnimationParserError::Yaml(YamlError::custom(format!(
+                "Invalid value type for animation: {:?}",
+                self
+            )))),
+        }
     }
+}
+
+pub fn parse_animation<T: IdentifiableAnimationValue>(
+    animation_type: &AnimationType,
+    animation_value: &T,
+) -> Result<(f32, AnimationEasing), AnimationParserError> {
+    let default_duration = match animation_type {
+        AnimationType::Spiral | AnimationType::ReverseSpiral => 1800.0,
+        AnimationType::Fade => 200.0,
+    };
+
+    let default_easing = AnimationEasing::Linear;
+
+    animation_value.parse(default_duration, default_easing)
 }

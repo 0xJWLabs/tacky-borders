@@ -19,6 +19,8 @@ use sp_log::LevelFilter;
 use sp_log::TermLogger;
 use sp_log::TerminalMode;
 use std::cell::Cell;
+use std::fs::exists;
+use std::fs::remove_file;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::mem::transmute;
@@ -114,6 +116,11 @@ fn main() {
 fn create_logger() -> AnyResult<()> {
     let log_dir = border_config::Config::get_config_dir()?;
     let log_path = log_dir.join("tacky.log");
+    let backup_path = log_dir.join("tacky.log.backup");
+
+    if exists(backup_path.clone())? {
+        remove_file(backup_path.clone())?
+    }
 
     OpenOptions::new()
         .write(true)

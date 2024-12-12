@@ -78,7 +78,7 @@ use crate::border_config::MatchStrategy;
 use crate::border_config::WindowRule;
 use crate::border_config::CONFIG;
 use crate::enum_windows_callback;
-use crate::log_if_err;
+use crate::utils::LogIfErr;
 use crate::window_border::WindowBorder;
 use crate::BORDERS;
 use crate::INITIAL_WINDOWS;
@@ -437,10 +437,9 @@ impl WindowsApi {
         // If the border already exists, simply post a 'SHOW' message to its message queue. Otherwise,
         // create a new border.
         if let Some(border) = Self::get_border_from_window(hwnd) {
-            log_if_err!(
-                Self::post_message_w(border, WM_APP_SHOWUNCLOAKED, WPARAM(0), LPARAM(0))
-                    .context("show_border_for_window")
-            );
+            Self::post_message_w(border, WM_APP_SHOWUNCLOAKED, WPARAM(0), LPARAM(0))
+                .context("show_border_for_window")
+                .log_if_err();
         } else if Self::is_window_visible(hwnd)
             && !Self::is_window_cloaked(hwnd)
             && !Self::has_filtered_style(hwnd)
@@ -455,10 +454,9 @@ impl WindowsApi {
         let _ = thread::spawn(move || {
             let window_sent = window;
             if let Some(border) = Self::get_border_from_window(window_sent.0) {
-                log_if_err!(
-                    Self::post_message_w(border, WM_APP_HIDECLOAKED, WPARAM(0), LPARAM(0))
-                        .context("hide_border_for_window")
-                );
+                Self::post_message_w(border, WM_APP_HIDECLOAKED, WPARAM(0), LPARAM(0))
+                    .context("hide_border_for_window")
+                    .log_if_err();
             }
         });
         true
@@ -514,10 +512,9 @@ impl WindowsApi {
         };
 
         let border_window: HWND = HWND(border_isize as _);
-        log_if_err!(
-            Self::post_message_w(border_window, WM_NCDESTROY, WPARAM(0), LPARAM(0))
-                .context("destroy_border_for_window")
-        );
+        Self::post_message_w(border_window, WM_NCDESTROY, WPARAM(0), LPARAM(0))
+            .context("destroy_border_for_window")
+            .log_if_err();
     }
 }
 

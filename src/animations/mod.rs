@@ -2,9 +2,8 @@ use std::sync::Arc;
 
 use crate::border_config::ConfigType;
 use crate::border_config::CONFIG_TYPE;
-use animation::AnimationParams;
+use animation::AnimationParameters;
 use animation::AnimationType;
-use animation::AnimationValue;
 use easing::AnimationEasing;
 use easing::AnimationEasingImpl;
 use parser::parse_animation_from_json;
@@ -13,7 +12,7 @@ use rustc_hash::FxHashMap;
 use serde::de::Error;
 use serde::Deserialize;
 use serde::Deserializer;
-use serde_json::Value as JsonValue;
+use serde_jsonc2::Value as JsonValue;
 use serde_yaml_ng::Value as YamlValue;
 use simple_bezier_easing::bezier;
 
@@ -28,11 +27,11 @@ pub const ANIM_FADE: i32 = 1;
 #[derive(Debug, Deserialize, Clone, Default)]
 pub struct Animations {
     #[serde(deserialize_with = "animation", default)]
-    pub active: FxHashMap<AnimationType, AnimationValue>,
+    pub active: FxHashMap<AnimationType, AnimationParameters>,
     #[serde(deserialize_with = "animation", default)]
-    pub inactive: FxHashMap<AnimationType, AnimationValue>,
+    pub inactive: FxHashMap<AnimationType, AnimationParameters>,
     #[serde(skip)]
-    pub current: FxHashMap<AnimationType, AnimationValue>,
+    pub current: FxHashMap<AnimationType, AnimationParameters>,
     #[serde(default = "default_fps")]
     pub fps: i32,
     #[serde(skip)]
@@ -49,7 +48,9 @@ fn default_fps() -> i32 {
     60
 }
 
-fn animation<'de, D>(deserializer: D) -> Result<FxHashMap<AnimationType, AnimationValue>, D::Error>
+fn animation<'de, D>(
+    deserializer: D,
+) -> Result<FxHashMap<AnimationType, AnimationParameters>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -61,7 +62,7 @@ where
     let default_easing = AnimationEasing::Linear;
 
     match *CONFIG_TYPE.read().unwrap() {
-        ConfigType::Json => {
+        ConfigType::Json | ConfigType::Jsonc => {
             FxHashMap::<AnimationType, JsonValue>::deserialize(deserializer)
                 .map_err(D::Error::custom)
                 .and_then(|map| {
@@ -87,12 +88,9 @@ where
 
                         result.insert(
                             animation_type.clone(),
-                            AnimationValue {
-                                animation_type: animation_type.clone(),
-                                animation_params: AnimationParams {
-                                    duration,
-                                    easing_fn: Arc::new(easing_fn),
-                                },
+                            AnimationParameters {
+                                duration,
+                                easing_fn: Arc::new(easing_fn),
                             },
                         );
                     }
@@ -125,12 +123,9 @@ where
 
                         result.insert(
                             animation_type.clone(),
-                            AnimationValue {
-                                animation_type: animation_type.clone(),
-                                animation_params: AnimationParams {
-                                    duration,
-                                    easing_fn: Arc::new(easing_fn),
-                                },
+                            AnimationParameters {
+                                duration,
+                                easing_fn: Arc::new(easing_fn),
                             },
                         );
                     }
@@ -141,22 +136,3 @@ where
     }
 }
 
-pub trait HashMapAnimationExt {
-    fn find(&self, animation_type: &AnimationType) -> Option<&AnimationValue>;
-    fn has(&self, animation_type: &AnimationType) -> bool;
-    fn to_iter(&self) -> impl Iterator<Item = &AnimationValue> + '_;
-}
-
-impl HashMapAnimationExt for FxHashMap<AnimationType, AnimationValue> {
-    fn find(&self, animation_type: &AnimationType) -> Option<&AnimationValue> {
-        self.get(animation_type)
-    }
-
-    fn has(&self, animation_type: &AnimationType) -> bool {
-        self.contains_key(animation_type)
-    }
-
-    fn to_iter(&self) -> impl Iterator<Item = &AnimationValue> + '_ {
-        self.values()
-    }
-}

@@ -33,6 +33,7 @@ const DEFAULT_CONFIG: &str = include_str!("../resources/config.yaml");
 pub enum ConfigType {
     Yaml,
     Json,
+    Jsonc,
     None,
 }
 
@@ -122,6 +123,7 @@ impl Config {
         let config_path = config_dir.join("config");
 
         let json_path = config_path.with_extension("json");
+        let jsonc_path = config_path.with_extension("jsonc");
         let yaml_path = config_path.with_extension("yaml");
 
         let config_file = {
@@ -135,6 +137,9 @@ impl Config {
             } else if exists(json_path.clone())? {
                 *config_type_lock = ConfigType::Json;
                 json_path.clone()
+            } else if exists(jsonc_path.clone())? {
+                *config_type_lock = ConfigType::Jsonc;
+                jsonc_path.clone()
             } else {
                 *config_type_lock = ConfigType::Yaml;
                 Self::create_default_config(&yaml_path.clone())?;
@@ -154,7 +159,7 @@ impl Config {
                 .map_err(|e| anyhow!("Failed to acquire read lock for CONFIG_TYPE: {}", e))?;
 
             match *config_type_lock {
-                ConfigType::Json => serde_json::from_str(&contents)
+                ConfigType::Json | ConfigType::Jsonc => serde_jsonc2::from_str(&contents)
                     .with_context(|| "Failed to deserialize config.json")?,
                 ConfigType::Yaml => serde_yaml_ng::from_str(&contents)
                     .with_context(|| "Failed to deserialize config.yaml")?,

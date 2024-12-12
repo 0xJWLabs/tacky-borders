@@ -1,9 +1,9 @@
 use super::easing::AnimationEasing;
 use regex::Regex;
 use serde::de::Error as SerdeError;
-use serde_json::Error as JsonError;
-use serde_json::Map;
-use serde_json::Value as JsonValue;
+use serde_jsonc2::Error as JsonError;
+use serde_jsonc2::Map;
+use serde_jsonc2::Value as JsonValue;
 use serde_yaml_ng::Error as YamlError;
 use serde_yaml_ng::Mapping;
 use serde_yaml_ng::Value as YamlValue;

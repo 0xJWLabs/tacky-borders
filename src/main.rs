@@ -10,6 +10,7 @@ extern crate sp_log;
 use anyhow::Context;
 use anyhow::Result as AnyResult;
 
+use rustc_hash::FxHashMap;
 use sp_log::ColorChoice;
 use sp_log::CombinedLogger;
 use sp_log::Config;
@@ -18,11 +19,12 @@ use sp_log::LevelFilter;
 use sp_log::TermLogger;
 use sp_log::TerminalMode;
 use std::cell::Cell;
-use std::collections::HashMap;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::mem::transmute;
 use std::sync::LazyLock;
 use std::sync::Mutex;
-use utils::get_log;
+use utils::LogIfErr;
 use windows::Win32::UI::WindowsAndMessaging::WM_NCDESTROY;
 use windows_api::WindowsApi;
 
@@ -66,8 +68,8 @@ thread_local! {
     pub static EVENT_HOOK: Cell<HWINEVENTHOOK> = Cell::new(HWINEVENTHOOK::default());
 }
 
-pub static BORDERS: LazyLock<Mutex<HashMap<isize, isize>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+pub static BORDERS: LazyLock<Mutex<FxHashMap<isize, isize>>> =
+    LazyLock::new(|| Mutex::new(FxHashMap::default()));
 
 pub static INITIAL_WINDOWS: LazyLock<Mutex<Vec<isize>>> = LazyLock::new(|| Mutex::new(Vec::new()));
 
@@ -95,8 +97,8 @@ fn main() {
     }
 
     EVENT_HOOK.replace(set_event_hook());
-    log_if_err!(register_window_class());
-    log_if_err!(WindowsApi::enum_windows());
+    register_window_class().log_if_err();
+    WindowsApi::enum_windows().log_if_err();
 
     debug!("entering message loop!");
     let mut message = MSG::default();
@@ -110,14 +112,16 @@ fn main() {
 }
 
 fn create_logger() -> AnyResult<()> {
-    // Attempt to get the log file path
-    let log_file = match get_log() {
-        Ok(path) => path,
-        Err(e) => {
-            error!("Failed to get log file path: {}", e);
-            return Err(e); // Return the error if it occurred
-        }
-    };
+    let log_dir = border_config::Config::get_config_dir()?;
+    let log_path = log_dir.join("tacky.log");
+
+    OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .create(true)
+        .open(&log_path)?
+        .write_all(b"")?;
+
     CombinedLogger::init(vec![
         TermLogger::new(
             LevelFilter::Warn,
@@ -134,7 +138,7 @@ fn create_logger() -> AnyResult<()> {
         FileLogger::new(
             LevelFilter::Info,
             Config::default(),
-            log_file.as_str(),
+            log_path.to_str().with_context(|| "log file not found")?,
             Some(1024 * 1024 * 10),
         ),
     ])?;
@@ -183,10 +187,9 @@ pub fn reload_borders() {
     let mut borders = BORDERS.lock().unwrap();
     for value in borders.values() {
         let border_window = HWND(*value as _);
-        log_if_err!(
-            WindowsApi::post_message_w(border_window, WM_NCDESTROY, WPARAM(0), LPARAM(0))
-                .context("reload_borders")
-        );
+        WindowsApi::post_message_w(border_window, WM_NCDESTROY, WPARAM(0), LPARAM(0))
+            .context("reload_borders")
+            .log_if_err();
     }
 
     // Clear the borders hashmap
@@ -195,7 +198,7 @@ pub fn reload_borders() {
 
     INITIAL_WINDOWS.lock().unwrap().clear();
 
-    log_if_err!(WindowsApi::enum_windows());
+    WindowsApi::enum_windows().log_if_err();
 }
 
 unsafe extern "system" fn enum_windows_callback(_hwnd: HWND, _lparam: LPARAM) -> BOOL {

@@ -1,44 +1,51 @@
-use crate::border_config;
 use anyhow::Context;
-use anyhow::Error;
 use anyhow::Result as AnyResult;
 use std::ffi::OsString;
-use std::fs::exists;
-use std::fs::write;
+use std::io::Result as IoResult;
 use std::os::windows::ffi::OsStringExt;
 use std::path::PathBuf;
+use windows::core::Result as WinResult;
 use windows::Win32::Foundation::HANDLE;
 use windows::Win32::System::Com::CoTaskMemFree;
 use windows::Win32::UI::Shell::FOLDERID_Profile;
 use windows::Win32::UI::Shell::SHGetKnownFolderPath;
 use windows::Win32::UI::Shell::KNOWN_FOLDER_FLAG;
 
-#[macro_export]
-macro_rules! log_if_err {
-    ($err:expr) => {
-        if let Err(e) = $err {
-            // TODO for some reason if I use {:#} or {:?}, some errors will repeatedly print (like
-            // the one in main.rs for tray_icon_result). It could have something to do with how they
-            // implement .source()
-            error!("{e:#}");
-        }
-    };
+pub trait LogIfErr {
+    fn log_if_err(&self);
 }
 
-// Log File
-pub fn get_log() -> AnyResult<String, Error> {
-    let log_dir = border_config::Config::get_config_dir()?;
-    let log_path = log_dir.join("tacky.log");
-
-    if !exists(&log_path).context("Could not find log file")? {
-        write(&log_path, "").context("could not generate log file")?;
+impl<T> LogIfErr for AnyResult<T>
+where
+    T: std::fmt::Debug, // Ensuring T implements Debug so we can log it
+{
+    fn log_if_err(&self) {
+        if let Err(e) = self {
+            error!("{e:#}"); // Log error using Debug formatting
+        }
     }
+}
 
-    let _ = write(&log_path, "");
+impl<T> LogIfErr for WinResult<T>
+where
+    T: std::fmt::Debug, // Ensuring T implements Debug so we can log it
+{
+    fn log_if_err(&self) {
+        if let Err(e) = self {
+            error!("{e:#}"); // Log error using Debug formatting
+        }
+    }
+}
 
-    let log = log_path.to_str().unwrap().to_string();
-
-    Ok(log)
+impl<T> LogIfErr for IoResult<T>
+where
+    T: std::fmt::Debug,
+{
+    fn log_if_err(&self) {
+        if let Err(e) = self {
+            error!("{e:#}");
+        }
+    }
 }
 
 pub fn home_dir() -> AnyResult<PathBuf> {

@@ -602,9 +602,9 @@ dependencies = [
 
 [[package]]
 name = "itoa"
-version = "1.0.11"
+version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49f1f14873335454500d59611f1cf4a4b0f786f9ac11f4312a78e4cf2566695b"
+checksum = "d75a2a4b1b190afb6f5425f10f6a8f959d2ea0b9c2b1d79553551850539e4674"
 
 [[package]]
 name = "keyboard-types"
@@ -1128,18 +1128,18 @@ checksum = "61697e0a1c7e512e84a621326239844a24d8207b4669b41bc18b32ea5cbf988b"
 
 [[package]]
 name = "serde"
-version = "1.0.215"
+version = "1.0.216"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6513c1ad0b11a9376da888e3e0baa0077f1aed55c17f50e7b2397136129fb88f"
+checksum = "0b9781016e935a97e8beecf0c933758c97a5520d32930e460142b4cd80c6338e"
 dependencies = [
  "serde_derive",
 ]
 
 [[package]]
 name = "serde_derive"
-version = "1.0.215"
+version = "1.0.216"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad1e866f866923f252f05c889987993144fb74e722403468a4ebd70c3cd756c0"
+checksum = "46f859dbbf73865c6627ed570e78961cd3ac92407a2d117204c49232485da55e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1147,10 +1147,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_json"
-version = "1.0.133"
+name = "serde_jsonc2"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7fceb2473b9166b2294ef05efcb65a3db80803f0b03ef86a5fc88a2b85ee377"
+checksum = "639939f32661b6b7761cac04cc5a2bfddbb74c307cd3efcafc6dfe366626f8cc"
 dependencies = [
  "itoa",
  "memchr",
@@ -1271,7 +1271,7 @@ dependencies = [
  "regex",
  "rustc-hash",
  "serde",
- "serde_json",
+ "serde_jsonc2",
  "serde_yaml_ng",
  "simple-bezier-easing",
  "sp_log",
@@ -1484,9 +1484,9 @@ checksum = "9c8d87e72b64a3b4db28d11ce29237c246188f4f51057d65a7eab63b7987e423"
 
 [[package]]
 name = "win-color"
-version = "0.0.2"
+version = "0.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0de5f5c17581d2e6c92c58f1589c7543d04e6ae5ac2c4f0bb1b1d3170f0e5a3f"
+checksum = "65bb35e9caf94975ce2408c00a30b771ab046285b2f62776cbbc97da4cae8bf1"
 dependencies = [
  "phf",
  "phf_macros",

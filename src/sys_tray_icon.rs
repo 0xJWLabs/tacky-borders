@@ -1,8 +1,11 @@
 use crate::border_config::Config;
+use crate::border_config::ConfigType;
+use crate::border_config::CONFIG_TYPE;
 use crate::keybinding::CreateHotkeyHook;
 use crate::keybinding::RegisterHotkeyHook;
 use crate::keybinding::UnbindHotkeyHook;
 use crate::reload_borders;
+use crate::utils::LogIfErr;
 use crate::EVENT_HOOK;
 use anyhow::Context;
 use anyhow::Error;
@@ -34,9 +37,20 @@ fn reload_config() {
 
 fn open_config() {
     match Config::get_config_dir() {
-        Ok(dir) => {
-            let config_path = dir.join("config.yaml");
-            let _ = open::that(config_path);
+        Ok(mut dir) => {
+            let config_file = match *CONFIG_TYPE.read().unwrap() {
+                ConfigType::Json => "config.json",
+                ConfigType::Yaml => "config.yaml",
+                ConfigType::Jsonc => "config.jsonc",
+                _ => {
+                    error!("Unsupported config file");
+                    return;
+                }
+            };
+
+            dir.push(config_file);
+
+            open::that(dir).log_if_err();
         }
         Err(err) => error!("{err}"),
     }

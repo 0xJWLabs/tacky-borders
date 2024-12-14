@@ -3,7 +3,6 @@ use crate::animations::timer::AnimationTimer;
 use crate::animations::Animations;
 use crate::animations::ANIM_FADE;
 use crate::utils::LogIfErr;
-use crate::windows_api::ErrorMsg;
 use crate::windows_api::WindowsApi;
 use crate::windows_api::WM_APP_FOREGROUND;
 use crate::windows_api::WM_APP_HIDECLOAKED;
@@ -76,7 +75,6 @@ use windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA;
 use windows::Win32::UI::WindowsAndMessaging::GW_HWNDPREV;
 use windows::Win32::UI::WindowsAndMessaging::HWND_TOP;
 use windows::Win32::UI::WindowsAndMessaging::LWA_ALPHA;
-use windows::Win32::UI::WindowsAndMessaging::LWA_COLORKEY;
 use windows::Win32::UI::WindowsAndMessaging::MSG;
 use windows::Win32::UI::WindowsAndMessaging::SET_WINDOW_POS_FLAGS;
 use windows::Win32::UI::WindowsAndMessaging::SM_CXVIRTUALSCREEN;
@@ -182,22 +180,16 @@ impl WindowBorder {
                 };
             }
 
-            let _ = DwmEnableBlurBehindWindow(self.border_window, &bh);
-            let _ = WindowsApi::set_layered_window_attributes::<fn()>(
-                self.border_window,
-                COLORREF(0x00000000),
-                0,
-                LWA_COLORKEY,
-                None,
-            );
+            DwmEnableBlurBehindWindow(self.border_window, &bh)
+                .context("could not make window transparent")?;
 
-            let _ = WindowsApi::set_layered_window_attributes::<fn()>(
+            WindowsApi::set_layered_window_attributes(
                 self.border_window,
                 COLORREF(0x00000000),
                 255,
                 LWA_ALPHA,
-                None,
-            );
+            )
+            .context("could not set LWA_ALPHA")?;
 
             self.create_render_targets()
                 .context("could not create render target in init()")?;
@@ -289,15 +281,19 @@ impl WindowBorder {
     }
 
     fn update_window_rect(&mut self) -> AnyResult<()> {
-        let _ = WindowsApi::dwm_get_window_attribute::<RECT, _>(
+        if let Err(e) = WindowsApi::dwm_get_window_attribute::<RECT>(
             self.tracking_window,
             DWMWA_EXTENDED_FRAME_BOUNDS,
-            ptr::addr_of_mut!(self.window_rect) as _,
-            Some(ErrorMsg::Fn(|| {
-                self.destroy_anim_timer();
-                self.exit_border_thread();
-            })),
-        );
+            &mut self.window_rect,
+        )
+        .context(format!(
+            "could not get window rect for {:?}",
+            self.tracking_window
+        )) {
+            self.exit_border_thread();
+
+            return Err(e);
+        }
 
         self.window_rect.top -= self.border_width;
         self.window_rect.left -= self.border_width;

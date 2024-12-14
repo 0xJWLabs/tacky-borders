@@ -11,12 +11,11 @@ use std::fs::write;
 use std::fs::DirBuilder;
 use std::path::PathBuf;
 use std::sync::LazyLock;
-use std::sync::Mutex;
 use std::sync::RwLock;
 use win_color::GlobalColor;
 
-pub static CONFIG: LazyLock<Mutex<Config>> = LazyLock::new(|| {
-    Mutex::new(match Config::new() {
+pub static CONFIG: LazyLock<RwLock<Config>> = LazyLock::new(|| {
+    RwLock::new(match Config::new() {
         Ok(config) => config,
         Err(err) => {
             error!("Error: {}", err);
@@ -118,7 +117,9 @@ impl Config {
 
         let config_file = {
             // Lock the CONFIG_TYPE for setting its value
-            let mut config_type_lock = CONFIG_TYPE.write().unwrap(); // Write lock for deciding the config type
+            let mut config_type_lock = CONFIG_TYPE
+                .write()
+                .map_err(|e| anyhow!("failed to acquire write lock for CONFIG_TYPE: {}", e))?;
 
             // Decide which file to use based on existence
             if exists(yaml_path.clone())? {
@@ -140,13 +141,13 @@ impl Config {
 
         // Read the contents of the chosen config file
         let contents = read_to_string(&config_file)
-            .with_context(|| format!("Failed to read config file: {}", config_file.display()))?;
+            .with_context(|| format!("failed to read config file: {}", config_file.display()))?;
 
         // Deserialize the config file based on the configuration type
         let config: Config = {
             let config_type_lock = CONFIG_TYPE
                 .read()
-                .map_err(|e| anyhow!("Failed to acquire read lock for CONFIG_TYPE: {}", e))?;
+                .map_err(|e| anyhow!("failed to acquire read lock for CONFIG_TYPE: {}", e))?;
 
             match *config_type_lock {
                 ConfigType::Json | ConfigType::Jsonc => serde_jsonc2::from_str(&contents)
@@ -192,10 +193,20 @@ impl Config {
 
     pub fn reload() {
         match Self::new() {
-            Ok(config) => *CONFIG.lock().unwrap() = config,
+            Ok(config) => {
+                if let Ok(mut write_guard) = CONFIG.write() {
+                    *write_guard = config;
+                } else {
+                    error!("Failed to acquire write lock while reloading config");
+                }
+            }
             Err(err) => {
                 error!("Error reloading config: {}", err);
-                *CONFIG.lock().unwrap() = Config::default();
+                if let Ok(mut write_guard) = CONFIG.write() {
+                    *write_guard = Config::default();
+                } else {
+                    error!("Failed to acquire write lock while setting default config");
+                }
             }
         }
     }

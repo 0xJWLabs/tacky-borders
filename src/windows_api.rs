@@ -1,9 +1,5 @@
 use anyhow::Context;
-use core::fmt;
 use regex::Regex;
-use std::any::type_name;
-use std::ffi::c_void;
-use std::ptr;
 use std::thread;
 use win_color::Color;
 use win_color::ColorImpl;
@@ -96,32 +92,6 @@ pub struct SendHWND(pub HWND);
 unsafe impl Send for SendHWND {}
 unsafe impl Sync for SendHWND {}
 
-pub enum ErrorMsg<F>
-where
-    F: FnOnce(),
-{
-    Fn(F),
-    String(String),
-}
-
-impl<F> fmt::Debug for ErrorMsg<F>
-where
-    F: FnOnce(),
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ErrorMsg::Fn(_) => {
-                // Display the type name of the function
-                write!(f, "ErrorMsg::Fn({})", type_name::<F>())
-            }
-            ErrorMsg::String(ref s) => {
-                // Display the string
-                write!(f, "ErrorMsg::String({:?})", s)
-            }
-        }
-    }
-}
-
 pub struct WindowsApi;
 
 impl WindowsApi {
@@ -183,84 +153,43 @@ impl WindowsApi {
             && rect1.bottom - rect1.top == rect2.bottom - rect2.top
     }
 
-    pub fn set_layered_window_attributes<E>(
+    pub fn set_layered_window_attributes(
         hwnd: HWND,
         crkey: COLORREF,
         alpha: u8,
         flags: LAYERED_WINDOW_ATTRIBUTES_FLAGS,
-        err: Option<ErrorMsg<E>>,
-    ) -> WinResult<()>
-    where
-        E: FnOnce(),
-    {
-        let result = unsafe { SetLayeredWindowAttributes(hwnd, crkey, alpha, flags) };
-        if result.is_err() {
-            match err {
-                Some(ErrorMsg::Fn(f)) => f(), // Call the function if it's a `Fn` variant
-                Some(ErrorMsg::String(msg)) => println!("Error: {}", msg), // Print the message if it's a `String` variant,
-                None => println!("Error: Setting window layered attributes"),
-            };
-        }
-
-        Ok(())
+    ) -> WinResult<()> {
+        unsafe { SetLayeredWindowAttributes(hwnd, crkey, alpha, flags) }
     }
 
-    pub fn _dwm_set_window_attribute<T, E>(
+    pub fn _dwm_set_window_attribute<T>(
         hwnd: HWND,
         attribute: DWMWINDOWATTRIBUTE,
         value: &T,
-        err: Option<ErrorMsg<E>>,
-    ) -> WinResult<()>
-    where
-        E: FnOnce(),
-    {
-        let result = unsafe {
+    ) -> WinResult<()> {
+        unsafe {
             DwmSetWindowAttribute(
                 hwnd,
                 attribute,
                 (value as *const T).cast(),
                 u32::try_from(std::mem::size_of::<T>())?,
             )
-        };
-
-        if result.is_err() {
-            match err {
-                Some(ErrorMsg::Fn(f)) => f(), // Call the function if it's a `Fn` variant
-                Some(ErrorMsg::String(msg)) => println!("Error: {}", msg), // Print the message if it's a `String` variant,
-                None => println!("Error: Setting window attribute"),
-            };
         }
-
-        Ok(())
     }
 
-    pub fn dwm_get_window_attribute<T, E>(
+    pub fn dwm_get_window_attribute<T>(
         hwnd: HWND,
         attribute: DWMWINDOWATTRIBUTE,
-        value: *mut c_void,
-        err: Option<ErrorMsg<E>>,
-    ) -> WinResult<()>
-    where
-        E: FnOnce(),
-    {
-        let result = unsafe {
+        value: &mut T,
+    ) -> WinResult<()> {
+        unsafe {
             DwmGetWindowAttribute(
                 hwnd,
                 attribute,
-                value as _,
+                value as *mut _ as _, // Direct cast
                 u32::try_from(std::mem::size_of::<T>())?,
             )
-        };
-
-        if result.is_err() {
-            match err {
-                Some(ErrorMsg::Fn(f)) => f(), // Call the function if it's a `Fn` variant
-                Some(ErrorMsg::String(ref msg)) => error!("Error: {msg}"), // Print the message if it's a `String` variant,
-                None => error!("Error: Getting window attribute"),
-            };
         }
-
-        Ok(())
     }
 
     pub fn enum_windows() -> WinResult<Vec<HWND>> {
@@ -279,14 +208,10 @@ impl WindowsApi {
 
     pub fn is_window_cloaked(hwnd: HWND) -> bool {
         let mut is_cloaked = FALSE;
-        let _ = Self::dwm_get_window_attribute::<BOOL, fn()>(
-            hwnd,
-            DWMWA_CLOAKED,
-            ptr::addr_of_mut!(is_cloaked) as _,
-            Some(ErrorMsg::String(
-                "could not check if window is cloaked".to_string(),
-            )),
-        );
+        if let Err(e) = Self::dwm_get_window_attribute(hwnd, DWMWA_CLOAKED, &mut is_cloaked) {
+            error!("could not check if window is cloaked: {e}");
+            return true;
+        }
 
         is_cloaked.as_bool()
     }
@@ -396,24 +321,47 @@ impl WindowsApi {
         let process = Self::get_process_name(hwnd);
 
         // Lock the config mutex
-        let config_mutex = &*CONFIG;
-        let config = config_mutex.lock().unwrap();
+        let config = match CONFIG.read() {
+            Ok(config) => config,
+            Err(err) => {
+                error!("failed to acquire read lock on CONFIG: {err}");
+                return WindowRule::default();
+            }
+        };
 
         for rule in config.window_rules.iter() {
-            if let Some(name) = match rule.rule_match.match_kind {
-                Some(MatchKind::Title) => Some(&title),
-                Some(MatchKind::Process) => Some(&process),
-                Some(MatchKind::Class) => Some(&class),
-                _ => None,
-            } {
-                if let Some(contains_str) = &rule.rule_match.match_value {
-                    if match_rule(name, contains_str, &rule.rule_match.match_strategy) {
-                        return rule.clone();
-                    }
+            let window_name = match rule.rule_match.match_kind {
+                Some(MatchKind::Title) => &title,
+                Some(MatchKind::Process) => &process,
+                Some(MatchKind::Class) => &class,
+                None => {
+                    error!("expected 'kind' for window rule but none found!");
+                    continue;
                 }
+            };
+
+            let Some(match_value) = &rule.rule_match.match_value else {
+                error!("expected `value` for window rule but non found!");
+                continue;
+            };
+
+            let has_match = match rule.rule_match.match_strategy {
+                Some(MatchStrategy::Equals) | None => {
+                    window_name.to_lowercase().eq(&match_value.to_lowercase())
+                }
+                Some(MatchStrategy::Contains) => window_name
+                    .to_lowercase()
+                    .contains(&match_value.to_lowercase()),
+                Some(MatchStrategy::Regex) => Regex::new(match_value)
+                    .unwrap()
+                    .captures(window_name)
+                    .is_some(),
+            };
+
+            if has_match {
+                return rule.clone();
             }
         }
-
         drop(config);
 
         WindowRule::default()
@@ -519,7 +467,7 @@ impl WindowsApi {
 
 // Helpers
 fn create_border_struct(tracking_window: HWND, window_rule: &WindowRule) -> WindowBorder {
-    let config = CONFIG.lock().unwrap();
+    let config = CONFIG.read().unwrap();
 
     let config_width = window_rule
         .rule_match
@@ -590,50 +538,45 @@ fn create_border_struct(tracking_window: HWND, window_rule: &WindowRule) -> Wind
     }
 }
 
-fn match_rule(name: &str, pattern: &str, strategy: &Option<MatchStrategy>) -> bool {
-    match strategy {
-        Some(MatchStrategy::Contains) => name.to_lowercase().contains(&pattern.to_lowercase()),
-        Some(MatchStrategy::Equals) => name.to_lowercase().eq(&pattern.to_lowercase()),
-        Some(MatchStrategy::Regex) => Regex::new(pattern)
-            .map(|re| re.is_match(name))
-            .unwrap_or(false),
-        None => false,
-    }
-}
-
 fn convert_config_radius(
-    config_width: i32,
+    border_width: i32,
     config_radius: BorderRadius,
     tracking_window: HWND,
     dpi: f32,
 ) -> f32 {
-    let mut corner_preference = DWM_WINDOW_CORNER_PREFERENCE::default();
-    let base_radius = (config_width as f32) / 2.0;
+    let base_radius = (border_width as f32) / 2.0;
     let scale_factor = dpi / 96.0;
 
-    let _ = WindowsApi::dwm_get_window_attribute::<DWM_WINDOW_CORNER_PREFERENCE, fn()>(
-        tracking_window,
-        DWMWA_WINDOW_CORNER_PREFERENCE,
-        ptr::addr_of_mut!(corner_preference) as _,
-        Some(ErrorMsg::String(
-            "Getting window corner preference".to_string(),
-        )),
-    );
-
-    let calculate_radius = |corner_pref| match corner_pref {
-        DWMWCP_DEFAULT | DWMWCP_ROUND => 8.0 * scale_factor + base_radius,
-        DWMWCP_ROUNDSMALL => 4.0 * scale_factor + base_radius,
-        DWMWCP_DONOTROUND => 0.0,
-        _ => base_radius, // fallback default
-    };
-
     match config_radius {
-        BorderRadius::Custom(-1.0) | BorderRadius::Auto => calculate_radius(corner_preference),
+        BorderRadius::Custom(-1.0) | BorderRadius::Auto => {
+            let corner_preference = get_window_corner_preference(tracking_window);
+
+            match corner_preference {
+                DWMWCP_DEFAULT | DWMWCP_ROUND => 8.0 * scale_factor + base_radius,
+                DWMWCP_ROUNDSMALL => 4.0 * scale_factor + base_radius,
+                DWMWCP_DONOTROUND => 0.0,
+                _ => base_radius, // fallback default
+            }
+        }
         BorderRadius::Round => 8.0 * scale_factor + base_radius,
         BorderRadius::SmallRound => 4.0 * scale_factor + base_radius,
         BorderRadius::Square => 0.0,
         BorderRadius::Custom(radius) => radius * scale_factor,
     }
+}
+
+fn get_window_corner_preference(tracking_window: HWND) -> DWM_WINDOW_CORNER_PREFERENCE {
+    let mut corner_preference = DWM_WINDOW_CORNER_PREFERENCE::default();
+
+    WindowsApi::dwm_get_window_attribute::<DWM_WINDOW_CORNER_PREFERENCE>(
+        tracking_window,
+        DWMWA_WINDOW_CORNER_PREFERENCE,
+        &mut corner_preference,
+    )
+    .context("could not retrieve window corner preference")
+    .log_if_err();
+
+    corner_preference
 }
 
 fn convert_config_colors(

@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
@@ -21,8 +20,7 @@ pub enum TimerState {
 /// A timer that can be started, paused, resumed, and stopped.
 #[derive(Debug)]
 pub struct AnimationTimer {
-    running: Arc<AtomicBool>,
-    state: Arc<AtomicU8>,
+    state: Arc<(Mutex<TimerState>, Condvar)>,
 }
 
 impl AnimationTimer {
@@ -37,27 +35,28 @@ impl AnimationTimer {
     ///
     /// Returns an `AnimationTimer` instance that can be used to control the timer.
     pub fn start(hwnd: HWND, interval_ms: u64) -> Self {
-        let running = Arc::new(AtomicBool::new(true));
-        let state = Arc::new(AtomicU8::new(TimerState::Running as u8)); // 0 = Running, 1 = Paused, 2 = Stopped
-        let running_clone = running.clone();
+        let state = Arc::new((Mutex::new(TimerState::Running), Condvar::new()));
         let state_clone = state.clone();
-
-        // Wrap HWND in a struct that implements Send and Sync to move it into the thread
         let window = SendHWND(hwnd);
 
         thread::spawn(move || {
             let window_sent = window;
-            let interval = Duration::from_millis(interval_ms);
-            let mut next_tick = Instant::now() + interval;
+            let mut next_tick = Instant::now() + Duration::from_millis(interval_ms);
+            loop {
+                let (lock, cvar) = &*state_clone;
+                let mut state = lock.lock().unwrap();
 
-            while running_clone.load(Ordering::SeqCst) {
-                let now = Instant::now();
-
-                if state_clone.load(Ordering::SeqCst) == TimerState::Paused as u8 {
-                    thread::sleep(Duration::from_millis(interval_ms)); // Sleep to prevent busy-waiting
-                    continue;
+                // Wait until the timer is not paused
+                while *state == TimerState::Paused {
+                    state = cvar.wait(state).unwrap(); // Blocks until signaled
                 }
 
+                if *state == TimerState::Stopped {
+                    break;
+                }
+
+                // Send the timer message and schedule next tick
+                let now = Instant::now();
                 if now >= next_tick {
                     if let Err(e) = WindowsApi::post_message_w(
                         window_sent.0,
@@ -65,56 +64,43 @@ impl AnimationTimer {
                         WPARAM(0),
                         LPARAM(0),
                     ) {
-                        error!("could not send animation timer message: {e}");
+                        eprintln!("Could not send animation timer message: {e}");
                         break;
                     }
-                    next_tick += interval; // Schedule the next tick
+
+                    // Schedule next tick
+                    next_tick += Duration::from_millis(interval_ms);
                 }
-                // Sleep for the remaining time until the next tick
+
+                // Sleep until the next tick
                 thread::sleep(next_tick.saturating_duration_since(Instant::now()));
             }
-            // Timer stopped
-            state_clone.store(TimerState::Stopped as u8, Ordering::SeqCst);
         });
 
-        // Return the timer instance
-        Self { running, state }
+        AnimationTimer { state }
     }
 
     /// Stops the timer, ensuring it no longer sends messages.
     pub fn stop(&mut self) {
-        self.running.store(false, Ordering::SeqCst);
-        self.state
-            .store(TimerState::Stopped as u8, Ordering::SeqCst);
+        let (lock, cvar) = &*self.state;
+        let mut state = lock.lock().unwrap();
+        *state = TimerState::Stopped;
+        cvar.notify_all(); // Wake up the thread to stop
     }
 
     /// Pauses the timer, preventing it from sending messages.
     pub fn pause(&mut self) {
-        self.state.store(TimerState::Paused as u8, Ordering::SeqCst);
+        let (lock, cvar) = &*self.state;
+        let mut state = lock.lock().unwrap();
+        *state = TimerState::Paused;
+        cvar.notify_all(); // Wake up the thread to pause
     }
 
     /// Resumes the timer, allowing it to send messages again.
     pub fn resume(&mut self) {
-        self.state
-            .store(TimerState::Running as u8, Ordering::SeqCst);
-    }
-
-    /// Retrieves the current state of the timer.
-    ///
-    /// # Returns
-    ///
-    /// Returns the current `TimerState`.
-    pub fn get_state(&self) -> TimerState {
-        let state_value = self.state.load(Ordering::SeqCst);
-        match state_value {
-            0 => TimerState::Running,
-            1 => TimerState::Paused,
-            2 => TimerState::Stopped,
-            _ => {
-                // Gracefully handle invalid state instead of panicking
-                eprintln!("Invalid timer state value: {state_value}");
-                TimerState::Stopped // Default fallback state
-            }
-        }
+        let (lock, cvar) = &*self.state;
+        let mut state = lock.lock().unwrap();
+        *state = TimerState::Running;
+        cvar.notify_all(); // Wake up the thread to resume
     }
 }

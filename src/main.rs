@@ -7,6 +7,7 @@
 extern crate log;
 extern crate sp_log;
 
+use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result as AnyResult;
 
@@ -19,10 +20,6 @@ use sp_log::LevelFilter;
 use sp_log::TermLogger;
 use sp_log::TerminalMode;
 use std::cell::Cell;
-use std::fs::exists;
-use std::fs::remove_file;
-use std::fs::OpenOptions;
-use std::io::Write;
 use std::mem::transmute;
 use std::sync::LazyLock;
 use std::sync::Mutex;
@@ -116,18 +113,10 @@ fn main() {
 fn create_logger() -> AnyResult<()> {
     let log_dir = border_config::Config::get_config_dir()?;
     let log_path = log_dir.join("tacky.log");
-    let backup_path = log_dir.join("tacky.log.backup");
 
-    if exists(backup_path.clone())? {
-        remove_file(backup_path.clone())?
-    }
-
-    OpenOptions::new()
-        .write(true)
-        .truncate(true)
-        .create(true)
-        .open(&log_path)?
-        .write_all(b"")?;
+    let Some(log_path) = log_path.to_str() else {
+        return Err(anyhow!("could not convert log_path to str"));
+    };
 
     CombinedLogger::init(vec![
         TermLogger::new(
@@ -145,7 +134,7 @@ fn create_logger() -> AnyResult<()> {
         FileLogger::new(
             LevelFilter::Info,
             Config::default(),
-            log_path.to_str().with_context(|| "log file not found")?,
+            log_path,
             Some(1024 * 1024 * 10),
         ),
     ])?;

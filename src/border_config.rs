@@ -37,19 +37,15 @@ pub enum ConfigType {
     None,
 }
 
-#[derive(Debug, Deserialize, PartialEq, Clone)]
-pub enum BorderRadiusOption {
+#[derive(Debug, Deserialize, PartialEq, Clone, Default)]
+pub enum BorderRadius {
     Round,
     Square,
     SmallRound,
+    #[default]
     Auto,
-}
-
-#[derive(Debug, Deserialize, PartialEq, Clone)]
-#[serde(untagged)]
-pub enum BorderRadius {
-    String(BorderRadiusOption),
-    Float(f32),
+    #[serde(untagged)]
+    Custom(f32),
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
@@ -64,12 +60,6 @@ pub enum MatchStrategy {
     Equals,
     Regex,
     Contains,
-}
-
-impl Default for BorderRadius {
-    fn default() -> Self {
-        Self::Float(0.0)
-    }
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]

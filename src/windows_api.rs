@@ -72,7 +72,6 @@ use windows::Win32::UI::WindowsAndMessaging::WS_MAXIMIZE;
 
 use crate::__ImageBase;
 use crate::border_config::BorderRadius;
-use crate::border_config::BorderRadiusOption;
 use crate::border_config::MatchKind;
 use crate::border_config::MatchStrategy;
 use crate::border_config::WindowRule;
@@ -629,21 +628,11 @@ fn convert_config_radius(
     };
 
     match config_radius {
-        // Handle Float radius directly, or fallback to corner preference if radius is -1.0
-        BorderRadius::Float(radius) => {
-            if radius == -1.0 {
-                calculate_radius(corner_preference)
-            } else {
-                radius * scale_factor
-            }
-        }
-        // Handle String radius options
-        BorderRadius::String(radius) => match radius {
-            BorderRadiusOption::Auto => calculate_radius(corner_preference),
-            BorderRadiusOption::Round => 8.0 * scale_factor + base_radius,
-            BorderRadiusOption::SmallRound => 4.0 * scale_factor + base_radius,
-            BorderRadiusOption::Square => 0.0,
-        },
+        BorderRadius::Custom(-1.0) | BorderRadius::Auto => calculate_radius(corner_preference),
+        BorderRadius::Round => 8.0 * scale_factor + base_radius,
+        BorderRadius::SmallRound => 4.0 * scale_factor + base_radius,
+        BorderRadius::Square => 0.0,
+        BorderRadius::Custom(radius) => radius * scale_factor,
     }
 }
 

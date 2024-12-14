@@ -1,6 +1,6 @@
 use crate::utils::LogIfErr;
 use crate::windows_api::WindowsApi;
-use crate::windows_api::WM_APP_FOCUS;
+use crate::windows_api::WM_APP_FOREGROUND;
 use crate::windows_api::WM_APP_LOCATIONCHANGE;
 use crate::windows_api::WM_APP_MINIMIZEEND;
 use crate::windows_api::WM_APP_MINIMIZESTART;
@@ -11,18 +11,16 @@ use windows::Win32::Foundation::HWND;
 use windows::Win32::Foundation::LPARAM;
 use windows::Win32::Foundation::WPARAM;
 use windows::Win32::UI::Accessibility::HWINEVENTHOOK;
-use windows::Win32::UI::WindowsAndMessaging::GetAncestor;
 use windows::Win32::UI::WindowsAndMessaging::EVENT_OBJECT_CLOAKED;
 use windows::Win32::UI::WindowsAndMessaging::EVENT_OBJECT_DESTROY;
-use windows::Win32::UI::WindowsAndMessaging::EVENT_OBJECT_FOCUS;
 use windows::Win32::UI::WindowsAndMessaging::EVENT_OBJECT_HIDE;
 use windows::Win32::UI::WindowsAndMessaging::EVENT_OBJECT_LOCATIONCHANGE;
 use windows::Win32::UI::WindowsAndMessaging::EVENT_OBJECT_REORDER;
 use windows::Win32::UI::WindowsAndMessaging::EVENT_OBJECT_SHOW;
 use windows::Win32::UI::WindowsAndMessaging::EVENT_OBJECT_UNCLOAKED;
+use windows::Win32::UI::WindowsAndMessaging::EVENT_SYSTEM_FOREGROUND;
 use windows::Win32::UI::WindowsAndMessaging::EVENT_SYSTEM_MINIMIZEEND;
 use windows::Win32::UI::WindowsAndMessaging::EVENT_SYSTEM_MINIMIZESTART;
-use windows::Win32::UI::WindowsAndMessaging::GA_ROOT;
 use windows::Win32::UI::WindowsAndMessaging::OBJID_CLIENT;
 use windows::Win32::UI::WindowsAndMessaging::OBJID_CURSOR;
 use windows::Win32::UI::WindowsAndMessaging::OBJID_WINDOW;
@@ -74,20 +72,20 @@ pub extern "system" fn handle_win_event(
             }
             drop(borders);
         }
-        EVENT_OBJECT_FOCUS => {
-            // TODO not sure if I should use GA_ROOT or GA_ROOTOWNER
-            let parent = unsafe { GetAncestor(_hwnd, GA_ROOT) };
-
-            if WindowsApi::has_filtered_style(parent) {
-                return;
-            }
-
+        EVENT_SYSTEM_FOREGROUND => {
             for (key, val) in BORDERS.lock().unwrap().iter() {
                 let border_window: HWND = HWND(*val as _);
-                if WindowsApi::is_window_visible(border_window) || key == &(parent.0 as isize) {
-                    WindowsApi::post_message_w(border_window, WM_APP_FOCUS, WPARAM(0), LPARAM(0))
-                        .context("EVENT_OBJECT_FOCUS")
-                        .log_if_err();
+                // Some apps like Flow Launcher can become focused even if they aren't visible yet,
+                // so I also need to check if 'key' is equal to '_hwnd' (the foreground window)
+                if WindowsApi::is_window_visible(border_window) || key == &(_hwnd.0 as isize) {
+                    WindowsApi::post_message_w(
+                        border_window,
+                        WM_APP_FOREGROUND,
+                        WPARAM(0),
+                        LPARAM(0),
+                    )
+                    .context("EVENT_OBJECT_FOCUS")
+                    .log_if_err();
                 }
             }
         }

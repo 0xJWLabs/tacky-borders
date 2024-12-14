@@ -5,7 +5,7 @@ use crate::animations::ANIM_FADE;
 use crate::utils::LogIfErr;
 use crate::windows_api::ErrorMsg;
 use crate::windows_api::WindowsApi;
-use crate::windows_api::WM_APP_FOCUS;
+use crate::windows_api::WM_APP_FOREGROUND;
 use crate::windows_api::WM_APP_HIDECLOAKED;
 use crate::windows_api::WM_APP_LOCATIONCHANGE;
 use crate::windows_api::WM_APP_MINIMIZEEND;
@@ -17,15 +17,13 @@ use crate::BORDERS;
 use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result as AnyResult;
-use win_color::GradientImpl;
-use windows::Win32::Graphics::Direct2D::D2D1_PRESENT_OPTIONS_RETAIN_CONTENTS;
-use windows::Win32::UI::WindowsAndMessaging::SWP_SHOWWINDOW;
 use std::ptr;
 use std::sync::LazyLock;
 use std::thread;
 use std::time;
 use win_color::Color;
 use win_color::ColorImpl;
+use win_color::GradientImpl;
 use windows::core::w;
 use windows::core::Result as WinResult;
 use windows::core::PCWSTR;
@@ -53,6 +51,7 @@ use windows::Win32::Graphics::Direct2D::D2D1_BRUSH_PROPERTIES;
 use windows::Win32::Graphics::Direct2D::D2D1_FACTORY_TYPE_MULTI_THREADED;
 use windows::Win32::Graphics::Direct2D::D2D1_HWND_RENDER_TARGET_PROPERTIES;
 use windows::Win32::Graphics::Direct2D::D2D1_PRESENT_OPTIONS_IMMEDIATELY;
+use windows::Win32::Graphics::Direct2D::D2D1_PRESENT_OPTIONS_RETAIN_CONTENTS;
 use windows::Win32::Graphics::Direct2D::D2D1_RENDER_TARGET_PROPERTIES;
 use windows::Win32::Graphics::Direct2D::D2D1_RENDER_TARGET_TYPE_DEFAULT;
 use windows::Win32::Graphics::Direct2D::D2D1_ROUNDED_RECT;
@@ -86,6 +85,7 @@ use windows::Win32::UI::WindowsAndMessaging::SWP_NOACTIVATE;
 use windows::Win32::UI::WindowsAndMessaging::SWP_NOREDRAW;
 use windows::Win32::UI::WindowsAndMessaging::SWP_NOSENDCHANGING;
 use windows::Win32::UI::WindowsAndMessaging::SWP_NOZORDER;
+use windows::Win32::UI::WindowsAndMessaging::SWP_SHOWWINDOW;
 use windows::Win32::UI::WindowsAndMessaging::WM_CREATE;
 use windows::Win32::UI::WindowsAndMessaging::WM_NCDESTROY;
 use windows::Win32::UI::WindowsAndMessaging::WM_PAINT;
@@ -558,7 +558,7 @@ impl WindowBorder {
                 // remedy that, we just re-update the position/z-order when windows are reordered.
                 self.update_position(None).log_if_err();
             }
-            WM_APP_FOCUS => {
+            WM_APP_FOREGROUND => {
                 self.is_window_active = WindowsApi::is_window_active(self.tracking_window);
 
                 self.animations.current = match self.is_window_active {

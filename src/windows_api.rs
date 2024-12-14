@@ -320,14 +320,7 @@ impl WindowsApi {
         let class = Self::get_window_class(hwnd);
         let process = Self::get_process_name(hwnd);
 
-        // Lock the config mutex
-        let config = match CONFIG.read() {
-            Ok(config) => config,
-            Err(err) => {
-                error!("failed to acquire read lock on CONFIG: {err}");
-                return WindowRule::default();
-            }
-        };
+        let config = CONFIG.read().unwrap();
 
         for rule in config.window_rules.iter() {
             let window_name = match rule.rule_match.match_kind {

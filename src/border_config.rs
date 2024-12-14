@@ -17,8 +17,8 @@ use win_color::GlobalColor;
 pub static CONFIG: LazyLock<RwLock<Config>> = LazyLock::new(|| {
     RwLock::new(match Config::new() {
         Ok(config) => config,
-        Err(err) => {
-            error!("Error: {}", err);
+        Err(e) => {
+            error!("could not read config.yaml: {e:#}");
             Config::default()
         }
     })
@@ -192,21 +192,21 @@ impl Config {
     }
 
     pub fn reload() {
-        match Self::new() {
-            Ok(config) => {
-                if let Ok(mut write_guard) = CONFIG.write() {
-                    *write_guard = config;
-                } else {
-                    error!("Failed to acquire write lock while reloading config");
-                }
+        let new_config = match Self::new() {
+            Ok(config) => config,
+            Err(e) => {
+                error!("could not reload config: {e}");
+                Config::default() // Consider whether this default state is acceptable
             }
-            Err(err) => {
-                error!("Error reloading config: {}", err);
-                if let Ok(mut write_guard) = CONFIG.write() {
-                    *write_guard = Config::default();
-                } else {
-                    error!("Failed to acquire write lock while setting default config");
-                }
+        };
+
+        match CONFIG.write() {
+            Ok(mut config_lock) => {
+                *config_lock = new_config;
+            }
+            Err(e) => {
+                error!("RwLock poisoned: {e:#}");
+                // Optionally, handle the failure here
             }
         }
     }

@@ -28,7 +28,9 @@ use win_color::Color;
 use win_color::ColorImpl;
 use win_color::GradientImpl;
 use windows::core::w;
+use windows::core::CloneType;
 use windows::core::Result as WinResult;
+use windows::core::TypeKind;
 use windows::core::PCWSTR;
 use windows::Foundation::Numerics::Matrix3x2;
 use windows::Win32::Foundation::COLORREF;
@@ -111,7 +113,19 @@ static RENDER_FACTORY: LazyLock<ID2D1Factory8> = unsafe {
     })
 };
 
-#[derive(Debug, Default)]
+impl TypeKind for WindowBorder {
+    type TypeKind = CloneType;
+}
+
+impl Eq for WindowBorder {}
+
+impl PartialEq for WindowBorder {
+    fn eq(&self, other: &Self) -> bool {
+        self.tracking_window.0 as usize == other.tracking_window.0 as usize
+    }
+}
+
+#[derive(Debug, Default, Clone)]
 pub struct WindowBorder {
     pub border_window: HWND,
     pub tracking_window: HWND,
@@ -209,7 +223,13 @@ impl WindowBorder {
                 self.render().log_if_err();
             }
 
-            SetAnimationTimer(self).log_if_err();
+            SetAnimationTimer(
+                self,
+                Some(|border: &WindowBorder| {
+                    !border.animations.active.is_empty() || !border.animations.inactive.is_empty()
+                }),
+            )
+            .log_if_err();
 
             let mut message = MSG::default();
             while WindowsApi::get_message_w(&mut message, HWND::default(), 0, 0).into() {
@@ -574,7 +594,14 @@ impl WindowBorder {
                     self.render().log_if_err();
                 }
 
-                SetAnimationTimer(self).log_if_err();
+                SetAnimationTimer(
+                    self,
+                    Some(|border: &WindowBorder| {
+                        !border.animations.active.is_empty()
+                            || !border.animations.inactive.is_empty()
+                    }),
+                )
+                .log_if_err();
 
                 self.pause = false;
             }
@@ -609,7 +636,15 @@ impl WindowBorder {
                     self.render().log_if_err();
                 }
 
-                SetAnimationTimer(self).log_if_err();
+                SetAnimationTimer(
+                    self,
+                    Some(|border: &WindowBorder| {
+                        !border.animations.active.is_empty()
+                            || !border.animations.inactive.is_empty()
+                    }),
+                )
+                .log_if_err();
+
                 self.pause = false;
             }
             WM_APP_TIMER => {

@@ -1,5 +1,6 @@
 use super::ANIM_NONE;
 use crate::window_border::WindowBorder;
+use crate::windows_api::WindowsApi;
 use core::fmt;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -37,7 +38,12 @@ impl fmt::Debug for AnimationParameters {
 }
 
 impl AnimationParameters {
-    pub fn play(&self, animation_type: &AnimationType, border: &mut WindowBorder, anim_elapsed: &Duration) {
+    pub fn play(
+        &self,
+        animation_type: &AnimationType,
+        border: &mut WindowBorder,
+        anim_elapsed: &Duration,
+    ) {
         match animation_type {
             AnimationType::Spiral | AnimationType::ReverseSpiral => {
                 let reverse = *animation_type == AnimationType::ReverseSpiral;
@@ -71,8 +77,8 @@ fn animate_spiral(
     let y_coord = match anim_params.easing_fn.as_ref()(border.animations.spiral_progress) {
         Ok(val) => val,
         Err(err) => {
-            error!("{err}");
-            border.event_anim = ANIM_NONE;
+            error!("could not create bezier easing function: {err}");
+            border.animations.event = ANIM_NONE;
             return;
         }
     };
@@ -80,20 +86,29 @@ fn animate_spiral(
     border.animations.spiral_angle = 360.0 * y_coord;
 
     // Calculate the center point of the window
-    let center_x = (border.window_rect.right - border.window_rect.left) / 2;
-    let center_y = (border.window_rect.bottom - border.window_rect.top) / 2;
+    let center_x = WindowsApi::get_rect_width(border.window_rect) / 2;
+    let center_y = WindowsApi::get_rect_height(border.window_rect) / 2;
 
-    border.brush_properties.transform = Matrix3x2::rotation(
+    let transform = Matrix3x2::rotation(
         border.animations.spiral_angle,
         center_x as f32,
         center_y as f32,
     );
+
+    border.active_color.set_transform(&transform);
+    border.inactive_color.set_transform(&transform);
 }
 
-fn animate_fade(border: &mut WindowBorder, anim_elapsed: &Duration, anim_params: &AnimationParameters) {
+fn animate_fade(
+    border: &mut WindowBorder,
+    anim_elapsed: &Duration,
+    anim_params: &AnimationParameters,
+) {
     // If both are 0, that means the window has been opened for the first time or has been
     // unminimized. If that is the case, only one of the colors should be visible while fading.
-    if border.active_color.get_opacity() == Some(0.0) && border.inactive_color.get_opacity() == Some(0.0) {
+    if border.active_color.get_opacity() == Some(0.0)
+        && border.inactive_color.get_opacity() == Some(0.0)
+    {
         // Set fade_progress here so we start from 0 opacity for the visible color
         border.animations.fade_progress = match border.is_window_active {
             true => 0.0,
@@ -120,7 +135,7 @@ fn animate_fade(border: &mut WindowBorder, anim_elapsed: &Duration, anim_params:
 
         border.animations.fade_progress = final_opacity;
         border.animations.fade_to_visible = false;
-        border.event_anim = ANIM_NONE;
+        border.animations.event = ANIM_NONE;
         return;
     }
 
@@ -128,7 +143,8 @@ fn animate_fade(border: &mut WindowBorder, anim_elapsed: &Duration, anim_params:
         Ok(val) => val,
         Err(err) => {
             error!("could not create bezier easing function: {err}");
-            border.event_anim = ANIM_NONE;
+            border.animations.event = ANIM_NONE;
+
             return;
         }
     };

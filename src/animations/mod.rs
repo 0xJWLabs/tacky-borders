@@ -11,9 +11,10 @@ use serde::de::Error;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde_jsonc2::Value as JsonValue;
-use serde_yaml_ng::Value as YamlValue;
+use serde_yml::Value as YamlValue;
 use simple_bezier_easing::bezier;
 use std::sync::Arc;
+use timer::AnimationTimer;
 
 pub mod animation;
 mod easing;
@@ -29,8 +30,6 @@ pub struct Animations {
     pub active: FxHashMap<AnimationType, AnimationParameters>,
     #[serde(deserialize_with = "animation", default)]
     pub inactive: FxHashMap<AnimationType, AnimationParameters>,
-    #[serde(skip)]
-    pub current: FxHashMap<AnimationType, AnimationParameters>,
     #[serde(default = "default_fps")]
     pub fps: i32,
     #[serde(skip)]
@@ -41,6 +40,10 @@ pub struct Animations {
     pub spiral_progress: f32,
     #[serde(skip)]
     pub spiral_angle: f32,
+    #[serde(skip)]
+    pub event: i32,
+    #[serde(skip)]
+    pub timer: Option<AnimationTimer>,
 }
 
 fn default_fps() -> i32 {

@@ -5,9 +5,9 @@ use serde::de::Error as SerdeError;
 use serde_jsonc2::Error as JsonError;
 use serde_jsonc2::Map;
 use serde_jsonc2::Value as JsonValue;
-use serde_yaml_ng::Error as YamlError;
-use serde_yaml_ng::Mapping;
-use serde_yaml_ng::Value as YamlValue;
+use serde_yml::Error as YamlError;
+use serde_yml::Mapping;
+use serde_yml::Value as YamlValue;
 use std::error::Error as StdError;
 use std::fmt;
 use std::str::FromStr;
@@ -168,7 +168,7 @@ impl IdentifiableAnimationValue for JsonValue {
 }
 
 impl IdentifiableAnimationValue for YamlValue {
-    const TYPE_NAME: &'static str = "serde_yaml_ng::Value";
+    const TYPE_NAME: &'static str = "serde_yml::Value";
 
     fn parse(
         &self,

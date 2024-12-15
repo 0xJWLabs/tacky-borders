@@ -152,7 +152,7 @@ impl Config {
             match *config_type_lock {
                 ConfigType::Json | ConfigType::Jsonc => serde_jsonc2::from_str(&contents)
                     .with_context(|| "Failed to deserialize config.json")?,
-                ConfigType::Yaml => serde_yaml_ng::from_str(&contents)
+                ConfigType::Yaml => serde_yml::from_str(&contents)
                     .with_context(|| "Failed to deserialize config.yaml")?,
                 _ => return Err(anyhow!("Unsupported config file format")),
             }

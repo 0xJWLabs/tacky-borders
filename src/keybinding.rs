@@ -25,5 +25,8 @@ pub fn RegisterHotkeyHook(
 
 #[allow(non_snake_case)]
 pub fn UnbindHotkeyHook(hotkey_hook: &GlobalHotkeyManager<()>) {
-    hotkey_hook.stop();
+    let stopped = hotkey_hook.stop();
+    if stopped {
+        debug!("unbind hotkey");
+    }
 }

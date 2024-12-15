@@ -1,19 +1,28 @@
 use anyhow::Context;
 use regex::Regex;
+use std::ffi::c_void;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::thread;
 use win_color::Color;
 use win_color::ColorImpl;
 use win_color::GlobalColor;
 use windows::core::Param;
+use windows::core::PCWSTR;
 use windows::Win32::Foundation::LRESULT;
 use windows::Win32::UI::HiDpi::SetProcessDpiAwarenessContext;
 use windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT;
 use windows::Win32::UI::Input::Ime::ImmDisableIME;
+use windows::Win32::UI::WindowsAndMessaging::CreateWindowExW;
 use windows::Win32::UI::WindowsAndMessaging::DispatchMessageW;
 use windows::Win32::UI::WindowsAndMessaging::GetMessageW;
+use windows::Win32::UI::WindowsAndMessaging::PostQuitMessage;
 use windows::Win32::UI::WindowsAndMessaging::SendNotifyMessageW;
 use windows::Win32::UI::WindowsAndMessaging::TranslateMessage;
+use windows::Win32::UI::WindowsAndMessaging::HMENU;
 use windows::Win32::UI::WindowsAndMessaging::MSG;
+use windows::Win32::UI::WindowsAndMessaging::WINDOW_EX_STYLE;
+use windows::Win32::UI::WindowsAndMessaging::WINDOW_STYLE;
 use windows::Win32::UI::WindowsAndMessaging::WM_NCDESTROY;
 
 use windows::core::Result as WinResult;
@@ -87,10 +96,18 @@ pub const WM_APP_MINIMIZESTART: u32 = WM_APP + 5;
 pub const WM_APP_MINIMIZEEND: u32 = WM_APP + 6;
 pub const WM_APP_TIMER: u32 = WM_APP + 7;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SendHWND(pub HWND);
 unsafe impl Send for SendHWND {}
 unsafe impl Sync for SendHWND {}
+
+impl Hash for SendHWND {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        // Convert the HWND to a pointer and hash that pointer as a usize
+        let hwnd_ptr = self.0 .0 as usize; // Convert HWND to pointer (usize)
+        hwnd_ptr.hash(state); // Hash the pointer value
+    }
+}
 
 pub struct WindowsApi;
 
@@ -136,6 +153,10 @@ impl WindowsApi {
         unsafe { DispatchMessageW(lpmsg) }
     }
 
+    pub fn post_quit_message(nexitcode: i32) {
+        unsafe { PostQuitMessage(nexitcode) }
+    }
+
     pub fn get_rect_width(rect: RECT) -> i32 {
         rect.right - rect.left
     }
@@ -151,6 +172,46 @@ impl WindowsApi {
     pub fn are_rects_same_size(rect1: &RECT, rect2: &RECT) -> bool {
         rect1.right - rect1.left == rect2.right - rect2.left
             && rect1.bottom - rect1.top == rect2.bottom - rect2.top
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_window_ex_w<P0, P1, P2, P3, P4>(
+        dwexstyle: WINDOW_EX_STYLE,
+        lpclassname: P0,
+        lpwindowname: P1,
+        dwstyle: WINDOW_STYLE,
+        x: i32,
+        y: i32,
+        nwidth: i32,
+        nheight: i32,
+        hwndparent: P2,
+        hmenu: P3,
+        hinstance: P4,
+        lpparam: Option<*const c_void>,
+    ) -> WinResult<HWND>
+    where
+        P0: Param<PCWSTR>,
+        P1: Param<PCWSTR>,
+        P2: Param<HWND>,
+        P3: Param<HMENU>,
+        P4: Param<HINSTANCE>,
+    {
+        unsafe {
+            CreateWindowExW(
+                dwexstyle,
+                lpclassname,
+                lpwindowname,
+                dwstyle,
+                x,
+                y,
+                nwidth,
+                nheight,
+                hwndparent,
+                hmenu,
+                hinstance,
+                lpparam,
+            )
+        }
     }
 
     pub fn set_layered_window_attributes(
@@ -542,9 +603,7 @@ fn convert_config_radius(
 
     match config_radius {
         BorderRadius::Custom(-1.0) | BorderRadius::Auto => {
-            let corner_preference = get_window_corner_preference(tracking_window);
-
-            match corner_preference {
+            match get_window_corner_preference(tracking_window) {
                 DWMWCP_DEFAULT | DWMWCP_ROUND => 8.0 * scale_factor + base_radius,
                 DWMWCP_ROUNDSMALL => 4.0 * scale_factor + base_radius,
                 DWMWCP_DONOTROUND => 0.0,

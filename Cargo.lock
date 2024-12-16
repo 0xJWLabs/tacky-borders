@@ -1480,9 +1480,9 @@ dependencies = [
 
 [[package]]
 name = "win-hotkey"
-version = "0.1.6"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d65d400c1fcac7b18759fe90abd8a387dae03ec21111205bdc73c4b78f1793f"
+checksum = "bb1f0a59bc1c33b1f8dd3aac28068b2ff39625921627f431d4e9c5ec30767fe9"
 dependencies = [
  "rustc-hash",
  "windows-sys 0.59.0",

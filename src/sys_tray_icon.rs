@@ -11,9 +11,7 @@ use anyhow::Context;
 use anyhow::Error;
 use anyhow::Result as AnyResult;
 use rustc_hash::FxHashMap;
-use std::sync::Arc;
-use std::sync::LazyLock;
-use std::sync::Mutex;
+use std::cell::RefCell;
 use tray_icon::menu::Menu;
 use tray_icon::menu::MenuEvent;
 use tray_icon::menu::MenuItem;
@@ -26,8 +24,9 @@ use win_hotkey::global::GlobalHotkeyManager;
 use windows::Win32::System::Threading::ExitProcess;
 use windows::Win32::UI::Accessibility::UnhookWinEvent;
 
-static HOTKEY_HOOK: LazyLock<Arc<Mutex<GlobalHotkeyManager<()>>>> =
-    LazyLock::new(|| Arc::new(Mutex::new(CreateHotkeyHook())));
+thread_local! {
+    static HOTKEY_HOOK: RefCell<GlobalHotkeyManager<()>> = RefCell::new(CreateHotkeyHook())
+}
 
 fn reload_config() {
     debug!("reloading border...");
@@ -53,6 +52,23 @@ fn open_config() {
             open::that(dir).log_if_err();
         }
         Err(err) => error!("{err}"),
+    }
+}
+
+fn exit_app() {
+    HOTKEY_HOOK.with(|hook| {
+        let hook = hook.borrow();
+        UnbindHotkeyHook(&hook);
+    });
+
+    unsafe {
+        if UnhookWinEvent(EVENT_HOOK.get()).as_bool() {
+            debug!("exiting tacky-borders!");
+            ExitProcess(0);
+        } else {
+            error!("could not unhook win event hook");
+            ExitProcess(0);
+        }
     }
 }
 
@@ -86,15 +102,7 @@ pub fn create_tray_icon() -> AnyResult<TrayIcon> {
     MenuEvent::set_event_handler(Some(move |event: MenuEvent| match event.id.0.as_str() {
         "0" => open_config(),
         "1" => reload_config(),
-        "2" => unsafe {
-            if UnhookWinEvent(EVENT_HOOK.get()).as_bool() {
-                debug!("exiting tacky-borders!");
-                UnbindHotkeyHook(&HOTKEY_HOOK.lock().unwrap());
-                ExitProcess(0);
-            } else {
-                error!("could not unhook win event hook");
-            }
-        },
+        "2" => exit_app(),
         _ => {}
     }));
 
@@ -119,5 +127,7 @@ pub fn bind_tray_hotkeys() {
     create_binding("reload", "f8", reload_config);
     create_binding("open_config", "f9", open_config);
 
-    RegisterHotkeyHook(&HOTKEY_HOOK.lock().unwrap(), Some(bindings));
+    HOTKEY_HOOK.with(|hook| {
+        RegisterHotkeyHook(&hook.borrow(), Some(bindings));
+    })
 }

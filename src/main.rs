@@ -94,6 +94,7 @@ fn main() {
     }
 
     EVENT_HOOK.replace(set_event_hook());
+
     register_window_class().log_if_err();
     WindowsApi::enum_windows().log_if_err();
 

@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [profile.dev]
-debug = true
+opt-level = 0
+lto = "off"
 
 [dependencies]
 serde = "1.0.216"

@@ -1,3 +1,5 @@
+extern crate windows;
+
 use anyhow::Context;
 use anyhow::Result as AnyResult;
 use std::ffi::OsString;

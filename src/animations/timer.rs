@@ -1,19 +1,17 @@
 #![allow(dead_code)]
 
-use anyhow::{anyhow, Result as AnyResult};
-use rustc_hash::FxHashMap;
-use std::collections::hash_map::Entry;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, LazyLock, RwLock};
-use std::thread;
-use std::time::{Duration, Instant};
-use windows::core::Param;
-use windows::Win32::Foundation::{LPARAM, WPARAM};
-
 use crate::utils::LogIfErr;
 use crate::window_border::WindowBorder;
 use crate::windows_api::WM_APP_TIMER;
 use crate::windows_api::{SendHWND, WindowsApi};
+use anyhow::{anyhow, Result as AnyResult};
+use rustc_hash::FxHashMap;
+use std::collections::hash_map::Entry;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock, Mutex, RwLock};
+use std::thread::{sleep, spawn, JoinHandle};
+use std::time::{Duration, Instant};
+use windows::Win32::Foundation::{LPARAM, WPARAM};
 
 /// Global animation timer manager.
 /// Manages and coordinates timers for animated window borders.
@@ -46,13 +44,7 @@ impl GlobalAnimationTimer {
     /// # Returns
     /// * `Ok(())` if the timer was added successfully.
     /// * `Err` if a timer for the window already exists.
-    pub fn add_timer<P0>(&self, border: P0, timer: AnimationTimer) -> AnyResult<()>
-    where
-        P0: Param<WindowBorder>,
-    {
-        let border_abi = unsafe { border.param().abi() };
-        let border = unsafe { border_abi.assume_init_ref() };
-
+    pub fn add_timer(&self, border: &WindowBorder, timer: AnimationTimer) -> AnyResult<()> {
         let mut timers = self.timers.write().unwrap(); // Lock for writing
         if let Entry::Vacant(e) = timers.entry(border.border_window.0 as usize) {
             e.insert(timer.clone());
@@ -70,12 +62,7 @@ impl GlobalAnimationTimer {
     /// # Returns
     /// * `Ok(())` if the timer was removed successfully.
     /// * `Err` if no timer was found for the specified window.
-    pub fn remove_timer<P0>(&self, border: P0) -> AnyResult<()>
-    where
-        P0: Param<WindowBorder>,
-    {
-        let border_abi = unsafe { border.param().abi() };
-        let border = unsafe { border_abi.assume_init_ref() };
+    pub fn remove_timer(&self, border: &WindowBorder) -> AnyResult<()> {
         let border_u = border.border_window.0 as usize;
         let mut timers = self.timers.write().unwrap(); // Lock for writing
 
@@ -84,6 +71,13 @@ impl GlobalAnimationTimer {
             if timer.0.load(Ordering::SeqCst) {
                 timer.0.store(false, Ordering::SeqCst);
             }
+
+            if let Some(handle) = timer.1.lock().unwrap().take() {
+                handle
+                    .join()
+                    .map_err(|e| anyhow!("failed to join timer thread: {e:?}"))?;
+            }
+
             e.remove();
             Ok(())
         } else {
@@ -94,7 +88,7 @@ impl GlobalAnimationTimer {
 
 /// A timer that sends messages at a specified interval to animate window borders.
 #[derive(Debug, Clone)]
-pub struct AnimationTimer(Arc<AtomicBool>);
+pub struct AnimationTimer(Arc<AtomicBool>, Arc<Mutex<Option<JoinHandle<()>>>>);
 
 impl AnimationTimer {
     /// Starts a new animation timer for a window.
@@ -109,7 +103,7 @@ impl AnimationTimer {
         let running = Arc::new(AtomicBool::new(true));
         let running_clone = running.clone();
         let window_sent = SendHWND(border.border_window);
-        thread::spawn(move || {
+        let handle = spawn(move || {
             let window_sent = window_sent;
             let mut next_tick = Instant::now() + Duration::from_millis(interval_ms);
             while running_clone.load(Ordering::SeqCst) {
@@ -130,11 +124,12 @@ impl AnimationTimer {
                 }
 
                 // Sleep until the next tick
-                thread::sleep(next_tick.saturating_duration_since(Instant::now()));
+                sleep(next_tick.saturating_duration_since(Instant::now()));
             }
         });
 
-        let timer = Self(running);
+        let timer = Self(running, Arc::new(Mutex::new(Some(handle))));
+
         TIMER_MANAGER
             .write()
             .unwrap()
@@ -155,7 +150,7 @@ impl AnimationTimer {
         TIMER_MANAGER
             .write()
             .unwrap()
-            .remove_timer(&border.clone())
+            .remove_timer(border)
             .log_if_err();
         border.animations.timer = None;
         Ok(())

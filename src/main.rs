@@ -10,7 +10,6 @@ extern crate sp_log;
 use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result as AnyResult;
-
 use rustc_hash::FxHashMap;
 use sp_log::ColorChoice;
 use sp_log::CombinedLogger;
@@ -24,9 +23,6 @@ use std::mem::transmute;
 use std::sync::LazyLock;
 use std::sync::Mutex;
 use utils::LogIfErr;
-use windows::Win32::UI::WindowsAndMessaging::WM_NCDESTROY;
-use windows_api::WindowsApi;
-
 use windows::core::w;
 use windows::core::Result;
 use windows::Win32::Foundation::GetLastError;
@@ -48,7 +44,9 @@ use windows::Win32::UI::WindowsAndMessaging::IDC_ARROW;
 use windows::Win32::UI::WindowsAndMessaging::MSG;
 use windows::Win32::UI::WindowsAndMessaging::WINEVENT_OUTOFCONTEXT;
 use windows::Win32::UI::WindowsAndMessaging::WINEVENT_SKIPOWNPROCESS;
+use windows::Win32::UI::WindowsAndMessaging::WM_NCDESTROY;
 use windows::Win32::UI::WindowsAndMessaging::WNDCLASSEXW;
+use windows_api::WindowsApi;
 
 mod animations;
 mod border_config;
@@ -60,17 +58,17 @@ mod window_border;
 mod windows_api;
 
 extern "C" {
-    pub static __ImageBase: IMAGE_DOS_HEADER;
+    static __ImageBase: IMAGE_DOS_HEADER;
 }
 
 thread_local! {
-    pub static EVENT_HOOK: Cell<HWINEVENTHOOK> = Cell::new(HWINEVENTHOOK::default());
+    static EVENT_HOOK: Cell<HWINEVENTHOOK> = Cell::new(HWINEVENTHOOK::default());
 }
 
-pub static BORDERS: LazyLock<Mutex<FxHashMap<isize, isize>>> =
+static BORDERS: LazyLock<Mutex<FxHashMap<isize, isize>>> =
     LazyLock::new(|| Mutex::new(FxHashMap::default()));
 
-pub static INITIAL_WINDOWS: LazyLock<Mutex<Vec<isize>>> = LazyLock::new(|| Mutex::new(Vec::new()));
+static INITIAL_WINDOWS: LazyLock<Mutex<Vec<isize>>> = LazyLock::new(|| Mutex::new(Vec::new()));
 
 fn main() {
     if let Err(e) = create_logger() {
@@ -111,9 +109,7 @@ fn main() {
 }
 
 fn create_logger() -> AnyResult<()> {
-    let log_dir = border_config::Config::get_config_dir()?;
-    let log_path = log_dir.join("tacky.log");
-
+    let log_path = border_config::Config::get_config_dir()?.join("tacky-borders.log");
     let Some(log_path) = log_path.to_str() else {
         return Err(anyhow!("could not convert log_path to str"));
     };
@@ -135,14 +131,14 @@ fn create_logger() -> AnyResult<()> {
             LevelFilter::Info,
             Config::default(),
             log_path,
-            Some(1024 * 1024 * 10),
+            Some(1024 * 1024),
         ),
     ])?;
 
     Ok(())
 }
 
-pub fn register_window_class() -> Result<()> {
+fn register_window_class() -> Result<()> {
     unsafe {
         let hinstance: HINSTANCE = transmute(&__ImageBase);
 
@@ -165,7 +161,7 @@ pub fn register_window_class() -> Result<()> {
     Ok(())
 }
 
-pub fn set_event_hook() -> HWINEVENTHOOK {
+fn set_event_hook() -> HWINEVENTHOOK {
     unsafe {
         SetWinEventHook(
             EVENT_MIN,
@@ -179,7 +175,7 @@ pub fn set_event_hook() -> HWINEVENTHOOK {
     }
 }
 
-pub fn reload_borders() {
+fn reload_borders() {
     let mut borders = BORDERS.lock().unwrap();
     for value in borders.values() {
         let border_window = HWND(*value as _);

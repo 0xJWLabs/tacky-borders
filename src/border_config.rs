@@ -95,11 +95,30 @@ pub struct GlobalRule {
     pub unminimize_delay: Option<u64>,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct Keybindings {
+    #[serde(default)]
+    pub reload: String,
+    #[serde(default)]
+    pub open_config: String,
+}
+
+impl Default for Keybindings {
+    fn default() -> Self {
+        Self {
+            reload: "f8".to_string(),
+            open_config: "f9".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Clone, Default)]
 pub struct Config {
     #[serde(rename = "global")]
     pub global_rule: GlobalRule,
     pub window_rules: Vec<WindowRule>,
+    #[serde(default)]
+    pub keybindings: Keybindings,
 }
 
 pub trait ConfigImpl {

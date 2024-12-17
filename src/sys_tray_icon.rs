@@ -1,6 +1,7 @@
 use crate::border_config::Config;
 use crate::border_config::ConfigImpl;
 use crate::border_config::ConfigType;
+use crate::border_config::CONFIG;
 use crate::border_config::CONFIG_TYPE;
 use crate::error::LogIfErr;
 use crate::keybinding::CreateHotkeyHook;
@@ -113,6 +114,9 @@ pub fn create_tray_icon() -> AnyResult<TrayIcon> {
 }
 
 fn bind_tray_hotkeys() {
+    let config_lock = CONFIG.read().unwrap();
+    let keybinds = config_lock.keybindings.clone();
+    println!("{:?}", keybinds);
     let mut bindings: FxHashMap<String, GlobalHotkey<()>> = FxHashMap::default();
 
     let mut create_binding = |name: &str, hotkey: &str, action: fn()| match hotkey.try_into()
@@ -125,8 +129,8 @@ fn bind_tray_hotkeys() {
         Err(err) => error!("Failed to create binding for '{name}': {err:?}"),
     };
 
-    create_binding("reload", "f8", reload_config);
-    create_binding("open_config", "f9", open_config);
+    create_binding("reload", keybinds.reload.as_str(), reload_config);
+    create_binding("open_config", keybinds.open_config.as_str(), open_config);
 
     HOTKEY_HOOK.with(|hook| {
         RegisterHotkeyHook(&hook.borrow(), Some(bindings));

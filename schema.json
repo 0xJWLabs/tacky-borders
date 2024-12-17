@@ -3,6 +3,20 @@
   "title": "TackyConfig",
   "type": "object",
   "properties": {
+    "keybindings": {
+      "description": "Defines the keybindings for interacting with the 'tacky-borders' application. These keybindings control important actions",
+      "type": "object",
+      "properties": {
+        "reload": {
+          "description": "The keybinding used to reload the border. Pressing this key will refresh the border settings or appearance. (default: f8)",
+          "type": "string"
+        },
+        "open_config": {
+          "description": "The keybinding used to open the configuration in editor. Pressing this key will open config for 'tacky-borders'. (default: f9)",
+          "type": "string"
+        }
+      }
+    },
     "global": {
       "description": "Global rule for customizing border settings.",
       "type": "object",

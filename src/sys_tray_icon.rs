@@ -1,4 +1,5 @@
 use crate::border_config::Config;
+use crate::border_config::ConfigImpl;
 use crate::border_config::ConfigType;
 use crate::border_config::CONFIG_TYPE;
 use crate::keybinding::CreateHotkeyHook;

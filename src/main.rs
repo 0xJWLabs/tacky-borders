@@ -10,6 +10,7 @@ extern crate sp_log;
 use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result as AnyResult;
+use border_config::ConfigImpl;
 use rustc_hash::FxHashMap;
 use sp_log::ColorChoice;
 use sp_log::CombinedLogger;

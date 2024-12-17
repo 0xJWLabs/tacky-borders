@@ -9,30 +9,26 @@ use std::fs::exists;
 use std::fs::read_to_string;
 use std::fs::write;
 use std::fs::DirBuilder;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 use std::sync::RwLock;
 use win_color::GlobalColor;
 
-pub static CONFIG: LazyLock<RwLock<Config>> = LazyLock::new(|| {
-    RwLock::new(match Config::new() {
-        Ok(config) => config,
-        Err(e) => {
-            error!("could not read config.yaml: {e:#}");
-            Config::default()
-        }
-    })
-});
+pub static CONFIG: LazyLock<RwLock<Config>> =
+    LazyLock::new(|| RwLock::new(Config::load_or_default()));
 
-pub static CONFIG_TYPE: RwLock<ConfigType> = RwLock::new(ConfigType::None);
+pub static CONFIG_TYPE: LazyLock<RwLock<ConfigType>> =
+    LazyLock::new(|| RwLock::new(ConfigType::default()));
 
 const DEFAULT_CONFIG: &str = include_str!("../resources/config.yaml");
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub enum ConfigType {
     Yaml,
     Json,
     Jsonc,
+    #[default]
     None,
 }
 
@@ -106,92 +102,85 @@ pub struct Config {
     pub window_rules: Vec<WindowRule>,
 }
 
+pub trait ConfigImpl {
+    fn reload();
+    fn get_config_dir() -> AnyResult<PathBuf>;
+}
+
 impl Config {
+    fn load_or_default() -> Self {
+        Self::new().unwrap_or_else(|e| {
+            error!("could not load config: {e}");
+            Self::default()
+        })
+    }
+
     fn new() -> AnyResult<Self> {
         let config_dir = Self::get_config_dir()?;
-        let config_path = config_dir.join("config");
 
-        let json_path = config_path.with_extension("json");
-        let jsonc_path = config_path.with_extension("jsonc");
-        let yaml_path = config_path.with_extension("yaml");
-
-        let config_file = {
-            // Lock the CONFIG_TYPE for setting its value
-            let mut config_type_lock = CONFIG_TYPE
-                .write()
-                .map_err(|e| anyhow!("failed to acquire write lock for CONFIG_TYPE: {}", e))?;
-
-            // Decide which file to use based on existence
-            if exists(yaml_path.clone())? {
-                *config_type_lock = ConfigType::Yaml;
-                yaml_path.clone()
-            } else if exists(json_path.clone())? {
-                *config_type_lock = ConfigType::Json;
-                json_path.clone()
-            } else if exists(jsonc_path.clone())? {
-                *config_type_lock = ConfigType::Jsonc;
-                jsonc_path.clone()
-            } else {
-                *config_type_lock = ConfigType::Yaml;
-                Self::create_default_config(&yaml_path.clone())?;
-                info!(r"generating default config in {}", yaml_path.display());
-                yaml_path.clone()
-            }
-        };
+        let config_file = Self::detect_config_file(&config_dir)?;
 
         // Read the contents of the chosen config file
         let contents = read_to_string(&config_file)
             .with_context(|| format!("failed to read config file: {}", config_file.display()))?;
 
-        // Deserialize the config file based on the configuration type
-        let config: Config = {
-            let config_type_lock = CONFIG_TYPE
-                .read()
-                .map_err(|e| anyhow!("failed to acquire read lock for CONFIG_TYPE: {}", e))?;
+        Self::deserialize(contents)
+    }
 
-            match *config_type_lock {
-                ConfigType::Json | ConfigType::Jsonc => serde_jsonc2::from_str(&contents)
-                    .with_context(|| "Failed to deserialize config.json")?,
-                ConfigType::Yaml => serde_yml::from_str(&contents)
-                    .with_context(|| "Failed to deserialize config.yaml")?,
-                _ => return Err(anyhow!("Unsupported config file format")),
+    fn deserialize(contents: String) -> AnyResult<Self> {
+        let config_type_lock = CONFIG_TYPE
+            .read()
+            .map_err(|e| anyhow!("failed to acquire read lock for CONFIG_TYPE: {}", e))?;
+
+        match *config_type_lock {
+            ConfigType::Yaml => {
+                serde_yml::from_str(&contents).with_context(|| "failed to deserialize YAML")
             }
-        };
-
-        Ok(config)
+            ConfigType::Json | ConfigType::Jsonc => {
+                serde_jsonc2::from_str(&contents).with_context(|| "failed to deserialize JSON")
+            }
+            _ => Err(anyhow!("unsupported configuration format")),
+        }
     }
 
-    fn create_default_config(path: &PathBuf) -> AnyResult<()> {
-        write(path, DEFAULT_CONFIG.as_bytes())
-            .with_context(|| format!("Failed to write default config to {}", path.display()))?;
-        Ok(())
-    }
+    fn detect_config_file(config_dir: &Path) -> AnyResult<PathBuf> {
+        let candidates = [
+            ("yaml", ConfigType::Yaml),
+            ("json", ConfigType::Json),
+            ("jsonc", ConfigType::Jsonc),
+        ];
 
-    pub fn get_config_dir() -> AnyResult<PathBuf> {
-        let home_dir = home_dir()?;
+        let mut config_type_lock = CONFIG_TYPE
+            .write()
+            .map_err(|e| anyhow!("failed to acquire write lock for CONFIG_TYPE: {}", e))?;
 
-        let config_dir = home_dir.join(".config").join("tacky-borders");
-        let fallback_dir = home_dir.join(".tacky-borders");
-
-        if exists(config_dir.clone())
-            .with_context(|| format!("Could not find {}", config_dir.display()))?
-        {
-            return Ok(config_dir);
-        } else if exists(fallback_dir.clone())
-            .with_context(|| format!("Could not find {}", fallback_dir.display()))?
-        {
-            return Ok(fallback_dir);
+        for (ext, config_type) in candidates {
+            let file_path = config_dir.join("config").with_extension(ext);
+            if exists(file_path.clone())? {
+                *config_type_lock = config_type;
+                return Ok(file_path);
+            }
         }
 
-        DirBuilder::new()
-            .recursive(true)
-            .create(&config_dir)
-            .map_err(|_| anyhow!("Could not create config directory"))?;
-
-        Ok(config_dir)
+        // Create default config if none exist
+        Self::create_default_config(config_dir)
     }
 
-    pub fn reload() {
+    fn create_default_config(config_dir: &Path) -> AnyResult<PathBuf> {
+        let path = config_dir.join("config.yaml");
+        write(path.clone(), DEFAULT_CONFIG.as_bytes())
+            .with_context(|| format!("failed to write default config to {}", path.display()))?;
+        let mut config_type_lock = CONFIG_TYPE
+            .write()
+            .map_err(|e| anyhow!("failed to acquire write lock for CONFIG_TYPE: {}", e))?;
+
+        *config_type_lock = ConfigType::Yaml;
+        Ok(path.clone())
+    }
+}
+
+impl ConfigImpl for Config {
+    fn reload() {
         let new_config = match Self::new() {
             Ok(config) => config,
             Err(e) => {
@@ -209,5 +198,29 @@ impl Config {
                 // Optionally, handle the failure here
             }
         }
+    }
+
+    fn get_config_dir() -> AnyResult<PathBuf> {
+        let home_dir = home_dir()?;
+
+        let config_dir = home_dir.join(".config").join("tacky-borders");
+        let fallback_dir = home_dir.join(".tacky-borders");
+
+        if exists(config_dir.clone())
+            .with_context(|| format!("could not find directory: {}", config_dir.display()))?
+        {
+            return Ok(config_dir);
+        } else if exists(fallback_dir.clone())
+            .with_context(|| format!("could not find directory: {}", fallback_dir.display()))?
+        {
+            return Ok(fallback_dir);
+        }
+
+        DirBuilder::new()
+            .recursive(true)
+            .create(&config_dir)
+            .map_err(|_| anyhow!("could not create config directory"))?;
+
+        Ok(config_dir)
     }
 }

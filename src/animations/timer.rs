@@ -94,7 +94,7 @@ impl GlobalAnimationTimer {
             }
             Ok(())
         } else {
-            Err(anyhow!("No timer found for HWND: {}", hwnd_u))
+            Err(anyhow!("no timer found for hwnd: {}", hwnd_u))
         }
     }
 }

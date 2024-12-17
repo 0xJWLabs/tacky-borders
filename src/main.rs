@@ -11,6 +11,7 @@ use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result as AnyResult;
 use border_config::ConfigImpl;
+use error::LogIfErr;
 use rustc_hash::FxHashMap;
 use sp_log::ColorChoice;
 use sp_log::CombinedLogger;
@@ -23,7 +24,6 @@ use std::cell::Cell;
 use std::mem::transmute;
 use std::sync::LazyLock;
 use std::sync::Mutex;
-use utils::LogIfErr;
 use windows::core::w;
 use windows::core::Result;
 use windows::Win32::Foundation::GetLastError;
@@ -51,10 +51,10 @@ use windows_api::WindowsApi;
 
 mod animations;
 mod border_config;
+mod error;
 mod event_hook;
 mod keybinding;
 mod sys_tray_icon;
-mod utils;
 mod window_border;
 mod windows_api;
 

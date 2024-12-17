@@ -2,11 +2,11 @@ use crate::border_config::Config;
 use crate::border_config::ConfigImpl;
 use crate::border_config::ConfigType;
 use crate::border_config::CONFIG_TYPE;
+use crate::error::LogIfErr;
 use crate::keybinding::CreateHotkeyHook;
 use crate::keybinding::RegisterHotkeyHook;
 use crate::keybinding::UnbindHotkeyHook;
 use crate::reload_borders;
-use crate::utils::LogIfErr;
 use crate::EVENT_HOOK;
 use anyhow::Context;
 use anyhow::Error;
@@ -112,7 +112,7 @@ pub fn create_tray_icon() -> AnyResult<TrayIcon> {
     tray_icon.map_err(Error::new)
 }
 
-pub fn bind_tray_hotkeys() {
+fn bind_tray_hotkeys() {
     let mut bindings: FxHashMap<String, GlobalHotkey<()>> = FxHashMap::default();
 
     let mut create_binding = |name: &str, hotkey: &str, action: fn()| match hotkey.try_into()

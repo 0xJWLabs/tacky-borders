@@ -4,8 +4,11 @@ use crate::animations::timer::KillAnimationTimer;
 use crate::animations::timer::SetAnimationTimer;
 use crate::animations::Animations;
 use crate::animations::ANIM_FADE;
-use crate::utils::LogIfErr;
+use crate::border_config::WindowRule;
+use crate::border_config::CONFIG;
+use crate::error::LogIfErr;
 use crate::windows_api::WindowsApi;
+use crate::windows_api::WindowsApiUtility;
 use crate::windows_api::WM_APP_FOREGROUND;
 use crate::windows_api::WM_APP_HIDECLOAKED;
 use crate::windows_api::WM_APP_LOCATIONCHANGE;
@@ -15,6 +18,7 @@ use crate::windows_api::WM_APP_REORDER;
 use crate::windows_api::WM_APP_SHOWUNCLOAKED;
 use crate::windows_api::WM_APP_TIMER;
 use crate::BORDERS;
+use crate::INITIAL_WINDOWS;
 use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result as AnyResult;
@@ -68,6 +72,7 @@ use windows::Win32::Graphics::Dwm::DWM_BLURBEHIND;
 use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_UNKNOWN;
 use windows::Win32::Graphics::Gdi::CreateRectRgn;
 use windows::Win32::Graphics::Gdi::ValidateRect;
+use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::WindowsAndMessaging::DefWindowProcW;
 use windows::Win32::UI::WindowsAndMessaging::GetSystemMetrics;
 use windows::Win32::UI::WindowsAndMessaging::GetWindow;
@@ -147,6 +152,84 @@ pub struct WindowBorder {
 }
 
 impl WindowBorder {
+    pub fn new(tracking_window: HWND, window_rule: &WindowRule) -> Self {
+        let config = CONFIG.read().unwrap();
+
+        let config_width = window_rule
+            .rule_match
+            .border_width
+            .unwrap_or(config.global_rule.border_width);
+        let border_offset = window_rule
+            .rule_match
+            .border_offset
+            .unwrap_or(config.global_rule.border_offset);
+        let config_radius = window_rule
+            .rule_match
+            .border_radius
+            .clone()
+            .unwrap_or(config.global_rule.border_radius.clone());
+
+        let config_active = window_rule
+            .rule_match
+            .active_color
+            .clone()
+            .unwrap_or(config.global_rule.active_color.clone());
+
+        let config_inactive = window_rule
+            .rule_match
+            .inactive_color
+            .clone()
+            .unwrap_or(config.global_rule.inactive_color.clone());
+
+        let (active_color, inactive_color) =
+            WindowsApiUtility::convert_config_colors(&config_active, &config_inactive);
+
+        let animations = window_rule
+            .rule_match
+            .animations
+            .clone()
+            .unwrap_or(config.global_rule.animations.clone().unwrap_or_default());
+
+        let dpi = unsafe { GetDpiForWindow(tracking_window) } as f32;
+        let border_width = (config_width * dpi / 96.0) as i32;
+        let border_radius = WindowsApiUtility::convert_config_radius(
+            border_width,
+            config_radius,
+            tracking_window,
+            dpi,
+        );
+
+        let initialize_delay = match INITIAL_WINDOWS
+            .lock()
+            .unwrap()
+            .contains(&(tracking_window.0 as isize))
+        {
+            true => 0,
+            false => window_rule
+                .rule_match
+                .initialize_delay
+                .unwrap_or(config.global_rule.initialize_delay.unwrap_or(250)),
+        };
+
+        let unminimize_delay = window_rule
+            .rule_match
+            .unminimize_delay
+            .unwrap_or(config.global_rule.unminimize_delay.unwrap_or(200));
+
+        Self {
+            tracking_window,
+            border_width,
+            border_offset,
+            border_radius,
+            active_color,
+            inactive_color,
+            animations,
+            unminimize_delay,
+            initialize_delay,
+            ..Default::default()
+        }
+    }
+
     pub fn create_border_window(&mut self, hinstance: HINSTANCE) -> WinResult<()> {
         let title: Vec<u16> = format!(
             "tacky-border | {} | {:?}\0",

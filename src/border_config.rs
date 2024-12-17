@@ -1,5 +1,5 @@
 use crate::animations::Animations;
-use crate::utils::home_dir;
+use crate::windows_api::WindowsApi;
 use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result as AnyResult;
@@ -201,7 +201,7 @@ impl ConfigImpl for Config {
     }
 
     fn get_config_dir() -> AnyResult<PathBuf> {
-        let home_dir = home_dir()?;
+        let home_dir = WindowsApi::home_dir()?;
 
         let config_dir = home_dir.join(".config").join("tacky-borders");
         let fallback_dir = home_dir.join(".tacky-borders");

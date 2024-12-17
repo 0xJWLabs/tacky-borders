@@ -1,3 +1,5 @@
+extern crate windows;
+
 use crate::__ImageBase;
 use crate::border_config::BorderRadius;
 use crate::border_config::MatchKind;
@@ -5,15 +7,18 @@ use crate::border_config::MatchStrategy;
 use crate::border_config::WindowRule;
 use crate::border_config::CONFIG;
 use crate::enum_windows_callback;
-use crate::utils::LogIfErr;
+use crate::error::LogIfErr;
 use crate::window_border::WindowBorder;
 use crate::BORDERS;
-use crate::INITIAL_WINDOWS;
 use anyhow::Context;
+use anyhow::Result as AnyResult;
 use regex::Regex;
 use std::ffi::c_void;
+use std::ffi::OsString;
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::os::windows::ffi::OsStringExt;
+use std::path::PathBuf;
 use std::thread;
 use win_color::Color;
 use win_color::ColorImpl;
@@ -26,6 +31,7 @@ use windows::Win32::Foundation::CloseHandle;
 use windows::Win32::Foundation::BOOL;
 use windows::Win32::Foundation::COLORREF;
 use windows::Win32::Foundation::FALSE;
+use windows::Win32::Foundation::HANDLE;
 use windows::Win32::Foundation::HINSTANCE;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Foundation::LPARAM;
@@ -42,14 +48,17 @@ use windows::Win32::Graphics::Dwm::DWMWCP_ROUND;
 use windows::Win32::Graphics::Dwm::DWMWCP_ROUNDSMALL;
 use windows::Win32::Graphics::Dwm::DWMWINDOWATTRIBUTE;
 use windows::Win32::Graphics::Dwm::DWM_WINDOW_CORNER_PREFERENCE;
+use windows::Win32::System::Com::CoTaskMemFree;
 use windows::Win32::System::Threading::OpenProcess;
 use windows::Win32::System::Threading::QueryFullProcessImageNameW;
 use windows::Win32::System::Threading::PROCESS_NAME_WIN32;
 use windows::Win32::System::Threading::PROCESS_QUERY_LIMITED_INFORMATION;
-use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::HiDpi::SetProcessDpiAwarenessContext;
 use windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT;
 use windows::Win32::UI::Input::Ime::ImmDisableIME;
+use windows::Win32::UI::Shell::FOLDERID_Profile;
+use windows::Win32::UI::Shell::SHGetKnownFolderPath;
+use windows::Win32::UI::Shell::KNOWN_FOLDER_FLAG;
 use windows::Win32::UI::WindowsAndMessaging::CreateWindowExW;
 use windows::Win32::UI::WindowsAndMessaging::DispatchMessageW;
 use windows::Win32::UI::WindowsAndMessaging::EnumWindows;
@@ -456,9 +465,9 @@ impl WindowsApi {
         true
     }
 
-    pub fn create_border_for_window(tracking_window: HWND) {
-        debug!("creating border for: {:?}", tracking_window);
-        let window = SendHWND(tracking_window);
+    pub fn create_border_for_window(hwnd: HWND) {
+        debug!("creating border for: {:?}", hwnd);
+        let window = SendHWND(hwnd);
 
         let _ = std::thread::spawn(move || {
             let window_sent = window;
@@ -470,7 +479,7 @@ impl WindowsApi {
                 return;
             }
 
-            let mut border = create_border_struct(window_sent.0, &window_rule);
+            let mut border = WindowBorder::new(window_sent.0, &window_rule);
 
             let mut borders_hashmap = BORDERS.lock().unwrap();
 
@@ -499,8 +508,8 @@ impl WindowsApi {
         });
     }
 
-    pub fn destroy_border_for_window(tracking_window: HWND) {
-        let window_isize = tracking_window.0 as isize;
+    pub fn destroy_border_for_window(hwnd: HWND) {
+        let window_isize = hwnd.0 as isize;
         let Some(&border_isize) = BORDERS.lock().unwrap().get(&window_isize) else {
             return;
         };
@@ -510,126 +519,81 @@ impl WindowsApi {
             .context("destroy_border_for_window")
             .log_if_err();
     }
-}
 
-// Helpers
-fn create_border_struct(tracking_window: HWND, window_rule: &WindowRule) -> WindowBorder {
-    let config = CONFIG.read().unwrap();
+    pub fn get_window_corner_preference(hwnd: HWND) -> DWM_WINDOW_CORNER_PREFERENCE {
+        let mut corner_preference = DWM_WINDOW_CORNER_PREFERENCE::default();
 
-    let config_width = window_rule
-        .rule_match
-        .border_width
-        .unwrap_or(config.global_rule.border_width);
-    let border_offset = window_rule
-        .rule_match
-        .border_offset
-        .unwrap_or(config.global_rule.border_offset);
-    let config_radius = window_rule
-        .rule_match
-        .border_radius
-        .clone()
-        .unwrap_or(config.global_rule.border_radius.clone());
+        Self::dwm_get_window_attribute::<DWM_WINDOW_CORNER_PREFERENCE>(
+            hwnd,
+            DWMWA_WINDOW_CORNER_PREFERENCE,
+            &mut corner_preference,
+        )
+        .context("could not retrieve window corner preference")
+        .log_if_err();
 
-    let config_active = window_rule
-        .rule_match
-        .active_color
-        .clone()
-        .unwrap_or(config.global_rule.active_color.clone());
-
-    let config_inactive = window_rule
-        .rule_match
-        .inactive_color
-        .clone()
-        .unwrap_or(config.global_rule.inactive_color.clone());
-
-    let (active_color, inactive_color) = convert_config_colors(&config_active, &config_inactive);
-
-    let animations = window_rule
-        .rule_match
-        .animations
-        .clone()
-        .unwrap_or(config.global_rule.animations.clone().unwrap_or_default());
-
-    let dpi = unsafe { GetDpiForWindow(tracking_window) } as f32;
-    let border_width = (config_width * dpi / 96.0) as i32;
-    let border_radius = convert_config_radius(border_width, config_radius, tracking_window, dpi);
-
-    let initialize_delay = match INITIAL_WINDOWS
-        .lock()
-        .unwrap()
-        .contains(&(tracking_window.0 as isize))
-    {
-        true => 0,
-        false => window_rule
-            .rule_match
-            .initialize_delay
-            .unwrap_or(config.global_rule.initialize_delay.unwrap_or(250)),
-    };
-
-    let unminimize_delay = window_rule
-        .rule_match
-        .unminimize_delay
-        .unwrap_or(config.global_rule.unminimize_delay.unwrap_or(200));
-
-    WindowBorder {
-        tracking_window,
-        border_width,
-        border_offset,
-        border_radius,
-        active_color,
-        inactive_color,
-        animations,
-        unminimize_delay,
-        initialize_delay,
-        ..Default::default()
+        corner_preference
     }
-}
 
-fn convert_config_radius(
-    border_width: i32,
-    config_radius: BorderRadius,
-    tracking_window: HWND,
-    dpi: f32,
-) -> f32 {
-    let base_radius = (border_width as f32) / 2.0;
-    let scale_factor = dpi / 96.0;
+    pub fn home_dir() -> AnyResult<PathBuf> {
+        unsafe {
+            // Call SHGetKnownFolderPath with NULL token (default user)
+            let path_ptr =
+                SHGetKnownFolderPath(&FOLDERID_Profile, KNOWN_FOLDER_FLAG(0), HANDLE::default())
+                    .unwrap();
 
-    match config_radius {
-        BorderRadius::Custom(-1.0) | BorderRadius::Auto => {
-            match get_window_corner_preference(tracking_window) {
-                DWMWCP_DEFAULT | DWMWCP_ROUND => 8.0 * scale_factor + base_radius,
-                DWMWCP_ROUNDSMALL => 4.0 * scale_factor + base_radius,
-                DWMWCP_DONOTROUND => 0.0,
-                _ => base_radius, // fallback default
+            if path_ptr.0.is_null() {
+                anyhow::bail!("SHGetKnownFolderPath returned a null pointer");
             }
+
+            // Convert PWSTR to OsString
+            let len = (0..).take_while(|&i| *path_ptr.0.add(i) != 0).count();
+            let wide_slice = std::slice::from_raw_parts(path_ptr.0, len);
+            let os_string = OsString::from_wide(wide_slice);
+
+            // Free the memory allocated by SHGetKnownFolderPath
+            CoTaskMemFree(Some(path_ptr.0 as *const _));
+
+            // Return the PathBuf wrapped in Ok
+            Ok(PathBuf::from(os_string))
         }
-        BorderRadius::Round => 8.0 * scale_factor + base_radius,
-        BorderRadius::SmallRound => 4.0 * scale_factor + base_radius,
-        BorderRadius::Square => 0.0,
-        BorderRadius::Custom(radius) => radius * scale_factor,
     }
 }
 
-fn get_window_corner_preference(tracking_window: HWND) -> DWM_WINDOW_CORNER_PREFERENCE {
-    let mut corner_preference = DWM_WINDOW_CORNER_PREFERENCE::default();
+pub struct WindowsApiUtility;
 
-    WindowsApi::dwm_get_window_attribute::<DWM_WINDOW_CORNER_PREFERENCE>(
-        tracking_window,
-        DWMWA_WINDOW_CORNER_PREFERENCE,
-        &mut corner_preference,
-    )
-    .context("could not retrieve window corner preference")
-    .log_if_err();
+impl WindowsApiUtility {
+    pub fn convert_config_colors(
+        color_active: &GlobalColor,
+        color_inactive: &GlobalColor,
+    ) -> (Color, Color) {
+        (
+            Color::fetch(color_active, Some(true)).unwrap(),
+            Color::fetch(color_inactive, Some(false)).unwrap(),
+        )
+    }
 
-    corner_preference
-}
+    pub fn convert_config_radius(
+        border_width: i32,
+        config_radius: BorderRadius,
+        tracking_window: HWND,
+        dpi: f32,
+    ) -> f32 {
+        let base_radius = (border_width as f32) / 2.0;
+        let scale_factor = dpi / 96.0;
 
-fn convert_config_colors(
-    color_active: &GlobalColor,
-    color_inactive: &GlobalColor,
-) -> (Color, Color) {
-    (
-        Color::fetch(color_active, Some(true)).unwrap(),
-        Color::fetch(color_inactive, Some(false)).unwrap(),
-    )
+        match config_radius {
+            BorderRadius::Custom(-1.0) | BorderRadius::Auto => {
+                match WindowsApi::get_window_corner_preference(tracking_window) {
+                    DWMWCP_DEFAULT | DWMWCP_ROUND => 8.0 * scale_factor + base_radius,
+                    DWMWCP_ROUNDSMALL => 4.0 * scale_factor + base_radius,
+                    DWMWCP_DONOTROUND => 0.0,
+                    _ => base_radius, // fallback default
+                }
+            }
+            BorderRadius::Round => 8.0 * scale_factor + base_radius,
+            BorderRadius::SmallRound => 4.0 * scale_factor + base_radius,
+            BorderRadius::Square => 0.0,
+            BorderRadius::Custom(radius) => radius * scale_factor,
+        }
+    }
 }

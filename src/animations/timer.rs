@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::utils::LogIfErr;
+use crate::error::LogIfErr;
 use crate::window_border::WindowBorder;
 use crate::windows_api::WM_APP_TIMER;
 use crate::windows_api::{SendHWND, WindowsApi};
@@ -42,6 +42,9 @@ impl GlobalAnimationTimer {
     }
 
     /// Gets the shard index based on the window handle.
+    ///
+    /// # Returns
+    /// * Index of shard
     fn get_shard_index(&self, hwnd: usize) -> usize {
         hwnd % NUM_SHARDS
     }

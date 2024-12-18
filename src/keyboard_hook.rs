@@ -1,7 +1,6 @@
-use std::sync::{Arc, Mutex, OnceLock};
-
 use anyhow::Result as AnyResult;
 use rustc_hash::FxHashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 use windows::Win32::{
     Foundation::{LPARAM, LRESULT, WPARAM},
     UI::{
@@ -417,4 +416,3 @@ extern "system" fn keyboard_hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM)
 
     unsafe { CallNextHookEx(None, code, wparam, lparam) }
 }
-

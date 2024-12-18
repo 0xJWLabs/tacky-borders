@@ -24,6 +24,46 @@ use tray_icon::TrayIconBuilder;
 use windows::Win32::System::Threading::ExitProcess;
 use windows::Win32::UI::Accessibility::UnhookWinEvent;
 
+pub fn create_tray_icon() -> AnyResult<TrayIcon> {
+    let icon = match Icon::from_resource(1, Some((64, 64))) {
+        Ok(icon) => icon,
+        Err(e) => {
+            error!("could not retrieve icon from tacky-borders.exe for tray menu: {e}");
+
+            // If we could not retrieve an icon from the exe, then try to create an empty icon. If
+            // even that fails, just return an Error using '?'.
+            let rgba: Vec<u8> = vec![0, 0, 0, 0];
+            Icon::from_rgba(rgba, 1, 1).context("could not create empty tray icon")?
+        }
+    };
+
+    let tray_menu = Menu::new();
+    tray_menu.append_items(&[
+        &MenuItem::with_id("0", "Open config", true, None),
+        &MenuItem::with_id("1", "Reload config", true, None),
+        &PredefinedMenuItem::separator(),
+        &MenuItem::with_id("2", "Exit", true, None),
+    ])?;
+
+    let tray_icon = TrayIconBuilder::new()
+        .with_menu(Box::new(tray_menu))
+        .with_tooltip(format!("tacky-borders v{}", env!("CARGO_PKG_VERSION")))
+        .with_icon(icon)
+        .build();
+
+    MenuEvent::set_event_handler(Some(move |event: MenuEvent| match event.id.0.as_str() {
+        "0" => open_config(),
+        "1" => reload_config(),
+        "2" => exit_app(),
+        _ => {}
+    }));
+
+    let keyboard_hook = KeyboardHook::new(&create_bindings()?)?;
+    keyboard_hook.start()?;
+
+    tray_icon.map_err(Error::new)
+}
+
 fn reload_config() {
     debug!("reloading border...");
     Config::reload();
@@ -92,44 +132,4 @@ fn create_bindings() -> AnyResult<Vec<KeybindingConfig>> {
     ];
 
     Ok(bindings)
-}
-
-pub fn create_tray_icon() -> AnyResult<TrayIcon> {
-    let keyboard_hook = KeyboardHook::new(&create_bindings()?)?;
-    let icon = match Icon::from_resource(1, Some((64, 64))) {
-        Ok(icon) => icon,
-        Err(e) => {
-            error!("could not retrieve icon from tacky-borders.exe for tray menu: {e}");
-
-            // If we could not retrieve an icon from the exe, then try to create an empty icon. If
-            // even that fails, just return an Error using '?'.
-            let rgba: Vec<u8> = vec![0, 0, 0, 0];
-            Icon::from_rgba(rgba, 1, 1).context("could not create empty tray icon")?
-        }
-    };
-
-    let tray_menu = Menu::new();
-    tray_menu.append_items(&[
-        &MenuItem::with_id("0", "Open config", true, None),
-        &MenuItem::with_id("1", "Reload config", true, None),
-        &PredefinedMenuItem::separator(),
-        &MenuItem::with_id("2", "Exit", true, None),
-    ])?;
-
-    let tray_icon = TrayIconBuilder::new()
-        .with_menu(Box::new(tray_menu))
-        .with_tooltip(format!("tacky-borders v{}", env!("CARGO_PKG_VERSION")))
-        .with_icon(icon)
-        .build();
-
-    MenuEvent::set_event_handler(Some(move |event: MenuEvent| match event.id.0.as_str() {
-        "0" => open_config(),
-        "1" => reload_config(),
-        "2" => exit_app(),
-        _ => {}
-    }));
-
-    keyboard_hook.start()?;
-
-    tray_icon.map_err(Error::new)
 }

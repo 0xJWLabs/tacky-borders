@@ -16,12 +16,10 @@ serde_yml = "0.0.12"
 sp_log = "0.2.0"
 log = "0.4.22"
 rustc-hash = "2.1.0"
-win-hotkey = "0.3.0"
 anyhow = "1.0.94"
 simple-bezier-easing = "0.1.1"
 win-color = "0.0.4"
 serde_jsonc2 = "0.1.0"
-win_binder = "0.1.0"
 
 [dependencies.windows]
 version = "0.58.0"
@@ -40,6 +38,7 @@ features = [
   "Win32_UI_HiDpi",
   "Win32_UI_Shell",
   "Win32_UI_Input_Ime",
+  "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_WindowsAndMessaging",
   "Win32_System_SystemServices",
 ]

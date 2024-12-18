@@ -1286,8 +1286,6 @@ dependencies = [
  "sp_log",
  "tray-icon",
  "win-color",
- "win-hotkey",
- "win_binder",
  "windows",
  "winresource",
 ]
@@ -1476,25 +1474,6 @@ dependencies = [
  "phf_macros",
  "regex",
  "serde",
- "windows",
-]
-
-[[package]]
-name = "win-hotkey"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b78d8188763dbe4d01bc66f6664d3e3a1cf172416a66662f51ce30505f415424"
-dependencies = [
- "rustc-hash",
- "windows-sys 0.59.0",
-]
-
-[[package]]
-name = "win_binder"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2712ca87157c6e0f143778caaff4640698a2344aa5d70e9f517cee29556d4091"
-dependencies = [
  "windows",
 ]
 

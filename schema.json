@@ -14,6 +14,10 @@
         "open_config": {
           "description": "The keybinding used to open the configuration in editor. Pressing this key will open config for 'tacky-borders'. (default: f9)",
           "type": "string"
+        },
+        "exit": {
+          "description": "The keybinding used to close the app. Pressing this key will close 'tacky-borders'. (default: f10)",
+          "type": "string"
         }
       }
     },

@@ -53,7 +53,7 @@ mod animations;
 mod border_config;
 mod error;
 mod event_hook;
-mod keybinding;
+mod keyboard_hook;
 mod sys_tray_icon;
 mod window_border;
 mod windows_api;

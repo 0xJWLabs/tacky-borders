@@ -97,10 +97,12 @@ pub struct GlobalRule {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Keybindings {
-    #[serde(default)]
+    #[serde(default = "default_reload_keybind")]
     pub reload: String,
-    #[serde(default)]
+    #[serde(default = "default_open_config_keybind")]
     pub open_config: String,
+    #[serde(default = "default_exit_keybind")]
+    pub exit: String,
 }
 
 impl Default for Keybindings {
@@ -108,8 +110,21 @@ impl Default for Keybindings {
         Self {
             reload: "f8".to_string(),
             open_config: "f9".to_string(),
+            exit: "f10".to_string(),
         }
     }
+}
+
+fn default_reload_keybind() -> String {
+    "f8".to_string()
+}
+
+fn default_open_config_keybind() -> String {
+    "f9".to_string()
+}
+
+fn default_exit_keybind() -> String {
+    "f10".to_string()
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]

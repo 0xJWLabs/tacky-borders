@@ -4,16 +4,16 @@ use crate::border_config::ConfigType;
 use crate::border_config::CONFIG;
 use crate::border_config::CONFIG_TYPE;
 use crate::error::LogIfErr;
-use crate::keybinding::CreateHotkeyHook;
-use crate::keybinding::RegisterHotkeyHook;
-use crate::keybinding::UnbindHotkeyHook;
+use crate::keyboard_hook::KeybindingConfig;
+use crate::keyboard_hook::KeyboardHook;
+use crate::keyboard_hook::KEYBOARD_HOOK;
 use crate::reload_borders;
 use crate::EVENT_HOOK;
+use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Error;
 use anyhow::Result as AnyResult;
-use rustc_hash::FxHashMap;
-use std::cell::RefCell;
+use std::sync::Arc;
 use tray_icon::menu::Menu;
 use tray_icon::menu::MenuEvent;
 use tray_icon::menu::MenuItem;
@@ -21,19 +21,16 @@ use tray_icon::menu::PredefinedMenuItem;
 use tray_icon::Icon;
 use tray_icon::TrayIcon;
 use tray_icon::TrayIconBuilder;
-use win_hotkey::global::GlobalHotkey;
-use win_hotkey::global::GlobalHotkeyManager;
 use windows::Win32::System::Threading::ExitProcess;
 use windows::Win32::UI::Accessibility::UnhookWinEvent;
-
-thread_local! {
-    static HOTKEY_HOOK: RefCell<GlobalHotkeyManager<()>> = RefCell::new(CreateHotkeyHook())
-}
 
 fn reload_config() {
     debug!("reloading border...");
     Config::reload();
     reload_borders();
+    if let Some(hook) = KEYBOARD_HOOK.get() {
+        hook.update(&create_bindings().unwrap());
+    }
 }
 
 fn open_config() {
@@ -58,11 +55,9 @@ fn open_config() {
 }
 
 fn exit_app() {
-    HOTKEY_HOOK.with(|hook| {
-        let hook = hook.borrow();
-        UnbindHotkeyHook(&hook);
-    });
-
+    if let Some(hook) = KEYBOARD_HOOK.get() {
+        hook.stop().log_if_err();
+    }
     unsafe {
         if UnhookWinEvent(EVENT_HOOK.get()).as_bool() {
             debug!("exiting tacky-borders!");
@@ -74,7 +69,33 @@ fn exit_app() {
     }
 }
 
+fn create_bindings() -> AnyResult<Vec<KeybindingConfig>> {
+    let config_type_lock = CONFIG
+        .read()
+        .map_err(|e| anyhow!("failed to acquire read lock for CONFIG_TYPE: {}", e))?;
+    let bindings = vec![
+        KeybindingConfig {
+            name: "reload".to_string(),
+            keybind: config_type_lock.keybindings.reload.clone(),
+            callback: Arc::new(Box::new(reload_config)),
+        },
+        KeybindingConfig {
+            name: "open_config".to_string(),
+            keybind: config_type_lock.keybindings.open_config.clone(),
+            callback: Arc::new(Box::new(open_config)),
+        },
+        KeybindingConfig {
+            name: "exit".to_string(),
+            keybind: config_type_lock.keybindings.exit.clone(),
+            callback: Arc::new(Box::new(exit_app)),
+        },
+    ];
+
+    Ok(bindings)
+}
+
 pub fn create_tray_icon() -> AnyResult<TrayIcon> {
+    let keyboard_hook = KeyboardHook::new(&create_bindings()?)?;
     let icon = match Icon::from_resource(1, Some((64, 64))) {
         Ok(icon) => icon,
         Err(e) => {
@@ -108,31 +129,7 @@ pub fn create_tray_icon() -> AnyResult<TrayIcon> {
         _ => {}
     }));
 
-    bind_tray_hotkeys();
+    keyboard_hook.start()?;
 
     tray_icon.map_err(Error::new)
-}
-
-fn bind_tray_hotkeys() {
-    let config_lock = CONFIG.read().unwrap();
-    let keybinds = config_lock.keybindings.clone();
-    println!("{:?}", keybinds);
-    let mut bindings: FxHashMap<String, GlobalHotkey<()>> = FxHashMap::default();
-
-    let mut create_binding = |name: &str, hotkey: &str, action: fn()| match hotkey.try_into()
-        as Result<GlobalHotkey<()>, _>
-    {
-        Ok(mut binding) => {
-            binding.set_action(action);
-            bindings.insert(name.to_string(), binding);
-        }
-        Err(err) => error!("Failed to create binding for '{name}': {err:?}"),
-    };
-
-    create_binding("reload", keybinds.reload.as_str(), reload_config);
-    create_binding("open_config", keybinds.open_config.as_str(), open_config);
-
-    HOTKEY_HOOK.with(|hook| {
-        RegisterHotkeyHook(&hook.borrow(), Some(bindings));
-    })
 }

@@ -1,16 +1,20 @@
 use anyhow::Result as AnyResult;
 use rustc_hash::FxHashMap;
-use std::sync::{Arc, Mutex, OnceLock};
-use windows::Win32::{
-    Foundation::{LPARAM, LRESULT, WPARAM},
-    UI::{
-        Input::KeyboardAndMouse::*,
-        WindowsAndMessaging::{
-            CallNextHookEx, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK, KBDLLHOOKSTRUCT,
-            WH_KEYBOARD_LL, WM_KEYDOWN, WM_SYSKEYDOWN,
-        },
-    },
-};
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::OnceLock;
+use windows::Win32::Foundation::LPARAM;
+use windows::Win32::Foundation::LRESULT;
+use windows::Win32::Foundation::WPARAM;
+use windows::Win32::UI::Input::KeyboardAndMouse::*;
+use windows::Win32::UI::WindowsAndMessaging::CallNextHookEx;
+use windows::Win32::UI::WindowsAndMessaging::SetWindowsHookExW;
+use windows::Win32::UI::WindowsAndMessaging::UnhookWindowsHookEx;
+use windows::Win32::UI::WindowsAndMessaging::HHOOK;
+use windows::Win32::UI::WindowsAndMessaging::KBDLLHOOKSTRUCT;
+use windows::Win32::UI::WindowsAndMessaging::WH_KEYBOARD_LL;
+use windows::Win32::UI::WindowsAndMessaging::WM_KEYDOWN;
+use windows::Win32::UI::WindowsAndMessaging::WM_SYSKEYDOWN;
 
 const MODIFIER_KEYS: [u16; 6] = [
     VK_LSHIFT.0,
@@ -23,7 +27,7 @@ const MODIFIER_KEYS: [u16; 6] = [
 
 pub static KEYBOARD_HOOK: OnceLock<Arc<KeyboardHook>> = OnceLock::new();
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ActiveKeybinding {
     pub vk_codes: Vec<u16>,
     pub config: KeybindingConfig,
@@ -41,13 +45,23 @@ pub struct KeyboardHook {
     keybindings_by_trigger_key: Arc<Mutex<FxHashMap<u16, Vec<ActiveKeybinding>>>>,
 }
 
-type KeybindingCallback = Arc<dyn Fn() + Send + Sync>;
+type KeyBindingCallback = Arc<Mutex<dyn Fn() + Send + 'static>>;
 
 #[derive(Clone)]
 pub struct KeybindingConfig {
     pub name: String,
     pub keybind: String,
-    pub callback: KeybindingCallback,
+    pub action: Option<KeyBindingCallback>,
+}
+
+impl KeybindingConfig {
+    pub fn new(name: &str, keybind: &str, action: Option<impl Fn() + Send + 'static>) -> Self {
+        Self {
+            name: name.to_string(),
+            keybind: keybind.to_string(),
+            action: action.map(|cb| Arc::new(Mutex::new(cb)) as KeyBindingCallback),
+        }
+    }
 }
 
 impl std::fmt::Debug for KeybindingConfig {
@@ -57,7 +71,7 @@ impl std::fmt::Debug for KeybindingConfig {
             .field("name", &self.name)
             .field("keybind", &self.keybind)
             // Display a placeholder for the callback function
-            .field("callback", &"Callback function")
+            .field("callback", &"callback fn")
             .finish()
     }
 }
@@ -83,22 +97,21 @@ impl KeyboardHook {
     ///
     /// Assumes that a message loop is currently running.
     pub fn start(&self) -> AnyResult<()> {
-        self.hook.lock().unwrap().0 =
+        let mut hook_lock = self
+            .hook
+            .lock()
+            .map_err(|_| anyhow::anyhow!("failed to lock hook"))?;
+        hook_lock.0 =
             unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook_proc), None, 0) }?;
 
         Ok(())
     }
 
     pub fn update(&self, keybindings: &[KeybindingConfig]) {
-        std::thread::spawn({
-            let keybindings_clone = keybindings.to_owned(); // Converts slice to Vec
-            let keybindings_by_trigger_key = Arc::clone(&self.keybindings_by_trigger_key);
-
-            move || {
-                let mut keybinding_map = keybindings_by_trigger_key.lock().unwrap();
-                *keybinding_map = Self::keybindings_by_trigger_key(&keybindings_clone);
-            }
-        });
+        let keybindings_clone = keybindings.to_owned(); // Converts slice to Vec
+        let keybindings_by_trigger_key = Arc::clone(&self.keybindings_by_trigger_key);
+        let mut keybinding_map = keybindings_by_trigger_key.lock().unwrap();
+        *keybinding_map = Self::keybindings_by_trigger_key(&keybindings_clone);
     }
 
     /// Stops the low-level keyboard hook.
@@ -115,21 +128,7 @@ impl KeyboardHook {
         for keybinding in keybindings {
             let binding = keybinding.keybind.clone();
 
-            let vk_codes = binding
-                .split("+")
-                .filter_map(|key| {
-                    let vk_code = Self::key_to_vk_code(key);
-
-                    if vk_code.is_none() {
-                        warn!(
-                            "Unrecognized key on current keyboard '{}'. Ensure that alt or shift isn't required for the key.",
-                            key
-                        );
-                    }
-
-                    vk_code
-                })
-                .collect::<Vec<_>>();
+            let vk_codes = Self::extract_vk_codes(&binding);
 
             // Safety: A split string always has at least one element.
             let trigger_key = *vk_codes.last().unwrap();
@@ -146,73 +145,109 @@ impl KeyboardHook {
         keybinding_map
     }
 
+    // Emits a keybinding callback if a keybinding should be triggered.
+    ///
+    /// Returns `true` if the callback should be blocked.
     fn handle_key_event(&self, vk_code: u16) -> bool {
-        match self
+        let keybindings = self
             .keybindings_by_trigger_key
             .lock()
             .unwrap()
             .get(&vk_code)
-        {
-            // Forward the event if no keybindings exist for the trigger key.
-            None => false,
-            // Otherwise, check if there is a matching keybinding.
-            Some(keybindings) => {
-                let mut cached_key_states = FxHashMap::default();
+            .cloned();
 
-                // Find the matching keybindings based on the pressed keys.
-                let matched_keybindings = keybindings.iter().filter(|keybinding| {
-                    keybinding.vk_codes.iter().all(|&key| {
-                        if key == vk_code {
-                            return true;
-                        }
-
-                        if let Some(&is_key_down) = cached_key_states.get(&key) {
-                            return is_key_down;
-                        }
-
-                        let is_key_down = Self::is_key_down(key);
-                        cached_key_states.insert(key, is_key_down);
-                        is_key_down
-                    })
-                });
-
-                // Find the longest matching keybinding.
-                let longest_keybinding =
-                    matched_keybindings.max_by_key(|keybinding| keybinding.vk_codes.len());
-
-                if longest_keybinding.is_none() {
-                    return false;
-                }
-
-                let longest_keybinding = longest_keybinding.unwrap();
-
+        if let Some(keybindings) = keybindings {
+            let mut cached_key_states = FxHashMap::default();
+            if let Some(longest_keybinding) =
+                Self::match_keybindings(vk_code, &keybindings, &mut cached_key_states)
+            {
                 // Get the modifier keys to reject based on the longest matching
                 // keybinding.
-                let mut modifier_keys_to_reject = MODIFIER_KEYS.iter().filter(|&&modifier_key| {
-                    !longest_keybinding.vk_codes.contains(&modifier_key)
-                        && !longest_keybinding
-                            .vk_codes
-                            .contains(&Self::generic_key(modifier_key))
-                });
+                let mut modifier_keys_to_reject =
+                    Self::get_modifier_keys_to_reject(&longest_keybinding);
 
                 // Check if any modifier keys to reject are currently down.
-                let has_modifier_keys_to_reject = modifier_keys_to_reject.any(|&modifier_key| {
-                    if let Some(&is_key_down) = cached_key_states.get(&modifier_key) {
-                        is_key_down
-                    } else {
-                        Self::is_key_down(modifier_key)
-                    }
-                });
+                let has_modifier_keys_to_reject = Self::has_conflicting_modifiers(
+                    &mut modifier_keys_to_reject,
+                    &mut cached_key_states,
+                );
 
                 if has_modifier_keys_to_reject {
                     return false;
                 }
 
-                (longest_keybinding.config.callback)();
+                if let Some(action) = longest_keybinding.config.clone().action {
+                    let action = action.lock().unwrap();
+                    action();
+                }
 
-                true
+                return true;
+            } else {
+                return false;
             }
         }
+
+        false
+    }
+
+    // Matches the longest keybinding for a given `vk_code` and `keybindings`.
+    fn match_keybindings(
+        vk_code: u16,
+        keybindings: &[ActiveKeybinding],
+        cached_key_states: &mut FxHashMap<u16, bool>,
+    ) -> Option<ActiveKeybinding> {
+        keybindings
+            .iter()
+            .filter(|keybinding| Self::is_keybinding_active(vk_code, keybinding, cached_key_states))
+            .max_by_key(|keybinding| keybinding.vk_codes.len())
+            .cloned()
+    }
+
+    /// Gets modifier keys that should be rejected based on the active keybinding.
+    fn get_modifier_keys_to_reject(
+        longest_keybinding: &ActiveKeybinding,
+    ) -> impl Iterator<Item = u16> + '_ {
+        MODIFIER_KEYS.iter().filter_map(move |&modifier_key| {
+            if !longest_keybinding.vk_codes.contains(&modifier_key)
+                && !longest_keybinding
+                    .vk_codes
+                    .contains(&Self::generic_key(modifier_key))
+            {
+                Some(modifier_key)
+            } else {
+                None
+            }
+        })
+    }
+
+    /// Checks if any modifier keys to reject are currently down.
+    fn has_conflicting_modifiers(
+        modifier_keys_to_reject: &mut impl Iterator<Item = u16>,
+        cached_key_states: &mut FxHashMap<u16, bool>,
+    ) -> bool {
+        modifier_keys_to_reject.any(|modifier_key| {
+            if let Some(&is_key_down) = cached_key_states.get(&modifier_key) {
+                is_key_down
+            } else {
+                Self::is_key_down(modifier_key)
+            }
+        })
+    }
+
+    fn extract_vk_codes(binding: &str) -> Vec<u16> {
+        binding
+        .split('+')
+        .filter_map(|key| {
+            let vk_code = Self::key_to_vk_code(key);
+            if vk_code.is_none() {
+                warn!(
+                    "Unrecognized key on current keyboard '{}'. Ensure that alt or shift isn't required for the key.",
+                    key
+                );
+            }
+            vk_code
+        })
+        .collect()
     }
 
     /// Gets the generic key code for a given key code.
@@ -241,6 +276,25 @@ impl KeyboardHook {
     /// code.
     fn is_key_down_raw(key: u16) -> bool {
         unsafe { (GetKeyState(key.into()) & 0x80) == 0x80 }
+    }
+
+    /// Checks if a keybinding is active based on the given `vk_code` and cached key states.
+    ///
+    /// Returns `true` if keybinding is active.
+    fn is_keybinding_active(
+        vk_code: u16,
+        keybinding: &ActiveKeybinding,
+        cached_key_states: &mut FxHashMap<u16, bool>,
+    ) -> bool {
+        keybinding.vk_codes.iter().all(|&key| {
+            if key == vk_code {
+                true
+            } else {
+                *cached_key_states
+                    .entry(key)
+                    .or_insert_with(|| Self::is_key_down(key))
+            }
+        })
     }
 
     fn key_to_vk_code(key: &str) -> Option<u16> {

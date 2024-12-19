@@ -20,10 +20,10 @@ use sp_log::FileLogger;
 use sp_log::LevelFilter;
 use sp_log::TermLogger;
 use sp_log::TerminalMode;
-use std::cell::Cell;
 use std::mem::transmute;
 use std::sync::LazyLock;
 use std::sync::Mutex;
+use sys_tray::SystemTray;
 use windows::core::w;
 use windows::core::Result;
 use windows::Win32::Foundation::GetLastError;
@@ -34,17 +34,11 @@ use windows::Win32::Foundation::LPARAM;
 use windows::Win32::Foundation::TRUE;
 use windows::Win32::Foundation::WPARAM;
 use windows::Win32::System::SystemServices::IMAGE_DOS_HEADER;
-use windows::Win32::UI::Accessibility::SetWinEventHook;
-use windows::Win32::UI::Accessibility::HWINEVENTHOOK;
 use windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2;
 use windows::Win32::UI::WindowsAndMessaging::LoadCursorW;
 use windows::Win32::UI::WindowsAndMessaging::RegisterClassExW;
-use windows::Win32::UI::WindowsAndMessaging::EVENT_MAX;
-use windows::Win32::UI::WindowsAndMessaging::EVENT_MIN;
 use windows::Win32::UI::WindowsAndMessaging::IDC_ARROW;
 use windows::Win32::UI::WindowsAndMessaging::MSG;
-use windows::Win32::UI::WindowsAndMessaging::WINEVENT_OUTOFCONTEXT;
-use windows::Win32::UI::WindowsAndMessaging::WINEVENT_SKIPOWNPROCESS;
 use windows::Win32::UI::WindowsAndMessaging::WM_NCDESTROY;
 use windows::Win32::UI::WindowsAndMessaging::WNDCLASSEXW;
 use windows_api::WindowsApi;
@@ -52,18 +46,14 @@ use windows_api::WindowsApi;
 mod animations;
 mod border_config;
 mod error;
-mod event_hook;
 mod keyboard_hook;
-mod sys_tray_icon;
+mod sys_tray;
 mod window_border;
+mod window_event_hook;
 mod windows_api;
 
 extern "C" {
     static __ImageBase: IMAGE_DOS_HEADER;
-}
-
-thread_local! {
-    static EVENT_HOOK: Cell<HWINEVENTHOOK> = Cell::new(HWINEVENTHOOK::default());
 }
 
 static BORDERS: LazyLock<Mutex<FxHashMap<isize, isize>>> =
@@ -86,15 +76,11 @@ fn main() {
         error!("could not make process dpi aware: {e}");
     }
 
-    let tray_icon_result = sys_tray_icon::create_tray_icon();
+    let tray = SystemTray::new();
 
-    if let Err(e) = tray_icon_result {
-        // TODO for some reason if I use {:#} or {:?}, it repeatedly prints the error. Could be
-        // something to do with how it implements .source()?
-        error!("could not create tray icon: {e}");
+    if let Err(e) = tray {
+        error!("could not create sys tray: {e}");
     }
-
-    EVENT_HOOK.replace(set_event_hook());
 
     register_window_class().log_if_err();
     WindowsApi::enum_windows().log_if_err();
@@ -161,20 +147,6 @@ fn register_window_class() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn set_event_hook() -> HWINEVENTHOOK {
-    unsafe {
-        SetWinEventHook(
-            EVENT_MIN,
-            EVENT_MAX,
-            None,
-            Some(event_hook::handle_win_event),
-            0,
-            0,
-            WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS,
-        )
-    }
 }
 
 fn reload_borders() {

@@ -57,7 +57,6 @@ impl WindowEventHook {
     }
 
     pub fn start(&self) -> anyhow::Result<()> {
-        println!("hook started");
         let mut hook_handles = self.hook_handles.lock().unwrap();
         *hook_handles = Self::hook_win_events()?;
 

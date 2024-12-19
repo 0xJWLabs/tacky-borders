@@ -14,13 +14,13 @@ use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Error;
 use anyhow::Result as AnyResult;
-use tray_icon::menu::Menu;
-use tray_icon::menu::MenuEvent;
-use tray_icon::menu::MenuItem;
-use tray_icon::menu::PredefinedMenuItem;
-use tray_icon::Icon;
-use tray_icon::TrayIcon;
-use tray_icon::TrayIconBuilder;
+use tray_icon_win::menu::Menu;
+use tray_icon_win::menu::MenuEvent;
+use tray_icon_win::menu::MenuItem;
+use tray_icon_win::menu::PredefinedMenuItem;
+use tray_icon_win::Icon;
+use tray_icon_win::TrayIcon;
+use tray_icon_win::TrayIconBuilder;
 use windows::Win32::System::Threading::ExitProcess;
 
 #[allow(dead_code)]

@@ -285,8 +285,9 @@ impl WindowBorder {
             )
             .context("could not set LWA_ALPHA")?;
 
-            self.create_render_resources()
-                .context("could not create render target in init()")?;
+            if let Err(e) = self.create_render_resources() {
+                error!("could not create render target in init(): {e:?}");
+            }
 
             self.is_window_active = WindowsApi::is_window_active(self.tracking_window);
 

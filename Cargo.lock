@@ -1467,9 +1467,9 @@ checksum = "9c8d87e72b64a3b4db28d11ce29237c246188f4f51057d65a7eab63b7987e423"
 
 [[package]]
 name = "win-color"
-version = "0.0.4"
+version = "0.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65bb35e9caf94975ce2408c00a30b771ab046285b2f62776cbbc97da4cae8bf1"
+checksum = "910da28f16346bc08e84e6a46af9324e8f33ec7e37c5dce2875dae05b06c2156"
 dependencies = [
  "phf",
  "phf_macros",

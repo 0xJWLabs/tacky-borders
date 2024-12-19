@@ -76,9 +76,9 @@ fn main() {
         error!("could not make process dpi aware: {e}");
     }
 
-    let tray = SystemTray::new();
+    let sys_tray = SystemTray::new();
 
-    if let Err(e) = tray {
+    if let Err(e) = sys_tray {
         error!("could not create sys tray: {e}");
     }
 

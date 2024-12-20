@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
+use crate::border_manager::Border;
 use crate::error::LogIfErr;
-use crate::window_border::WindowBorder;
 use crate::windows_api::WM_APP_TIMER;
 use crate::windows_api::{SendHWND, WindowsApi};
 use anyhow::{anyhow, Result as AnyResult};
@@ -52,13 +52,13 @@ impl GlobalAnimationTimer {
     /// Adds a new timer for a specific window.
     ///
     /// # Arguments
-    /// * `border` - A reference to the `WindowBorder`.
+    /// * `border` - A reference to the `Border`.
     /// * `timer` - The `AnimationTimer` to be added.
     ///
     /// # Returns
     /// * `Ok(())` if the timer was added successfully.
     /// * `Err` if a timer for the window already exists.
-    pub fn add_timer(&self, border: &WindowBorder, timer: AnimationTimer) -> AnyResult<()> {
+    pub fn add_timer(&self, border: &Border, timer: AnimationTimer) -> AnyResult<()> {
         let hwnd_u = border.border_window.0 as usize;
         let shard_index = self.get_shard_index(hwnd_u);
         // Attempt to acquire the lock safely
@@ -77,12 +77,12 @@ impl GlobalAnimationTimer {
     /// Removes the timer associated with a specific window.
     ///
     /// # Arguments
-    /// * `border` - A reference to the `WindowBorder`.
+    /// * `border` - A reference to the `Border`.
     ///
     /// # Returns
     /// * `Ok(())` if the timer was removed successfully.
     /// * `Err` if no timer was found for the specified window.
-    pub fn remove_timer(&self, border: &WindowBorder) -> AnyResult<()> {
+    pub fn remove_timer(&self, border: &Border) -> AnyResult<()> {
         let hwnd_u = border.border_window.0 as usize;
         let shard_index = self.get_shard_index(hwnd_u);
 
@@ -110,12 +110,12 @@ impl AnimationTimer {
     /// Starts a new animation timer for a window.
     ///
     /// # Arguments
-    /// * `border` - The `WindowBorder` to associate the timer with.
+    /// * `border` - The `Border` to associate the timer with.
     /// * `interval_ms` - The interval in milliseconds between timer ticks.
     ///
     /// # Returns
     /// * A `Result` containing the `AnimationTimer` on success, or an error otherwise.
-    pub fn start(border: &mut WindowBorder, interval_ms: u64) -> AnyResult<AnimationTimer> {
+    pub fn start(border: &mut Border, interval_ms: u64) -> AnyResult<AnimationTimer> {
         // Validate the interval
         if interval_ms == 0 {
             return Err(anyhow!("interval must be greater than 0"));
@@ -167,7 +167,7 @@ impl AnimationTimer {
     ///
     /// # Returns
     /// * `Ok(())` if the timer was stopped successfully.
-    pub fn stop(border: &mut WindowBorder) -> AnyResult<()> {
+    pub fn stop(border: &mut Border) -> AnyResult<()> {
         TIMER_MANAGER
             .lock()
             .map_err(|e| anyhow!("failed to lock the TIMER_MANAGER: {e}"))?
@@ -180,20 +180,20 @@ impl AnimationTimer {
 }
 
 #[allow(non_snake_case)]
-/// Sets an animation timer for the provided `WindowBorder` if needed.
+/// Sets an animation timer for the provided `Border` if needed.
 ///
 /// This function checks an optional condition, and if the condition is met or not provided,
 /// it starts the animation timer if one is not already running.
 ///
 /// # Arguments
-/// * `border` - A mutable reference to the `WindowBorder` to set the timer for.
+/// * `border` - A mutable reference to the `Border` to set the timer for.
 /// * `condition` - An optional condition function that must return `true` for the timer to be set.
 ///
 /// # Returns
 /// * `Ok(())` if the timer was set successfully, or an error if the timer could not be started.
-pub fn SetAnimationTimer<F>(border: &mut WindowBorder, condition: Option<F>) -> AnyResult<()>
+pub fn SetAnimationTimer<F>(border: &mut Border, condition: Option<F>) -> AnyResult<()>
 where
-    F: Fn(&WindowBorder) -> bool,
+    F: Fn(&Border) -> bool,
 {
     // If condition exists, check it; otherwise, proceed directly
     if condition.map_or(true, |cond| cond(border)) && border.animations.timer.is_none() {
@@ -204,16 +204,16 @@ where
 }
 
 #[allow(non_snake_case)]
-/// Kills the animation timer for the provided `WindowBorder`.
+/// Kills the animation timer for the provided `Border`.
 ///
 /// This function stops and removes the animation timer for the specified window border.
 ///
 /// # Arguments
-/// * `border` - A mutable reference to the `WindowBorder` to remove the timer from.
+/// * `border` - A mutable reference to the `Border` to remove the timer from.
 ///
 /// # Returns
 /// * `Ok(())` if the timer was successfully killed, or an error if stopping the timer failed.
-pub fn KillAnimationTimer(border: &mut WindowBorder) -> AnyResult<()> {
+pub fn KillAnimationTimer(border: &mut Border) -> AnyResult<()> {
     if border.animations.timer.is_some() {
         AnimationTimer::stop(border).log_if_err();
     }

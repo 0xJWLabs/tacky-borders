@@ -1,3 +1,8 @@
+use crate::border_manager::destroy_border_for_window;
+use crate::border_manager::get_border_from_window;
+use crate::border_manager::get_borders;
+use crate::border_manager::hide_border_for_window;
+use crate::border_manager::show_border_for_window;
 use crate::error::LogIfErr;
 use crate::windows_api::WindowsApi;
 use crate::windows_api::WM_APP_FOREGROUND;
@@ -5,9 +10,9 @@ use crate::windows_api::WM_APP_LOCATIONCHANGE;
 use crate::windows_api::WM_APP_MINIMIZEEND;
 use crate::windows_api::WM_APP_MINIMIZESTART;
 use crate::windows_api::WM_APP_REORDER;
-use crate::BORDERS;
 use anyhow::Context;
 use anyhow::Result as AnyResult;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::OnceLock;
@@ -37,7 +42,7 @@ pub static WIN_EVENT_HOOK: OnceLock<Arc<WindowEventHook>> = OnceLock::new();
 
 #[derive(Debug)]
 pub struct WindowEventHook {
-    hook_handles: Mutex<Vec<HWINEVENTHOOK>>,
+    hook_handles: Rc<Mutex<Vec<HWINEVENTHOOK>>>,
 }
 
 unsafe impl Send for WindowEventHook {}
@@ -46,7 +51,7 @@ unsafe impl Sync for WindowEventHook {}
 impl WindowEventHook {
     pub fn new() -> anyhow::Result<Arc<Self>> {
         let win_event_hook = Arc::new(Self {
-            hook_handles: Mutex::new(Vec::new()),
+            hook_handles: Rc::new(Mutex::new(Vec::new())),
         });
 
         WIN_EVENT_HOOK
@@ -120,7 +125,7 @@ impl WindowEventHook {
                     return;
                 }
 
-                if let Some(border) = WindowsApi::get_border_from_window(handle) {
+                if let Some(border) = get_border_from_window(handle) {
                     WindowsApi::send_notify_message_w(
                         border,
                         WM_APP_LOCATIONCHANGE,
@@ -136,9 +141,7 @@ impl WindowEventHook {
                     return;
                 }
 
-                let borders = BORDERS.lock().unwrap();
-
-                for value in borders.values() {
+                for value in get_borders().values() {
                     let border_window: HWND = HWND(*value as _);
                     if WindowsApi::is_window_visible(border_window) {
                         WindowsApi::post_message_w(
@@ -151,10 +154,9 @@ impl WindowEventHook {
                         .log_if_err();
                     }
                 }
-                drop(borders);
             }
             EVENT_SYSTEM_FOREGROUND => {
-                for (key, val) in BORDERS.lock().unwrap().iter() {
+                for (key, val) in get_borders().iter() {
                     let border_window: HWND = HWND(*val as _);
                     // Some apps like Flow Launcher can become focused even if they aren't visible yet,
                     // so I also need to check if 'key' is equal to '_hwnd' (the foreground window)
@@ -171,20 +173,20 @@ impl WindowEventHook {
                 }
             }
             EVENT_OBJECT_SHOW | EVENT_OBJECT_UNCLOAKED => {
-                WindowsApi::show_border_for_window(handle);
+                show_border_for_window(handle);
             }
             EVENT_OBJECT_HIDE | EVENT_OBJECT_CLOAKED => {
-                WindowsApi::hide_border_for_window(handle);
+                hide_border_for_window(handle);
             }
             EVENT_SYSTEM_MINIMIZESTART => {
-                if let Some(border) = WindowsApi::get_border_from_window(handle) {
+                if let Some(border) = get_border_from_window(handle) {
                     WindowsApi::post_message_w(border, WM_APP_MINIMIZESTART, WPARAM(0), LPARAM(0))
                         .with_context(|| "EVENT_SYSTEM_MINIMIZESTART")
                         .log_if_err();
                 }
             }
             EVENT_SYSTEM_MINIMIZEEND => {
-                if let Some(border) = WindowsApi::get_border_from_window(handle) {
+                if let Some(border) = get_border_from_window(handle) {
                     WindowsApi::post_message_w(border, WM_APP_MINIMIZEEND, WPARAM(0), LPARAM(0))
                         .with_context(|| "EVENT_SYSTEM_MINIMIZEEND")
                         .log_if_err();
@@ -193,7 +195,7 @@ impl WindowEventHook {
             // TODO this is called an unnecessary number of times which may hurt performance?
             EVENT_OBJECT_DESTROY => {
                 if !WindowsApi::has_filtered_style(handle) {
-                    WindowsApi::destroy_border_for_window(handle);
+                    destroy_border_for_window(handle);
                 }
             }
             _ => {}

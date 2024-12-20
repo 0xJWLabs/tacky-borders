@@ -1,5 +1,5 @@
 use super::ANIM_NONE;
-use crate::window_border::WindowBorder;
+use crate::border_manager::Border;
 use crate::windows_api::WindowsApi;
 use core::fmt;
 use serde::Deserialize;
@@ -41,7 +41,7 @@ impl AnimationParameters {
     pub fn play(
         &self,
         animation_type: &AnimationType,
-        border: &mut WindowBorder,
+        border: &mut Border,
         anim_elapsed: &Duration,
     ) {
         match animation_type {
@@ -57,7 +57,7 @@ impl AnimationParameters {
 }
 
 fn animate_spiral(
-    border: &mut WindowBorder,
+    border: &mut Border,
     anim_elapsed: &Duration,
     anim_params: &AnimationParameters,
     reverse: bool,
@@ -99,11 +99,7 @@ fn animate_spiral(
     border.inactive_color.set_transform(&transform);
 }
 
-fn animate_fade(
-    border: &mut WindowBorder,
-    anim_elapsed: &Duration,
-    anim_params: &AnimationParameters,
-) {
+fn animate_fade(border: &mut Border, anim_elapsed: &Duration, anim_params: &AnimationParameters) {
     // If both are 0, that means the window has been opened for the first time or has been
     // unminimized. If that is the case, only one of the colors should be visible while fading.
     if border.active_color.get_opacity() == Some(0.0)

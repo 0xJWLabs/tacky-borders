@@ -1,15 +1,12 @@
 extern crate windows;
 
-use crate::__ImageBase;
 use crate::border_config::BorderRadius;
 use crate::border_config::MatchKind;
 use crate::border_config::MatchStrategy;
 use crate::border_config::WindowRule;
 use crate::border_config::CONFIG;
-use crate::enum_windows_callback;
 use crate::error::LogIfErr;
-use crate::window_border::WindowBorder;
-use crate::BORDERS;
+use crate::windows_callback::enum_windows;
 use anyhow::Context;
 use anyhow::Result as AnyResult;
 use regex::Regex;
@@ -19,7 +16,6 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::os::windows::ffi::OsStringExt;
 use std::path::PathBuf;
-use std::thread;
 use win_color::Color;
 use win_color::ColorImpl;
 use win_color::GlobalColor;
@@ -82,7 +78,7 @@ use windows::Win32::UI::WindowsAndMessaging::MSG;
 use windows::Win32::UI::WindowsAndMessaging::WINDOW_EX_STYLE;
 use windows::Win32::UI::WindowsAndMessaging::WINDOW_STYLE;
 use windows::Win32::UI::WindowsAndMessaging::WM_APP;
-use windows::Win32::UI::WindowsAndMessaging::WM_NCDESTROY;
+use windows::Win32::UI::WindowsAndMessaging::WNDENUMPROC;
 use windows::Win32::UI::WindowsAndMessaging::WS_CHILD;
 use windows::Win32::UI::WindowsAndMessaging::WS_EX_NOACTIVATE;
 use windows::Win32::UI::WindowsAndMessaging::WS_EX_TOOLWINDOW;
@@ -255,18 +251,8 @@ impl WindowsApi {
         }
     }
 
-    pub fn enum_windows() -> WinResult<Vec<HWND>> {
-        let mut windows: Vec<HWND> = Vec::new();
-        unsafe {
-            let _ = EnumWindows(
-                Some(enum_windows_callback),
-                LPARAM(&mut windows as *mut _ as isize),
-                // LPARAM::default(),
-            );
-        }
-        debug!("windows have been enumerated");
-
-        Ok(windows)
+    pub fn enum_windows(callback: WNDENUMPROC, callback_data_address: isize) -> WinResult<()> {
+        unsafe { EnumWindows(callback, LPARAM(callback_data_address)) }
     }
 
     pub fn is_window_cloaked(hwnd: HWND) -> bool {
@@ -423,101 +409,21 @@ impl WindowsApi {
         WindowRule::default()
     }
 
-    pub fn get_border_from_window(hwnd: HWND) -> Option<HWND> {
-        let borders = BORDERS.lock().unwrap();
-        let hwnd_isize = hwnd.0 as isize;
-        let Some(border_isize) = borders.get(&hwnd_isize) else {
-            drop(borders);
-            return None;
-        };
+    pub fn available_window_handles(cb: Option<&dyn Fn(HWND)>) -> AnyResult<Vec<isize>> {
+        let mut handles: Vec<isize> = Vec::new();
 
-        let border_window: HWND = HWND(*border_isize as _);
-        drop(borders);
-        Some(border_window)
-    }
+        // Enumerate windows and collect handles
+        Self::enum_windows(Some(enum_windows), &mut handles as *mut Vec<isize> as isize)?;
 
-    pub fn show_border_for_window(hwnd: HWND) {
-        // If the border already exists, simply post a 'SHOW' message to its message queue. Otherwise,
-        // create a new border.
-        if let Some(border) = Self::get_border_from_window(hwnd) {
-            Self::post_message_w(border, WM_APP_SHOWUNCLOAKED, WPARAM(0), LPARAM(0))
-                .context("show_border_for_window")
-                .log_if_err();
-        } else if Self::is_window_visible(hwnd)
-            && !Self::is_window_cloaked(hwnd)
-            && !Self::has_filtered_style(hwnd)
-        {
-            Self::create_border_for_window(hwnd);
+        if let Some(cb) = cb {
+            // Call the provided callback for each handle
+            for hwnd_u in &handles {
+                let hwnd = HWND(*hwnd_u as *mut _);
+                cb(hwnd);
+            }
         }
-    }
 
-    pub fn hide_border_for_window(hwnd: HWND) -> bool {
-        let window = SendHWND(hwnd);
-
-        let _ = thread::spawn(move || {
-            let window_sent = window;
-            if let Some(border) = Self::get_border_from_window(window_sent.0) {
-                Self::post_message_w(border, WM_APP_HIDECLOAKED, WPARAM(0), LPARAM(0))
-                    .context("hide_border_for_window")
-                    .log_if_err();
-            }
-        });
-        true
-    }
-
-    pub fn create_border_for_window(hwnd: HWND) {
-        debug!("creating border for: {:?}", hwnd);
-        let window = SendHWND(hwnd);
-
-        let _ = std::thread::spawn(move || {
-            let window_sent = window;
-            let window_isize = window_sent.0 .0 as isize;
-
-            let window_rule = Self::get_window_rule(window_sent.0);
-            if window_rule.rule_match.border_enabled == Some(false) {
-                info!("border is disabled for {:?}!", window_sent.0);
-                return;
-            }
-
-            let mut border = WindowBorder::new(window_sent.0, &window_rule);
-
-            let mut borders_hashmap = BORDERS.lock().unwrap();
-
-            // Check to see if there is already a border for the given tracking window
-            if borders_hashmap.contains_key(&window_isize) {
-                return;
-            }
-
-            let hinstance: HINSTANCE = unsafe { std::mem::transmute(&__ImageBase) };
-            if let Err(e) = border.create_border_window(hinstance) {
-                error!("could not create border window: {e:?}");
-                return;
-            };
-
-            borders_hashmap.insert(window_isize, border.border_window.0 as isize);
-
-            drop(borders_hashmap);
-            let _ = window_sent;
-            let _ = window_isize;
-            let _ = window_rule;
-            let _ = hinstance;
-
-            if let Err(e) = border.init() {
-                error!("{e}");
-            }
-        });
-    }
-
-    pub fn destroy_border_for_window(hwnd: HWND) {
-        let window_isize = hwnd.0 as isize;
-        let Some(&border_isize) = BORDERS.lock().unwrap().get(&window_isize) else {
-            return;
-        };
-
-        let border_window: HWND = HWND(border_isize as _);
-        Self::post_message_w(border_window, WM_NCDESTROY, WPARAM(0), LPARAM(0))
-            .context("destroy_border_for_window")
-            .log_if_err();
+        Ok(handles)
     }
 
     pub fn get_window_corner_preference(hwnd: HWND) -> DWM_WINDOW_CORNER_PREFERENCE {

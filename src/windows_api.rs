@@ -65,6 +65,7 @@ use windows::Win32::UI::WindowsAndMessaging::GetWindowLongW;
 use windows::Win32::UI::WindowsAndMessaging::GetWindowTextW;
 use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
 use windows::Win32::UI::WindowsAndMessaging::IsWindowVisible;
+use windows::Win32::UI::WindowsAndMessaging::MessageBoxW;
 use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
 use windows::Win32::UI::WindowsAndMessaging::PostQuitMessage;
 use windows::Win32::UI::WindowsAndMessaging::SendNotifyMessageW;
@@ -74,6 +75,9 @@ use windows::Win32::UI::WindowsAndMessaging::GWL_EXSTYLE;
 use windows::Win32::UI::WindowsAndMessaging::GWL_STYLE;
 use windows::Win32::UI::WindowsAndMessaging::HMENU;
 use windows::Win32::UI::WindowsAndMessaging::LAYERED_WINDOW_ATTRIBUTES_FLAGS;
+use windows::Win32::UI::WindowsAndMessaging::MB_ICONERROR;
+use windows::Win32::UI::WindowsAndMessaging::MB_OK;
+use windows::Win32::UI::WindowsAndMessaging::MB_SYSTEMMODAL;
 use windows::Win32::UI::WindowsAndMessaging::MSG;
 use windows::Win32::UI::WindowsAndMessaging::WINDOW_EX_STYLE;
 use windows::Win32::UI::WindowsAndMessaging::WINDOW_STYLE;
@@ -134,12 +138,15 @@ impl WindowsApi {
         unsafe { SetProcessDpiAwarenessContext(value) }
     }
 
-    pub fn get_message_w(
+    pub fn get_message_w<P0>(
         lpmsg: *mut MSG,
-        hwnd: HWND,
+        hwnd: P0,
         wmsgfiltermin: u32,
         wmsgfiltermax: u32,
-    ) -> BOOL {
+    ) -> BOOL
+    where
+        P0: Param<HWND>,
+    {
         unsafe { GetMessageW(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax) }
     }
 
@@ -463,6 +470,20 @@ impl WindowsApi {
             Ok(PathBuf::from(os_string))
         }
     }
+
+    pub fn show_error_dialog(title: &str, message: &str) {
+        let title_wide = WindowsApiUtility::to_wide(title);
+        let message_wide = WindowsApiUtility::to_wide(message);
+
+        unsafe {
+            MessageBoxW(
+                None,
+                PCWSTR(message_wide.as_ptr()),
+                PCWSTR(title_wide.as_ptr()),
+                MB_ICONERROR | MB_OK | MB_SYSTEMMODAL,
+            );
+        }
+    }
 }
 
 pub struct WindowsApiUtility;
@@ -501,5 +522,9 @@ impl WindowsApiUtility {
             BorderRadius::Square => 0.0,
             BorderRadius::Custom(radius) => radius * scale_factor,
         }
+    }
+
+    fn to_wide(string: &str) -> Vec<u16> {
+        string.encode_utf16().chain(Some(0)).collect()
     }
 }

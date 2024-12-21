@@ -2,7 +2,7 @@ use winresource::VersionInfo;
 
 fn main() {
     let mut res = winresource::WindowsResource::new();
-    res.set_icon("resources/icon.ico");
+    res.set_icon_with_id("resources/icon.ico", "32152");
     res.set("OriginalFilename", "tacky-borders.exe");
     res.set("ProductName", "TackyBorders");
     res.set("FileDescription", "TackyBorders");

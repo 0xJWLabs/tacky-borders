@@ -1,4 +1,5 @@
 use crate::animations::Animations;
+use crate::error::LogIfErr;
 use crate::windows_api::WindowsApi;
 use anyhow::anyhow;
 use anyhow::Context;
@@ -139,6 +140,7 @@ pub struct Config {
 pub trait ConfigImpl {
     fn reload();
     fn get_config_dir() -> AnyResult<PathBuf>;
+    fn open();
 }
 
 impl Config {
@@ -256,5 +258,26 @@ impl ConfigImpl for Config {
             .map_err(|_| anyhow!("could not create config directory"))?;
 
         Ok(config_dir)
+    }
+
+    fn open() {
+        match Self::get_config_dir() {
+            Ok(mut dir) => {
+                let config_file = match *CONFIG_TYPE.read().unwrap() {
+                    ConfigType::Json => "config.json",
+                    ConfigType::Yaml => "config.yaml",
+                    ConfigType::Jsonc => "config.jsonc",
+                    _ => {
+                        error!("Unsupported config file");
+                        return;
+                    }
+                };
+
+                dir.push(config_file);
+
+                open::that(dir).log_if_err();
+            }
+            Err(err) => error!("{err}"),
+        }
     }
 }

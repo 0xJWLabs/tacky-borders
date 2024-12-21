@@ -144,9 +144,9 @@ checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
 
 [[package]]
 name = "muda-win"
-version = "0.1.1"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c30cc0737d328a24d38624e791883c150d0f24a449fdb131e45143f8bf5e6ac"
+checksum = "162b0f0b6e9bec18cccaf4383170ebe97da4d1571d333a5e94ea353b3fbc646c"
 dependencies = [
  "crossbeam-channel",
  "dpi",
@@ -501,9 +501,9 @@ dependencies = [
 
 [[package]]
 name = "tray-icon-win"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8e16e084eded95a2cf4f10f9abf4d74b0fe88eed1ddf7e26efa5b89135be2dd"
+checksum = "af6515462d101aad01640954aacf28c1d6f3220c4249c9531e07d09366e2a826"
 dependencies = [
  "crossbeam-channel",
  "muda-win",

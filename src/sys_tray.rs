@@ -1,5 +1,4 @@
 use crate::border_config::Config;
-use crate::border_config::ConfigImpl;
 use crate::exit_app;
 use crate::restart_app;
 use anyhow::bail;

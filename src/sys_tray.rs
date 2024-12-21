@@ -2,6 +2,7 @@ use crate::border_config::Config;
 use crate::border_config::ConfigImpl;
 use crate::exit_app;
 use crate::restart_app;
+use anyhow::bail;
 use anyhow::Context;
 use anyhow::Error;
 use anyhow::Result as AnyResult;
@@ -17,20 +18,22 @@ use tray_icon_win::TrayIconBuilder;
 #[allow(dead_code)]
 pub struct SystemTray(TrayIcon);
 
-#[derive(Debug, Clone)]
-enum SystemTrayEvent {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SystemTrayEvent {
     OpenConfig,
     ReloadConfig,
     Exit,
 }
 
+impl SystemTrayEvent {
+    pub fn as_str(&self) -> &'static str {
+        (*self).into()
+    }
+}
+
 impl std::fmt::Display for SystemTrayEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SystemTrayEvent::OpenConfig => write!(f, "open_config"),
-            SystemTrayEvent::ReloadConfig => write!(f, "reload_config"),
-            SystemTrayEvent::Exit => write!(f, "exit"),
-        }
+        write!(f, "{}", self.as_str())
     }
 }
 
@@ -38,13 +41,21 @@ impl FromStr for SystemTrayEvent {
     type Err = anyhow::Error;
 
     fn from_str(event: &str) -> Result<Self, Self::Err> {
-        let parts: Vec<&str> = event.split('_').collect();
+        match event {
+            "open_config" => Ok(SystemTrayEvent::OpenConfig),
+            "reload_config" => Ok(SystemTrayEvent::ReloadConfig),
+            "exit" => Ok(SystemTrayEvent::Exit),
+            _ => bail!("Invalid menu event: {}", event),
+        }
+    }
+}
 
-        match parts.as_slice() {
-            ["open", "config"] => Ok(SystemTrayEvent::OpenConfig),
-            ["reload", "config"] => Ok(SystemTrayEvent::ReloadConfig),
-            ["exit"] => Ok(SystemTrayEvent::Exit),
-            _ => anyhow::bail!("Invalid menu event: {}", event),
+impl From<SystemTrayEvent> for &'static str {
+    fn from(event: SystemTrayEvent) -> Self {
+        match event {
+            SystemTrayEvent::OpenConfig => "open_config",
+            SystemTrayEvent::ReloadConfig => "reload_config",
+            SystemTrayEvent::Exit => "exit",
         }
     }
 }

@@ -27,6 +27,7 @@ use sp_log::LevelFilter;
 use sp_log::TermLogger;
 use sp_log::TerminalMode;
 use sys_tray::SystemTray;
+use sys_tray::SystemTrayEvent;
 use window_event_hook::WindowEventHook;
 use window_event_hook::WIN_EVENT_HOOK;
 use windows::Win32::Foundation::LPARAM;
@@ -161,17 +162,17 @@ fn create_bindings() -> AnyResult<Vec<KeybindingConfig>> {
 
     let bindings = vec![
         KeybindingConfig::new(
-            "open_config",
+            SystemTrayEvent::OpenConfig.into(),
             config_type_lock.keybindings.open_config.clone().as_str(),
             Some(BorderConfig::open),
         ),
         KeybindingConfig::new(
-            "reload",
+            SystemTrayEvent::ReloadConfig.into(),
             config_type_lock.keybindings.reload.clone().as_str(),
             Some(restart_app),
         ),
         KeybindingConfig::new(
-            "exit",
+            SystemTrayEvent::Exit.into(),
             config_type_lock.keybindings.exit.clone().as_str(),
             Some(exit_app),
         ),

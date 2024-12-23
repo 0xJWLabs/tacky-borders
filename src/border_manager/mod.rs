@@ -19,7 +19,6 @@ use windows::Win32::Foundation::GetLastError;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Foundation::LPARAM;
 use windows::Win32::Foundation::WPARAM;
-use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::LoadCursorW;
 use windows::Win32::UI::WindowsAndMessaging::RegisterClassW;
 use windows::Win32::UI::WindowsAndMessaging::IDC_ARROW;
@@ -49,9 +48,7 @@ pub fn show_border_for_window(hwnd: HWND) {
         WindowsApi::post_message_w(border, WM_APP_SHOWUNCLOAKED, WPARAM(0), LPARAM(0))
             .context("show_border_for_window")
             .log_if_err();
-    } else if WindowsApi::is_window_visible(hwnd)
-        && !WindowsApi::is_window_cloaked(hwnd)
-        && WindowsApi::is_window_top_level(hwnd)
+    } else if WindowsApi::is_window_visible_on_screen(hwnd) && WindowsApi::is_window_top_level(hwnd)
     {
         let window_rule = WindowsApi::get_window_rule(hwnd);
 
@@ -135,7 +132,7 @@ pub fn register_border_class() -> AnyResult<()> {
     unsafe {
         let wc = WNDCLASSW {
             lpfnWndProc: Some(Border::wnd_proc),
-            hInstance: GetModuleHandleW(None)?.into(),
+            hInstance: WindowsApi::module_handle_w()?.into(),
             lpszClassName: w!("border"),
             hCursor: LoadCursorW(None, IDC_ARROW)?,
             ..Default::default()

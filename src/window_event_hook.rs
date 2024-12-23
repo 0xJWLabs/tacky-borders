@@ -145,16 +145,9 @@ impl WindowEventHook {
                     .collect();
 
                 for border_window in visible_windows {
-                    if WindowsApi::is_window_visible(border_window) {
-                        WindowsApi::post_message_w(
-                            border_window,
-                            WM_APP_REORDER,
-                            WPARAM(0),
-                            LPARAM(0),
-                        )
+                    WindowsApi::post_message_w(border_window, WM_APP_REORDER, WPARAM(0), LPARAM(0))
                         .with_context(|| "EVENT_OBJECT_REORDER")
                         .log_if_err();
-                    }
                 }
             }
             EVENT_SYSTEM_FOREGROUND => {

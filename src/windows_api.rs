@@ -4,6 +4,7 @@ use crate::border_config::MatchKind;
 use crate::border_config::MatchStrategy;
 use crate::border_config::WindowRule;
 use crate::border_config::CONFIG;
+use crate::border_manager::Border;
 use crate::error::LogIfErr;
 use crate::windows_callback::enum_windows;
 use anyhow::anyhow;
@@ -16,6 +17,8 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::os::windows::ffi::OsStringExt;
 use std::path::PathBuf;
+use std::ptr;
+use windows::core::w;
 use windows::core::Param;
 use windows::core::Result as WinResult;
 use windows::core::PCWSTR;
@@ -28,21 +31,24 @@ use windows::Win32::Foundation::COLORREF;
 use windows::Win32::Foundation::ERROR_ENVVAR_NOT_FOUND;
 use windows::Win32::Foundation::ERROR_INVALID_WINDOW_HANDLE;
 use windows::Win32::Foundation::ERROR_SUCCESS;
-use windows::Win32::Foundation::FALSE;
 use windows::Win32::Foundation::HANDLE;
 use windows::Win32::Foundation::HINSTANCE;
+use windows::Win32::Foundation::HMODULE;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Foundation::LPARAM;
 use windows::Win32::Foundation::LRESULT;
 use windows::Win32::Foundation::RECT;
 use windows::Win32::Foundation::WPARAM;
 use windows::Win32::Graphics::Dwm::DwmGetWindowAttribute;
-use windows::Win32::Graphics::Dwm::DwmSetWindowAttribute;
 use windows::Win32::Graphics::Dwm::DWMWA_CLOAKED;
 use windows::Win32::Graphics::Dwm::DWMWA_WINDOW_CORNER_PREFERENCE;
 use windows::Win32::Graphics::Dwm::DWMWINDOWATTRIBUTE;
+use windows::Win32::Graphics::Dwm::DWM_CLOAKED_APP;
+use windows::Win32::Graphics::Dwm::DWM_CLOAKED_INHERITED;
+use windows::Win32::Graphics::Dwm::DWM_CLOAKED_SHELL;
 use windows::Win32::Graphics::Dwm::DWM_WINDOW_CORNER_PREFERENCE;
 use windows::Win32::System::Com::CoTaskMemFree;
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::OpenProcess;
 use windows::Win32::System::Threading::QueryFullProcessImageNameW;
 use windows::Win32::System::Threading::PROCESS_NAME_WIN32;
@@ -56,7 +62,6 @@ use windows::Win32::UI::Shell::KNOWN_FOLDER_FLAG;
 use windows::Win32::UI::WindowsAndMessaging::CreateWindowExW;
 use windows::Win32::UI::WindowsAndMessaging::DispatchMessageW;
 use windows::Win32::UI::WindowsAndMessaging::EnumWindows;
-use windows::Win32::UI::WindowsAndMessaging::GetClassNameW;
 use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
 use windows::Win32::UI::WindowsAndMessaging::GetMessageW;
 use windows::Win32::UI::WindowsAndMessaging::GetWindowLongW;
@@ -66,9 +71,11 @@ use windows::Win32::UI::WindowsAndMessaging::IsWindowVisible;
 use windows::Win32::UI::WindowsAndMessaging::MessageBoxW;
 use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
 use windows::Win32::UI::WindowsAndMessaging::PostQuitMessage;
+use windows::Win32::UI::WindowsAndMessaging::RealGetWindowClassW;
 use windows::Win32::UI::WindowsAndMessaging::SendNotifyMessageW;
 use windows::Win32::UI::WindowsAndMessaging::SetLayeredWindowAttributes;
 use windows::Win32::UI::WindowsAndMessaging::TranslateMessage;
+use windows::Win32::UI::WindowsAndMessaging::CW_USEDEFAULT;
 use windows::Win32::UI::WindowsAndMessaging::GWL_EXSTYLE;
 use windows::Win32::UI::WindowsAndMessaging::GWL_STYLE;
 use windows::Win32::UI::WindowsAndMessaging::HMENU;
@@ -82,10 +89,16 @@ use windows::Win32::UI::WindowsAndMessaging::WINDOW_STYLE;
 use windows::Win32::UI::WindowsAndMessaging::WM_APP;
 use windows::Win32::UI::WindowsAndMessaging::WNDENUMPROC;
 use windows::Win32::UI::WindowsAndMessaging::WS_CHILD;
+use windows::Win32::UI::WindowsAndMessaging::WS_DISABLED;
+use windows::Win32::UI::WindowsAndMessaging::WS_EX_LAYERED;
 use windows::Win32::UI::WindowsAndMessaging::WS_EX_NOACTIVATE;
 use windows::Win32::UI::WindowsAndMessaging::WS_EX_TOOLWINDOW;
+use windows::Win32::UI::WindowsAndMessaging::WS_EX_TOPMOST;
+use windows::Win32::UI::WindowsAndMessaging::WS_EX_TRANSPARENT;
 use windows::Win32::UI::WindowsAndMessaging::WS_EX_WINDOWEDGE;
 use windows::Win32::UI::WindowsAndMessaging::WS_MAXIMIZE;
+use windows::Win32::UI::WindowsAndMessaging::WS_POPUP;
+use windows::Win32::UI::WindowsAndMessaging::WS_SYSMENU;
 
 pub const WM_APP_LOCATIONCHANGE: u32 = WM_APP;
 pub const WM_APP_REORDER: u32 = WM_APP + 1;
@@ -112,6 +125,18 @@ impl Hash for SendHWND {
 pub struct WindowsApi;
 
 impl WindowsApi {
+    pub fn module_handle_w() -> WinResult<HMODULE> {
+        unsafe { GetModuleHandleW(None) }
+    }
+
+    pub fn imm_disable_ime(param0: u32) -> BOOL {
+        unsafe { ImmDisableIME(param0) }
+    }
+
+    pub fn set_process_dpi_awareness_context(value: DPI_AWARENESS_CONTEXT) -> WinResult<()> {
+        unsafe { SetProcessDpiAwarenessContext(value) }
+    }
+
     pub fn post_message_w<P>(hwnd: P, msg: u32, wparam: WPARAM, lparam: LPARAM) -> WinResult<()>
     where
         P: Param<HWND>,
@@ -126,14 +151,6 @@ impl WindowsApi {
         lparam: LPARAM,
     ) -> WinResult<()> {
         unsafe { SendNotifyMessageW(hwnd, msg, wparam, lparam) }
-    }
-
-    pub fn imm_disable_ime(param0: u32) -> BOOL {
-        unsafe { ImmDisableIME(param0) }
-    }
-
-    pub fn set_process_dpi_awareness_context(value: DPI_AWARENESS_CONTEXT) -> WinResult<()> {
-        unsafe { SetProcessDpiAwarenessContext(value) }
     }
 
     pub fn get_message_w<P0>(
@@ -226,21 +243,6 @@ impl WindowsApi {
         unsafe { SetLayeredWindowAttributes(hwnd, crkey, alpha, flags) }
     }
 
-    pub fn _dwm_set_window_attribute<T>(
-        hwnd: HWND,
-        attribute: DWMWINDOWATTRIBUTE,
-        value: &T,
-    ) -> WinResult<()> {
-        unsafe {
-            DwmSetWindowAttribute(
-                hwnd,
-                attribute,
-                (value as *const T).cast(),
-                u32::try_from(std::mem::size_of::<T>())?,
-            )
-        }
-    }
-
     pub fn dwm_get_window_attribute<T>(
         hwnd: HWND,
         attribute: DWMWINDOWATTRIBUTE,
@@ -250,7 +252,7 @@ impl WindowsApi {
             DwmGetWindowAttribute(
                 hwnd,
                 attribute,
-                value as *mut _ as _, // Direct cast
+                (value as *mut T).cast(),
                 u32::try_from(std::mem::size_of::<T>())?,
             )
         }
@@ -261,21 +263,28 @@ impl WindowsApi {
     }
 
     pub fn is_window_cloaked(hwnd: HWND) -> bool {
-        let mut is_cloaked = FALSE;
+        let mut is_cloaked = 0;
         if let Err(e) = Self::dwm_get_window_attribute(hwnd, DWMWA_CLOAKED, &mut is_cloaked) {
             error!("could not check if window is cloaked: {e}");
             return true;
         }
 
-        is_cloaked.as_bool()
+        matches!(
+            is_cloaked,
+            DWM_CLOAKED_APP | DWM_CLOAKED_SHELL | DWM_CLOAKED_INHERITED
+        )
     }
 
     pub fn is_window_visible(hwnd: HWND) -> bool {
-        unsafe { IsWindowVisible(hwnd).as_bool() }
+        unsafe { IsWindowVisible(hwnd) }.into()
     }
 
     pub fn is_window_active(hwnd: HWND) -> bool {
         unsafe { GetForegroundWindow() == hwnd }
+    }
+
+    pub fn is_window_visible_on_screen(hwnd: HWND) -> bool {
+        Self::is_window_visible(hwnd) && !Self::is_window_cloaked(hwnd)
     }
 
     pub fn is_window_top_level(hwnd: HWND) -> bool {
@@ -289,20 +298,6 @@ impl WindowsApi {
 
         ex_style & WS_EX_TOOLWINDOW.0 != 0 || ex_style & WS_EX_NOACTIVATE.0 != 0
     }
-
-    // pub fn has_filtered_style(hwnd: HWND) -> bool {
-    //     let style = unsafe { GetWindowLongW(hwnd, GWL_STYLE) as u32 };
-    //     let ex_style = unsafe { GetWindowLongW(hwnd, GWL_EXSTYLE) as u32 };
-    //
-    //     if style & WS_CHILD.0 != 0
-    //         || ex_style & WS_EX_TOOLWINDOW.0 != 0
-    //         || ex_style & WS_EX_NOACTIVATE.0 != 0
-    //     {
-    //         return true;
-    //     }
-    //
-    //     false
-    // }
 
     pub fn has_native_border(hwnd: HWND) -> bool {
         let style = unsafe { GetWindowLongW(hwnd, GWL_STYLE) as u32 };
@@ -329,7 +324,6 @@ impl WindowsApi {
             }
         }
 
-        unsafe { GetWindowTextW(hwnd, &mut buffer) };
         Ok(String::from_utf16_lossy(&buffer)
             .trim_end_matches('\0')
             .to_string())
@@ -338,21 +332,21 @@ impl WindowsApi {
     pub fn get_window_class(hwnd: HWND) -> AnyResult<String> {
         let mut buffer: [u16; 256] = [0; 256];
 
-        if unsafe { GetClassNameW(hwnd, &mut buffer) } == 0 {
+        if unsafe { RealGetWindowClassW(hwnd, &mut buffer) } == 0 {
             let last_error = unsafe { GetLastError() };
 
-            // ERROR_ENVVAR_NOT_FOUND just means the title is empty which isn't necessarily an issue
-            // TODO figure out whats with the invalid window handles
+            // Handle specific error cases, similar to the GetClassNameW approach
             if !matches!(
                 last_error,
                 ERROR_ENVVAR_NOT_FOUND | ERROR_SUCCESS | ERROR_INVALID_WINDOW_HANDLE
             ) {
-                // We manually reset LastError here because it doesn't seem to reset by itself
+                // Reset LastError as it doesn't seem to reset automatically
                 unsafe { SetLastError(ERROR_SUCCESS) };
                 return Err(anyhow!("{last_error:?}"));
             }
         }
 
+        // Convert the buffer to a UTF-16 string and remove any trailing null characters
         Ok(String::from_utf16_lossy(&buffer)
             .trim_end_matches('\0')
             .to_string())
@@ -426,6 +420,7 @@ impl WindowsApi {
                 "".to_string()
             }
         };
+
         let process = match Self::get_process_name(hwnd) {
             Ok(val) => val,
             Err(err) => {
@@ -486,7 +481,7 @@ impl WindowsApi {
         handles.iter().for_each(|&hwnd_u| {
             let hwnd = HWND(hwnd_u as *mut _);
 
-            if Self::is_window_visible(hwnd) && !Self::is_window_cloaked(hwnd) {
+            if Self::is_window_visible_on_screen(hwnd) {
                 let window_rule = Self::get_window_rule(hwnd);
 
                 if window_rule.rule_match.border_enabled == Some(false) {
@@ -514,6 +509,23 @@ impl WindowsApi {
         .log_if_err();
 
         corner_preference
+    }
+
+    pub fn create_border_window(name: PCWSTR, border: &mut Border) -> WinResult<HWND> {
+        Self::create_window_ex_w(
+            WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE,
+            w!("border"),
+            name,
+            WS_POPUP | WS_DISABLED | WS_SYSMENU,
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
+            None,
+            None,
+            Self::module_handle_w()?,
+            Some(ptr::addr_of!(*border) as _),
+        )
     }
 
     pub fn home_dir() -> AnyResult<PathBuf> {
@@ -558,7 +570,7 @@ impl WindowsApi {
 pub struct WindowsApiUtility;
 
 impl WindowsApiUtility {
-    fn to_wide(string: &str) -> Vec<u16> {
+    pub fn to_wide(string: &str) -> Vec<u16> {
         string.encode_utf16().chain(Some(0)).collect()
     }
 }

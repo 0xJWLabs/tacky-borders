@@ -7,6 +7,7 @@ use crate::border_config::WindowRule;
 use crate::border_config::CONFIG;
 use crate::error::LogIfErr;
 use crate::windows_api::WindowsApi;
+use crate::windows_api::WindowsApiUtility;
 use crate::windows_api::WM_APP_FOREGROUND;
 use crate::windows_api::WM_APP_HIDECLOAKED;
 use crate::windows_api::WM_APP_LOCATIONCHANGE;
@@ -19,7 +20,6 @@ use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result as AnyResult;
 use rustc_hash::FxHashMap;
-use std::ptr;
 use std::sync::LazyLock;
 use std::thread;
 use std::time;
@@ -28,9 +28,7 @@ use win_color::Color;
 use win_color::ColorImpl;
 use win_color::GlobalColorImpl;
 use win_color::GradientImpl;
-use windows::core::w;
 use windows::core::CloneType;
-use windows::core::Result as WinResult;
 use windows::core::TypeKind;
 use windows::core::PCWSTR;
 use windows::Foundation::Numerics::Matrix3x2;
@@ -68,7 +66,6 @@ use windows::Win32::Graphics::Dwm::DWM_BLURBEHIND;
 use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_UNKNOWN;
 use windows::Win32::Graphics::Gdi::CreateRectRgn;
 use windows::Win32::Graphics::Gdi::ValidateRect;
-use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::WindowsAndMessaging::DefWindowProcW;
 use windows::Win32::UI::WindowsAndMessaging::GetSystemMetrics;
@@ -77,11 +74,11 @@ use windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW;
 use windows::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW;
 use windows::Win32::UI::WindowsAndMessaging::SetWindowPos;
 use windows::Win32::UI::WindowsAndMessaging::CREATESTRUCTW;
-use windows::Win32::UI::WindowsAndMessaging::CW_USEDEFAULT;
 use windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA;
 use windows::Win32::UI::WindowsAndMessaging::GW_HWNDPREV;
 use windows::Win32::UI::WindowsAndMessaging::HWND_TOP;
 use windows::Win32::UI::WindowsAndMessaging::LWA_ALPHA;
+use windows::Win32::UI::WindowsAndMessaging::LWA_COLORKEY;
 use windows::Win32::UI::WindowsAndMessaging::MSG;
 use windows::Win32::UI::WindowsAndMessaging::SET_WINDOW_POS_FLAGS;
 use windows::Win32::UI::WindowsAndMessaging::SM_CXVIRTUALSCREEN;
@@ -96,12 +93,6 @@ use windows::Win32::UI::WindowsAndMessaging::WM_NCDESTROY;
 use windows::Win32::UI::WindowsAndMessaging::WM_PAINT;
 use windows::Win32::UI::WindowsAndMessaging::WM_WINDOWPOSCHANGED;
 use windows::Win32::UI::WindowsAndMessaging::WM_WINDOWPOSCHANGING;
-use windows::Win32::UI::WindowsAndMessaging::WS_DISABLED;
-use windows::Win32::UI::WindowsAndMessaging::WS_EX_LAYERED;
-use windows::Win32::UI::WindowsAndMessaging::WS_EX_TOOLWINDOW;
-use windows::Win32::UI::WindowsAndMessaging::WS_EX_TOPMOST;
-use windows::Win32::UI::WindowsAndMessaging::WS_EX_TRANSPARENT;
-use windows::Win32::UI::WindowsAndMessaging::WS_POPUP;
 
 use super::get_borders;
 
@@ -159,29 +150,20 @@ impl Border {
         }
     }
 
-    pub fn create_border_window(&mut self, window_rule: &WindowRule) -> WinResult<()> {
-        let title: Vec<u16> = format!(
-            "tacky-border | {} | {:?}\0",
-            WindowsApi::get_window_title(self.tracking_window).unwrap_or_default(),
-            self.tracking_window
-        )
-        .encode_utf16()
-        .collect();
+    pub fn create_border_window(&mut self, window_rule: &WindowRule) -> AnyResult<()> {
+        let title = WindowsApiUtility::to_wide(
+            format!(
+                "tacky-border | {} | {:?}",
+                WindowsApi::get_window_title(self.tracking_window).unwrap_or_default(),
+                self.tracking_window
+            )
+            .as_str(),
+        );
 
-        self.border_window = WindowsApi::create_window_ex_w(
-            WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT,
-            w!("border"),
-            PCWSTR(title.as_ptr()),
-            WS_POPUP | WS_DISABLED,
-            CW_USEDEFAULT,
-            CW_USEDEFAULT,
-            CW_USEDEFAULT,
-            CW_USEDEFAULT,
-            None,
-            None,
-            unsafe { GetModuleHandleW(None)? },
-            Some(ptr::addr_of!(*self) as _),
-        )?;
+        self.border_window = WindowsApi::create_border_window(PCWSTR(title.as_ptr()), self)?;
+
+        WindowsApi::set_layered_window_attributes(self.border_window, COLORREF(0), 0, LWA_COLORKEY)
+            .context("could not set LWA_COLORKEY")?;
 
         self.load_from_config(window_rule).log_if_err();
 
@@ -210,7 +192,7 @@ impl Border {
 
             WindowsApi::set_layered_window_attributes(
                 self.border_window,
-                COLORREF(0x00000000),
+                COLORREF(-1i32 as u32),
                 255,
                 LWA_ALPHA,
             )

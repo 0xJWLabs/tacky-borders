@@ -21,8 +21,18 @@ mod easing;
 mod parser;
 pub mod timer;
 
-pub const ANIM_NONE: i32 = 0;
-pub const ANIM_FADE: i32 = 1;
+#[derive(Debug, Deserialize, Clone, Default)]
+pub struct AnimationProgress {
+    pub fade: f32,
+    pub spiral: f32,
+    pub angle: f32,
+}
+
+#[derive(Debug, Deserialize, Clone, Default)]
+pub struct AnimationFlags {
+    pub fade_to_visible: bool,
+    pub should_fade: bool,
+}
 
 #[derive(Debug, Deserialize, Clone, Default)]
 pub struct Animations {
@@ -33,15 +43,9 @@ pub struct Animations {
     #[serde(default = "default_fps")]
     pub fps: i32,
     #[serde(skip)]
-    pub fade_progress: f32,
+    pub progress: AnimationProgress,
     #[serde(skip)]
-    pub fade_to_visible: bool,
-    #[serde(skip)]
-    pub spiral_progress: f32,
-    #[serde(skip)]
-    pub spiral_angle: f32,
-    #[serde(skip)]
-    pub event: i32,
+    pub flags: AnimationFlags,
     #[serde(skip)]
     pub timer: Option<AnimationTimer>,
 }

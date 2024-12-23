@@ -42,7 +42,6 @@ mod border_manager;
 mod error;
 mod keyboard_hook;
 mod sys_tray;
-mod utils;
 mod window_event_hook;
 mod windows_api;
 mod windows_callback;
@@ -100,7 +99,7 @@ fn start_app() -> AnyResult<()> {
     }
 
     register_border_class().log_if_err();
-    WindowsApi::available_window_handles(Some(&create_border_for_window)).log_if_err();
+    WindowsApi::process_window_handles(&create_border_for_window).log_if_err();
     run_message_loop()
 }
 

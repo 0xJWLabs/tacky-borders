@@ -3,6 +3,7 @@ extern crate windows;
 use anyhow::Result as AnyResult;
 use std::fmt::Debug;
 use std::io::Result as IoResult;
+use win_open::Result as WinOpenResult;
 use windows::core::Result as WinResult;
 
 pub trait LogIfErr {
@@ -32,6 +33,17 @@ where
 }
 
 impl<T> LogIfErr for IoResult<T>
+where
+    T: Debug,
+{
+    fn log_if_err(&self) {
+        if let Err(e) = self {
+            error!("{e:#}");
+        }
+    }
+}
+
+impl<T> LogIfErr for WinOpenResult<T>
 where
     T: Debug,
 {

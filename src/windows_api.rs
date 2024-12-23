@@ -1,12 +1,12 @@
 extern crate windows;
 
-use crate::border_config::BorderRadius;
 use crate::border_config::MatchKind;
 use crate::border_config::MatchStrategy;
 use crate::border_config::WindowRule;
 use crate::border_config::CONFIG;
 use crate::error::LogIfErr;
 use crate::windows_callback::enum_windows;
+use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result as AnyResult;
 use regex::Regex;
@@ -16,16 +16,18 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::os::windows::ffi::OsStringExt;
 use std::path::PathBuf;
-use win_color::Color;
-use win_color::ColorImpl;
-use win_color::GlobalColor;
 use windows::core::Param;
 use windows::core::Result as WinResult;
 use windows::core::PCWSTR;
 use windows::core::PWSTR;
 use windows::Win32::Foundation::CloseHandle;
+use windows::Win32::Foundation::GetLastError;
+use windows::Win32::Foundation::SetLastError;
 use windows::Win32::Foundation::BOOL;
 use windows::Win32::Foundation::COLORREF;
+use windows::Win32::Foundation::ERROR_ENVVAR_NOT_FOUND;
+use windows::Win32::Foundation::ERROR_INVALID_WINDOW_HANDLE;
+use windows::Win32::Foundation::ERROR_SUCCESS;
 use windows::Win32::Foundation::FALSE;
 use windows::Win32::Foundation::HANDLE;
 use windows::Win32::Foundation::HINSTANCE;
@@ -38,10 +40,6 @@ use windows::Win32::Graphics::Dwm::DwmGetWindowAttribute;
 use windows::Win32::Graphics::Dwm::DwmSetWindowAttribute;
 use windows::Win32::Graphics::Dwm::DWMWA_CLOAKED;
 use windows::Win32::Graphics::Dwm::DWMWA_WINDOW_CORNER_PREFERENCE;
-use windows::Win32::Graphics::Dwm::DWMWCP_DEFAULT;
-use windows::Win32::Graphics::Dwm::DWMWCP_DONOTROUND;
-use windows::Win32::Graphics::Dwm::DWMWCP_ROUND;
-use windows::Win32::Graphics::Dwm::DWMWCP_ROUNDSMALL;
 use windows::Win32::Graphics::Dwm::DWMWINDOWATTRIBUTE;
 use windows::Win32::Graphics::Dwm::DWM_WINDOW_CORNER_PREFERENCE;
 use windows::Win32::System::Com::CoTaskMemFree;
@@ -280,19 +278,31 @@ impl WindowsApi {
         unsafe { GetForegroundWindow() == hwnd }
     }
 
-    pub fn has_filtered_style(hwnd: HWND) -> bool {
+    pub fn is_window_top_level(hwnd: HWND) -> bool {
         let style = unsafe { GetWindowLongW(hwnd, GWL_STYLE) as u32 };
+
+        style & WS_CHILD.0 == 0
+    }
+
+    pub fn has_filtered_style(hwnd: HWND) -> bool {
         let ex_style = unsafe { GetWindowLongW(hwnd, GWL_EXSTYLE) as u32 };
 
-        if style & WS_CHILD.0 != 0
-            || ex_style & WS_EX_TOOLWINDOW.0 != 0
-            || ex_style & WS_EX_NOACTIVATE.0 != 0
-        {
-            return true;
-        }
-
-        false
+        ex_style & WS_EX_TOOLWINDOW.0 != 0 || ex_style & WS_EX_NOACTIVATE.0 != 0
     }
+
+    // pub fn has_filtered_style(hwnd: HWND) -> bool {
+    //     let style = unsafe { GetWindowLongW(hwnd, GWL_STYLE) as u32 };
+    //     let ex_style = unsafe { GetWindowLongW(hwnd, GWL_EXSTYLE) as u32 };
+    //
+    //     if style & WS_CHILD.0 != 0
+    //         || ex_style & WS_EX_TOOLWINDOW.0 != 0
+    //         || ex_style & WS_EX_NOACTIVATE.0 != 0
+    //     {
+    //         return true;
+    //     }
+    //
+    //     false
+    // }
 
     pub fn has_native_border(hwnd: HWND) -> bool {
         let style = unsafe { GetWindowLongW(hwnd, GWL_STYLE) as u32 };
@@ -301,32 +311,54 @@ impl WindowsApi {
         ex_style & WS_EX_WINDOWEDGE.0 != 0 && style & WS_MAXIMIZE.0 == 0
     }
 
-    pub fn get_window_title(hwnd: HWND) -> String {
+    pub fn get_window_title(hwnd: HWND) -> AnyResult<String> {
         let mut buffer: [u16; 256] = [0; 256];
 
         if unsafe { GetWindowTextW(hwnd, &mut buffer) } == 0 {
-            error!("Error getting window title!");
+            let last_error = unsafe { GetLastError() };
+
+            // ERROR_ENVVAR_NOT_FOUND just means the title is empty which isn't necessarily an issue
+            // TODO figure out whats with the invalid window handles
+            if !matches!(
+                last_error,
+                ERROR_ENVVAR_NOT_FOUND | ERROR_SUCCESS | ERROR_INVALID_WINDOW_HANDLE
+            ) {
+                // We manually reset LastError here because it doesn't seem to reset by itself
+                unsafe { SetLastError(ERROR_SUCCESS) };
+                return Err(anyhow!("{last_error:?}"));
+            }
         }
 
         unsafe { GetWindowTextW(hwnd, &mut buffer) };
-        String::from_utf16_lossy(&buffer)
+        Ok(String::from_utf16_lossy(&buffer)
             .trim_end_matches('\0')
-            .to_string()
+            .to_string())
     }
 
-    pub fn get_window_class(hwnd: HWND) -> String {
+    pub fn get_window_class(hwnd: HWND) -> AnyResult<String> {
         let mut buffer: [u16; 256] = [0; 256];
 
         if unsafe { GetClassNameW(hwnd, &mut buffer) } == 0 {
-            error!("Error getting window class name!");
+            let last_error = unsafe { GetLastError() };
+
+            // ERROR_ENVVAR_NOT_FOUND just means the title is empty which isn't necessarily an issue
+            // TODO figure out whats with the invalid window handles
+            if !matches!(
+                last_error,
+                ERROR_ENVVAR_NOT_FOUND | ERROR_SUCCESS | ERROR_INVALID_WINDOW_HANDLE
+            ) {
+                // We manually reset LastError here because it doesn't seem to reset by itself
+                unsafe { SetLastError(ERROR_SUCCESS) };
+                return Err(anyhow!("{last_error:?}"));
+            }
         }
 
-        String::from_utf16_lossy(&buffer)
+        Ok(String::from_utf16_lossy(&buffer)
             .trim_end_matches('\0')
-            .to_string()
+            .to_string())
     }
 
-    pub fn get_process_name(hwnd: HWND) -> String {
+    pub fn get_process_name(hwnd: HWND) -> AnyResult<String> {
         let mut process_id = 0u32;
         unsafe {
             GetWindowThreadProcessId(hwnd, Some(&mut process_id));
@@ -337,44 +369,70 @@ impl WindowsApi {
 
         let process_handle = match process_handle {
             Ok(handle) => handle,
-            Err(_) => return String::new(), // Return empty string on error
+            Err(_) => {
+                let last_error = unsafe { GetLastError() };
+                return Err(anyhow!("{last_error:?}"));
+            }
         };
 
         let mut buffer = [0u16; 256];
         let mut length = buffer.len() as u32;
 
-        unsafe {
-            // Query the process image name
-            if QueryFullProcessImageNameW(
+        let result = unsafe {
+            QueryFullProcessImageNameW(
                 process_handle,
                 PROCESS_NAME_WIN32, // Use 0 to indicate no special flags
                 PWSTR(buffer.as_mut_ptr()),
                 &mut length,
             )
-            .is_err()
-            {
-                CloseHandle(process_handle).ok();
-                return String::new(); // Return empty string on error
-            }
+        };
 
-            CloseHandle(process_handle).ok(); // Ignore the result of CloseHandle
+        if result.is_err() {
+            let last_error = unsafe { GetLastError() };
+            unsafe { CloseHandle(process_handle).ok() };
+            return Err(anyhow!("{last_error:?}"));
+        }
+
+        unsafe {
+            CloseHandle(process_handle).ok(); // Ensure the handle is closed, ignoring the result
         }
 
         let exe_path = String::from_utf16_lossy(&buffer[..length as usize]);
 
-        exe_path
+        let process_name = exe_path
             .split('\\')
             .last()
-            .and_then(|file_name| file_name.split('.').next()) // Using `and_then`
-            .unwrap_or("") // Return empty string if parsing fails
+            .and_then(|file_name| file_name.split('.').next()) // Extract the file name without extension
+            .unwrap_or("") // Fallback to empty string if parsing fails
             .trim_end_matches('\0')
-            .to_string()
+            .to_string();
+
+        Ok(process_name)
     }
 
     pub fn get_window_rule(hwnd: HWND) -> WindowRule {
-        let title = Self::get_window_title(hwnd);
-        let class = Self::get_window_class(hwnd);
-        let process = Self::get_process_name(hwnd);
+        let title = match Self::get_window_title(hwnd) {
+            Ok(val) => val,
+            Err(err) => {
+                error!("could not retrieve window title for {hwnd:?}: {err}");
+                "".to_string()
+            }
+        };
+
+        let class = match Self::get_window_class(hwnd) {
+            Ok(val) => val,
+            Err(err) => {
+                error!("could not retrieve window class for {hwnd:?}: {err}");
+                "".to_string()
+            }
+        };
+        let process = match Self::get_process_name(hwnd) {
+            Ok(val) => val,
+            Err(err) => {
+                error!("could not retrieve process name for {hwnd:?}: {err}");
+                "".to_string()
+            }
+        };
 
         let config = CONFIG.read().unwrap();
 
@@ -416,21 +474,32 @@ impl WindowsApi {
         WindowRule::default()
     }
 
-    pub fn available_window_handles(cb: Option<&dyn Fn(HWND)>) -> AnyResult<Vec<isize>> {
+    pub fn collect_window_handles() -> AnyResult<Vec<isize>> {
         let mut handles: Vec<isize> = Vec::new();
-
-        // Enumerate windows and collect handles
         Self::enum_windows(Some(enum_windows), &mut handles as *mut Vec<isize> as isize)?;
-
-        if let Some(cb) = cb {
-            // Call the provided callback for each handle
-            for hwnd_u in &handles {
-                let hwnd = HWND(*hwnd_u as *mut _);
-                cb(hwnd);
-            }
-        }
-
         Ok(handles)
+    }
+
+    pub fn process_window_handles(callback: &dyn Fn(HWND, WindowRule)) -> AnyResult<()> {
+        let handles = Self::collect_window_handles()?;
+
+        handles.iter().for_each(|&hwnd_u| {
+            let hwnd = HWND(hwnd_u as *mut _);
+
+            if Self::is_window_visible(hwnd) && !Self::is_window_cloaked(hwnd) {
+                let window_rule = Self::get_window_rule(hwnd);
+
+                if window_rule.rule_match.border_enabled == Some(false) {
+                    info!("border is disabled for {hwnd:?}");
+                } else if window_rule.rule_match.border_enabled == Some(true)
+                    || !Self::has_filtered_style(hwnd)
+                {
+                    callback(hwnd, window_rule);
+                }
+            }
+        });
+
+        Ok(())
     }
 
     pub fn get_window_corner_preference(hwnd: HWND) -> DWM_WINDOW_CORNER_PREFERENCE {
@@ -489,41 +558,6 @@ impl WindowsApi {
 pub struct WindowsApiUtility;
 
 impl WindowsApiUtility {
-    pub fn convert_config_colors(
-        color_active: &GlobalColor,
-        color_inactive: &GlobalColor,
-    ) -> (Color, Color) {
-        (
-            Color::fetch(color_active, Some(true)).unwrap(),
-            Color::fetch(color_inactive, Some(false)).unwrap(),
-        )
-    }
-
-    pub fn convert_config_radius(
-        border_width: i32,
-        config_radius: BorderRadius,
-        tracking_window: HWND,
-        dpi: f32,
-    ) -> f32 {
-        let base_radius = (border_width as f32) / 2.0;
-        let scale_factor = dpi / 96.0;
-
-        match config_radius {
-            BorderRadius::Custom(-1.0) | BorderRadius::Auto => {
-                match WindowsApi::get_window_corner_preference(tracking_window) {
-                    DWMWCP_DEFAULT | DWMWCP_ROUND => 8.0 * scale_factor + base_radius,
-                    DWMWCP_ROUNDSMALL => 4.0 * scale_factor + base_radius,
-                    DWMWCP_DONOTROUND => 0.0,
-                    _ => base_radius, // fallback default
-                }
-            }
-            BorderRadius::Round => 8.0 * scale_factor + base_radius,
-            BorderRadius::SmallRound => 4.0 * scale_factor + base_radius,
-            BorderRadius::Square => 0.0,
-            BorderRadius::Custom(radius) => radius * scale_factor,
-        }
-    }
-
     fn to_wide(string: &str) -> Vec<u16> {
         string.encode_utf16().chain(Some(0)).collect()
     }

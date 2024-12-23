@@ -6,7 +6,7 @@ use crate::windows_api::WindowsApi;
 
 pub extern "system" fn enum_windows(hwnd: HWND, lparam: LPARAM) -> BOOL {
     let windows = unsafe { &mut *(lparam.0 as *mut Vec<isize>) };
-    if !WindowsApi::has_filtered_style(hwnd) {
+    if WindowsApi::is_window_top_level(hwnd) {
         windows.push(hwnd.0 as isize);
     }
 

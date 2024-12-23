@@ -22,6 +22,7 @@ use windows::Win32::Foundation::WPARAM;
 use windows::Win32::UI::Accessibility::SetWinEventHook;
 use windows::Win32::UI::Accessibility::UnhookWinEvent;
 use windows::Win32::UI::Accessibility::HWINEVENTHOOK;
+use windows::Win32::UI::WindowsAndMessaging::CHILDID_SELF;
 use windows::Win32::UI::WindowsAndMessaging::EVENT_OBJECT_CLOAKED;
 use windows::Win32::UI::WindowsAndMessaging::EVENT_OBJECT_DESTROY;
 use windows::Win32::UI::WindowsAndMessaging::EVENT_OBJECT_HIDE;
@@ -118,10 +119,10 @@ impl WindowEventHook {
         }
     }
 
-    fn handle_event(&self, event_type: u32, handle: HWND) {
+    fn handle_event(&self, event_type: u32, handle: HWND, id_child: i32) {
         match event_type {
             EVENT_OBJECT_LOCATIONCHANGE => {
-                if WindowsApi::has_filtered_style(handle) {
+                if id_child != CHILDID_SELF as i32 {
                     return;
                 }
 
@@ -137,12 +138,13 @@ impl WindowEventHook {
                 }
             }
             EVENT_OBJECT_REORDER => {
-                if WindowsApi::has_filtered_style(handle) {
-                    return;
-                }
+                let visible_windows: Vec<_> = get_borders()
+                    .values()
+                    .map(|&val| HWND(val as _))
+                    .filter(|&border_window| WindowsApi::is_window_visible(border_window))
+                    .collect();
 
-                for value in get_borders().values() {
-                    let border_window: HWND = HWND(*value as _);
+                for border_window in visible_windows {
                     if WindowsApi::is_window_visible(border_window) {
                         WindowsApi::post_message_w(
                             border_window,
@@ -156,20 +158,28 @@ impl WindowEventHook {
                 }
             }
             EVENT_SYSTEM_FOREGROUND => {
-                for (key, val) in get_borders().iter() {
-                    let border_window: HWND = HWND(*val as _);
-                    // Some apps like Flow Launcher can become focused even if they aren't visible yet,
-                    // so I also need to check if 'key' is equal to '_hwnd' (the foreground window)
-                    if WindowsApi::is_window_visible(border_window) || key == &(handle.0 as isize) {
-                        WindowsApi::post_message_w(
-                            border_window,
-                            WM_APP_FOREGROUND,
-                            WPARAM(0),
-                            LPARAM(0),
-                        )
-                        .with_context(|| "EVENT_OBJECT_FOCUS")
-                        .log_if_err();
-                    }
+                let target_handle = handle.0 as isize;
+                let visible_windows: Vec<HWND> = get_borders()
+                    .iter()
+                    .filter_map(|(&key, &val)| {
+                        let border_window = HWND(val as _);
+                        if WindowsApi::is_window_visible(border_window) || key == target_handle {
+                            Some(border_window)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                for border_window in visible_windows {
+                    WindowsApi::post_message_w(
+                        border_window,
+                        WM_APP_FOREGROUND,
+                        WPARAM(0),
+                        LPARAM(0),
+                    )
+                    .with_context(|| "EVENT_OBJECT_FOCUS")
+                    .log_if_err();
                 }
             }
             EVENT_OBJECT_SHOW | EVENT_OBJECT_UNCLOAKED => {
@@ -194,7 +204,7 @@ impl WindowEventHook {
             }
             // TODO this is called an unnecessary number of times which may hurt performance?
             EVENT_OBJECT_DESTROY => {
-                if !WindowsApi::has_filtered_style(handle) {
+                if id_child == CHILDID_SELF as i32 {
                     destroy_border_for_window(handle);
                 }
             }
@@ -227,6 +237,6 @@ extern "system" fn window_event_hook_proc(
     }
 
     if let Some(hook) = WIN_EVENT_HOOK.get() {
-        hook.handle_event(event_type, handle);
+        hook.handle_event(event_type, handle, id_child);
     }
 }

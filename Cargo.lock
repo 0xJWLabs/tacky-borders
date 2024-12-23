@@ -376,6 +376,7 @@ dependencies = [
  "sp_log",
  "tray-icon-win",
  "win-color",
+ "win-open",
  "windows",
  "winresource",
 ]
@@ -487,9 +488,9 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "win-color"
-version = "0.0.5"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "910da28f16346bc08e84e6a46af9324e8f33ec7e37c5dce2875dae05b06c2156"
+checksum = "10483b193a179f329a8f7d5150107831357087973b637db42acea2f7c4bab786"
 dependencies = [
  "phf",
  "phf_macros",
@@ -497,6 +498,12 @@ dependencies = [
  "serde",
  "windows",
 ]
+
+[[package]]
+name = "win-open"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eca314a658962a4b8d481a8fb4475177c06d091732ac5f2589cd808132335da4"
 
 [[package]]
 name = "winapi-util"

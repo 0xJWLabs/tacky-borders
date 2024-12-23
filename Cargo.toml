@@ -16,9 +16,10 @@ log = "0.4.22"
 rustc-hash = "2.1.0"
 anyhow = "1.0.94"
 simple-bezier-easing = "0.1.1"
-win-color = "0.0.5"
+win-color = "0.1.0"
 serde_jsonc2 = "0.1.0"
 tray-icon-win = "0.1.2"
+win-open = "0.1.2"
 
 [dependencies.windows]
 version = "0.58.0"
@@ -40,6 +41,7 @@ features = [
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_WindowsAndMessaging",
   "Win32_System_SystemServices",
+  "Win32_System_LibraryLoader",
 ]
 
 [build-dependencies]

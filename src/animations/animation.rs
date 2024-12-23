@@ -1,4 +1,3 @@
-use super::ANIM_NONE;
 use crate::border_manager::Border;
 use crate::windows_api::WindowsApi;
 use core::fmt;
@@ -68,29 +67,28 @@ fn animate_spiral(
     };
 
     let delta_x = anim_elapsed.as_secs_f32() * 1000.0 / anim_params.duration * direction;
-    border.animations.spiral_progress += delta_x;
+    border.animations.progress.spiral += delta_x;
 
-    if !(0.0..=1.0).contains(&border.animations.spiral_progress) {
-        border.animations.spiral_progress = border.animations.spiral_progress.rem_euclid(1.0);
+    if !(0.0..=1.0).contains(&border.animations.progress.spiral) {
+        border.animations.progress.spiral = border.animations.progress.spiral.rem_euclid(1.0);
     }
 
-    let y_coord = match anim_params.easing_fn.as_ref()(border.animations.spiral_progress) {
+    let y_coord = match anim_params.easing_fn.as_ref()(border.animations.progress.spiral) {
         Ok(val) => val,
         Err(err) => {
             error!("could not create bezier easing function: {err}");
-            border.animations.event = ANIM_NONE;
             return;
         }
     };
 
-    border.animations.spiral_angle = 360.0 * y_coord;
+    border.animations.progress.angle = 360.0 * y_coord;
 
     // Calculate the center point of the window
     let center_x = WindowsApi::get_rect_width(border.window_rect) / 2;
     let center_y = WindowsApi::get_rect_height(border.window_rect) / 2;
 
     let transform = Matrix3x2::rotation(
-        border.animations.spiral_angle,
+        border.animations.progress.angle,
         center_x as f32,
         center_y as f32,
     );
@@ -105,47 +103,46 @@ fn animate_fade(border: &mut Border, anim_elapsed: &Duration, anim_params: &Anim
     if border.active_color.get_opacity() == Some(0.0)
         && border.inactive_color.get_opacity() == Some(0.0)
     {
-        // Set fade_progress here so we start from 0 opacity for the visible color
-        border.animations.fade_progress = match border.is_window_active {
+        // Set progress.fade here so we start from 0 opacity for the visible color
+        border.animations.progress.fade = match border.is_window_active {
             true => 0.0,
             false => 1.0,
         };
 
-        border.animations.fade_to_visible = true;
+        border.animations.flags.fade_to_visible = true;
     }
 
-    // Determine which direction we should move fade_progress
+    // Determine which direction we should move progress.fade
     let direction = match border.is_window_active {
         true => 1.0,
         false => -1.0,
     };
 
     let delta_x = anim_elapsed.as_secs_f32() * 1000.0 / anim_params.duration * direction;
-    border.animations.fade_progress += delta_x;
+    border.animations.progress.fade += delta_x;
 
-    if !(0.0..=1.0).contains(&border.animations.fade_progress) {
-        let final_opacity = border.animations.fade_progress.clamp(0.0, 1.0);
+    if !(0.0..=1.0).contains(&border.animations.progress.fade) {
+        let final_opacity = border.animations.progress.fade.clamp(0.0, 1.0);
 
         border.active_color.set_opacity(final_opacity);
         border.inactive_color.set_opacity(1.0 - final_opacity);
 
-        border.animations.fade_progress = final_opacity;
-        border.animations.fade_to_visible = false;
-        border.animations.event = ANIM_NONE;
+        border.animations.progress.fade = final_opacity;
+        border.animations.flags.fade_to_visible = false;
+        border.animations.flags.should_fade = false;
         return;
     }
 
-    let y_coord = match anim_params.easing_fn.as_ref()(border.animations.fade_progress) {
+    let y_coord = match anim_params.easing_fn.as_ref()(border.animations.progress.fade) {
         Ok(val) => val,
         Err(err) => {
             error!("could not create bezier easing function: {err}");
-            border.animations.event = ANIM_NONE;
-
+            border.animations.flags.should_fade = false;
             return;
         }
     };
 
-    let (new_active_opacity, new_inactive_opacity) = match border.animations.fade_to_visible {
+    let (new_active_opacity, new_inactive_opacity) = match border.animations.flags.fade_to_visible {
         true => match border.is_window_active {
             true => (y_coord, 0.0),
             false => (0.0, 1.0 - y_coord),

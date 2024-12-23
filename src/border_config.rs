@@ -1,6 +1,5 @@
 use crate::animations::Animations;
 use crate::error::LogIfErr;
-use crate::utils::open;
 use crate::windows_api::WindowsApi;
 use anyhow::anyhow;
 use anyhow::Context;
@@ -16,6 +15,11 @@ use std::path::PathBuf;
 use std::sync::LazyLock;
 use std::sync::RwLock;
 use win_color::GlobalColor;
+use windows::Win32::Foundation::HWND;
+use windows::Win32::Graphics::Dwm::DWMWCP_DEFAULT;
+use windows::Win32::Graphics::Dwm::DWMWCP_DONOTROUND;
+use windows::Win32::Graphics::Dwm::DWMWCP_ROUND;
+use windows::Win32::Graphics::Dwm::DWMWCP_ROUNDSMALL;
 
 /// Global configuration instance, accessible throughout the application.
 /// It uses `LazyLock` to initialize only when first accessed and wraps the config in an `RwLock` for thread-safe access.
@@ -59,6 +63,28 @@ pub enum BorderRadius {
     /// Custom border radius, specified in pixels.
     #[serde(untagged)]
     Custom(f32),
+}
+
+impl BorderRadius {
+    pub fn parse(&self, border_width: i32, dpi: f32, tracking_window: HWND) -> f32 {
+        let base_radius = (border_width as f32) / 2.0;
+        let scale_factor = dpi / 96.0;
+
+        match self {
+            BorderRadius::Custom(-1.0) | BorderRadius::Auto => {
+                match WindowsApi::get_window_corner_preference(tracking_window) {
+                    DWMWCP_DEFAULT | DWMWCP_ROUND => 8.0 * scale_factor + base_radius,
+                    DWMWCP_ROUNDSMALL => 4.0 * scale_factor + base_radius,
+                    DWMWCP_DONOTROUND => 0.0,
+                    _ => base_radius, // fallback default
+                }
+            }
+            BorderRadius::Round => 8.0 * scale_factor + base_radius,
+            BorderRadius::SmallRound => 4.0 * scale_factor + base_radius,
+            BorderRadius::Square => 0.0,
+            BorderRadius::Custom(radius) => radius * scale_factor,
+        }
+    }
 }
 
 /// Specifies the type of match used for window identification.
@@ -338,7 +364,7 @@ impl Config {
 
                 dir.push(config_file);
 
-                open::that(dir).log_if_err();
+                win_open::that(dir).log_if_err();
             }
             Err(err) => error!("{err}"),
         }

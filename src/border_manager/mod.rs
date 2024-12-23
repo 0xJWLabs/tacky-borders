@@ -1,5 +1,6 @@
 mod border;
 
+use crate::border_config::WindowRule;
 use crate::error::LogIfErr;
 use crate::windows_api::SendHWND;
 use crate::windows_api::WindowsApi;
@@ -9,27 +10,21 @@ use anyhow::Context;
 use anyhow::Result as AnyResult;
 pub use border::Border;
 use rustc_hash::FxHashMap;
-use std::mem::transmute;
 use std::sync::LazyLock;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::thread::spawn;
 use windows::core::w;
 use windows::Win32::Foundation::GetLastError;
-use windows::Win32::Foundation::HINSTANCE;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Foundation::LPARAM;
 use windows::Win32::Foundation::WPARAM;
-use windows::Win32::System::SystemServices::IMAGE_DOS_HEADER;
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::LoadCursorW;
 use windows::Win32::UI::WindowsAndMessaging::RegisterClassW;
 use windows::Win32::UI::WindowsAndMessaging::IDC_ARROW;
 use windows::Win32::UI::WindowsAndMessaging::WM_NCDESTROY;
 use windows::Win32::UI::WindowsAndMessaging::WNDCLASSW;
-
-extern "C" {
-    static __ImageBase: IMAGE_DOS_HEADER;
-}
 
 static BORDERS: LazyLock<Mutex<FxHashMap<isize, isize>>> =
     LazyLock::new(|| Mutex::new(FxHashMap::default()));
@@ -56,9 +51,17 @@ pub fn show_border_for_window(hwnd: HWND) {
             .log_if_err();
     } else if WindowsApi::is_window_visible(hwnd)
         && !WindowsApi::is_window_cloaked(hwnd)
-        && !WindowsApi::has_filtered_style(hwnd)
+        && WindowsApi::is_window_top_level(hwnd)
     {
-        create_border_for_window(hwnd);
+        let window_rule = WindowsApi::get_window_rule(hwnd);
+
+        if window_rule.rule_match.border_enabled == Some(false) {
+            info!("border is disabled for {hwnd:?}");
+        } else if window_rule.rule_match.border_enabled == Some(true)
+            || !WindowsApi::has_filtered_style(hwnd)
+        {
+            create_border_for_window(hwnd, window_rule);
+        }
     }
 }
 
@@ -80,24 +83,13 @@ pub fn hide_border_for_window(hwnd: HWND) -> bool {
     true
 }
 
-pub fn create_border_for_window(hwnd: HWND) {
-    if !WindowsApi::is_window_visible(hwnd) || WindowsApi::is_window_cloaked(hwnd) {
-        return;
-    }
+pub fn create_border_for_window(hwnd: HWND, window_rule: WindowRule) {
     debug!("creating border for: {:?}", hwnd);
     let window = SendHWND(hwnd);
 
     let _ = std::thread::spawn(move || {
         let window_sent = window;
         let window_isize = window_sent.0 .0 as isize;
-
-        let window_rule = WindowsApi::get_window_rule(window_sent.0);
-        if window_rule.rule_match.border_enabled == Some(false) {
-            info!("border is disabled for {:?}!", window_sent.0);
-            return;
-        }
-
-        let mut border = Border::new(window_sent.0, &window_rule);
 
         let mut borders_hashmap = get_borders();
 
@@ -106,8 +98,10 @@ pub fn create_border_for_window(hwnd: HWND) {
             return;
         }
 
-        let hinstance: HINSTANCE = unsafe { std::mem::transmute(&__ImageBase) };
-        if let Err(e) = border.create_border_window(hinstance) {
+        let mut border = Border::new(window_sent.0);
+
+        // let hinstance: HINSTANCE = unsafe { std::mem::transmute(&__ImageBase) };
+        if let Err(e) = border.create_border_window(&window_rule) {
             error!("could not create border window: {e:?}");
             return;
         };
@@ -118,11 +112,11 @@ pub fn create_border_for_window(hwnd: HWND) {
         let _ = window_sent;
         let _ = window_isize;
         let _ = window_rule;
-        let _ = hinstance;
 
         if let Err(e) = border.init() {
             error!("{e}");
         }
+        let _ = window_rule;
     });
 }
 
@@ -139,11 +133,9 @@ pub fn destroy_border_for_window(hwnd: HWND) {
 
 pub fn register_border_class() -> AnyResult<()> {
     unsafe {
-        let hinstance: HINSTANCE = transmute(&__ImageBase);
-
         let wc = WNDCLASSW {
             lpfnWndProc: Some(Border::wnd_proc),
-            hInstance: hinstance,
+            hInstance: GetModuleHandleW(None)?.into(),
             lpszClassName: w!("border"),
             hCursor: LoadCursorW(None, IDC_ARROW)?,
             ..Default::default()
@@ -172,5 +164,5 @@ pub fn reload_borders() {
     borders.clear();
     drop(borders);
 
-    WindowsApi::available_window_handles(Some(&create_border_for_window)).unwrap();
+    WindowsApi::process_window_handles(&create_border_for_window).log_if_err();
 }

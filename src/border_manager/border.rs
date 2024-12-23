@@ -3,12 +3,10 @@ use crate::animations::animation::AnimationType;
 use crate::animations::timer::KillAnimationTimer;
 use crate::animations::timer::SetAnimationTimer;
 use crate::animations::Animations;
-use crate::animations::ANIM_FADE;
 use crate::border_config::WindowRule;
 use crate::border_config::CONFIG;
 use crate::error::LogIfErr;
 use crate::windows_api::WindowsApi;
-use crate::windows_api::WindowsApiUtility;
 use crate::windows_api::WM_APP_FOREGROUND;
 use crate::windows_api::WM_APP_HIDECLOAKED;
 use crate::windows_api::WM_APP_LOCATIONCHANGE;
@@ -28,6 +26,7 @@ use std::time;
 use std::time::Instant;
 use win_color::Color;
 use win_color::ColorImpl;
+use win_color::GlobalColorImpl;
 use win_color::GradientImpl;
 use windows::core::w;
 use windows::core::CloneType;
@@ -38,7 +37,6 @@ use windows::Foundation::Numerics::Matrix3x2;
 use windows::Win32::Foundation::COLORREF;
 use windows::Win32::Foundation::D2DERR_RECREATE_TARGET;
 use windows::Win32::Foundation::FALSE;
-use windows::Win32::Foundation::HINSTANCE;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Foundation::LPARAM;
 use windows::Win32::Foundation::LRESULT;
@@ -70,6 +68,7 @@ use windows::Win32::Graphics::Dwm::DWM_BLURBEHIND;
 use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_UNKNOWN;
 use windows::Win32::Graphics::Gdi::CreateRectRgn;
 use windows::Win32::Graphics::Gdi::ValidateRect;
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::WindowsAndMessaging::DefWindowProcW;
 use windows::Win32::UI::WindowsAndMessaging::GetSystemMetrics;
@@ -78,6 +77,7 @@ use windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW;
 use windows::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW;
 use windows::Win32::UI::WindowsAndMessaging::SetWindowPos;
 use windows::Win32::UI::WindowsAndMessaging::CREATESTRUCTW;
+use windows::Win32::UI::WindowsAndMessaging::CW_USEDEFAULT;
 use windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA;
 use windows::Win32::UI::WindowsAndMessaging::GW_HWNDPREV;
 use windows::Win32::UI::WindowsAndMessaging::HWND_TOP;
@@ -152,86 +152,17 @@ pub struct Border {
 }
 
 impl Border {
-    pub fn new(tracking_window: HWND, window_rule: &WindowRule) -> Self {
-        let config = CONFIG.read().unwrap();
-
-        let config_width = window_rule
-            .rule_match
-            .border_width
-            .unwrap_or(config.global_rule.border_width);
-        let border_offset = window_rule
-            .rule_match
-            .border_offset
-            .unwrap_or(config.global_rule.border_offset);
-        let config_radius = window_rule
-            .rule_match
-            .border_radius
-            .clone()
-            .unwrap_or(config.global_rule.border_radius.clone());
-
-        let config_active = window_rule
-            .rule_match
-            .active_color
-            .clone()
-            .unwrap_or(config.global_rule.active_color.clone());
-
-        let config_inactive = window_rule
-            .rule_match
-            .inactive_color
-            .clone()
-            .unwrap_or(config.global_rule.inactive_color.clone());
-
-        let (active_color, inactive_color) =
-            WindowsApiUtility::convert_config_colors(&config_active, &config_inactive);
-
-        let animations = window_rule
-            .rule_match
-            .animations
-            .clone()
-            .unwrap_or(config.global_rule.animations.clone().unwrap_or_default());
-
-        let dpi = unsafe { GetDpiForWindow(tracking_window) } as f32;
-        let border_width = (config_width * dpi / 96.0) as i32;
-        let border_radius = WindowsApiUtility::convert_config_radius(
-            border_width,
-            config_radius,
-            tracking_window,
-            dpi,
-        );
-
-        let available_windows = WindowsApi::available_window_handles(None).unwrap_or_default();
-
-        let initialize_delay = match available_windows.contains(&(tracking_window.0 as isize)) {
-            true => 0,
-            false => window_rule
-                .rule_match
-                .initialize_delay
-                .unwrap_or(config.global_rule.initialize_delay.unwrap_or(250)),
-        };
-
-        let unminimize_delay = window_rule
-            .rule_match
-            .unminimize_delay
-            .unwrap_or(config.global_rule.unminimize_delay.unwrap_or(200));
-
+    pub fn new(tracking_window: HWND) -> Self {
         Self {
             tracking_window,
-            border_width,
-            border_offset,
-            border_radius,
-            active_color,
-            inactive_color,
-            animations,
-            unminimize_delay,
-            initialize_delay,
             ..Default::default()
         }
     }
 
-    pub fn create_border_window(&mut self, hinstance: HINSTANCE) -> WinResult<()> {
+    pub fn create_border_window(&mut self, window_rule: &WindowRule) -> WinResult<()> {
         let title: Vec<u16> = format!(
             "tacky-border | {} | {:?}\0",
-            WindowsApi::get_window_title(self.tracking_window),
+            WindowsApi::get_window_title(self.tracking_window).unwrap_or_default(),
             self.tracking_window
         )
         .encode_utf16()
@@ -242,15 +173,17 @@ impl Border {
             w!("border"),
             PCWSTR(title.as_ptr()),
             WS_POPUP | WS_DISABLED,
-            0,
-            0,
-            0,
-            0,
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
             None,
             None,
-            hinstance,
-            Some(ptr::addr_of_mut!(*self) as *const _),
+            unsafe { GetModuleHandleW(None)? },
+            Some(ptr::addr_of!(*self) as _),
         )?;
+
+        self.load_from_config(window_rule).log_if_err();
 
         Ok(())
     }
@@ -320,6 +253,68 @@ impl Border {
             }
             debug!("exiting border thread for {:?}!", self.tracking_window);
         }
+
+        Ok(())
+    }
+
+    fn load_from_config(&mut self, window_rule: &WindowRule) -> AnyResult<()> {
+        let config = CONFIG.read().unwrap();
+
+        let config_width = window_rule
+            .rule_match
+            .border_width
+            .unwrap_or(config.global_rule.border_width);
+        let config_offset = window_rule
+            .rule_match
+            .border_offset
+            .unwrap_or(config.global_rule.border_offset);
+        let config_radius = window_rule
+            .rule_match
+            .border_radius
+            .clone()
+            .unwrap_or(config.global_rule.border_radius.clone());
+
+        let config_active = window_rule
+            .rule_match
+            .active_color
+            .clone()
+            .unwrap_or(config.global_rule.active_color.clone());
+
+        let config_inactive = window_rule
+            .rule_match
+            .inactive_color
+            .clone()
+            .unwrap_or(config.global_rule.inactive_color.clone());
+
+        self.active_color = config_active.to_color(Some(true))?;
+        self.inactive_color = config_inactive.to_color(Some(false))?;
+
+        self.animations = window_rule
+            .rule_match
+            .animations
+            .clone()
+            .unwrap_or(config.global_rule.animations.clone().unwrap_or_default());
+
+        let dpi = unsafe { GetDpiForWindow(self.tracking_window) } as f32;
+        self.border_width = (config_width * dpi / 96.0) as i32;
+        self.border_radius = config_radius.parse(self.border_width, dpi, self.tracking_window);
+        self.border_offset = config_offset;
+
+        let available_windows = WindowsApi::collect_window_handles().unwrap_or_default();
+
+        self.initialize_delay = match available_windows.contains(&(self.tracking_window.0 as isize))
+        {
+            true => 0,
+            false => window_rule
+                .rule_match
+                .initialize_delay
+                .unwrap_or(config.global_rule.initialize_delay.unwrap_or(250)),
+        };
+
+        self.unminimize_delay = window_rule
+            .rule_match
+            .unminimize_delay
+            .unwrap_or(config.global_rule.unminimize_delay.unwrap_or(200));
 
         Ok(())
     }
@@ -438,10 +433,17 @@ impl Border {
                 self.update_brush_opacities();
                 self.refresh_fade_progress();
             }
-            true => self.animations.event = ANIM_FADE,
+            true => self.animations.flags.should_fade = true,
         }
 
         Ok(())
+    }
+
+    fn refresh_fade_progress(&mut self) {
+        self.animations.progress.fade = match self.is_window_active {
+            true => 1.0,
+            false => 0.0,
+        };
     }
 
     fn update_brush_opacities(&mut self) {
@@ -457,13 +459,6 @@ impl Border {
         match self.is_window_active {
             true => &self.animations.active,
             false => &self.animations.inactive,
-        }
-    }
-
-    fn refresh_fade_progress(&mut self) {
-        self.animations.fade_progress = match self.is_window_active {
-            true => 1.0,
-            false => 0.0,
         }
     }
 
@@ -734,7 +729,7 @@ impl Border {
                                 animations_updated = true;
                             }
                             AnimationType::Fade => {
-                                if self.animations.event == ANIM_FADE {
+                                if self.animations.flags.should_fade {
                                     anim_value.play(anim_type, self, &anim_elapsed);
                                     animations_updated = true;
                                 }

@@ -1,6 +1,6 @@
-use crate::border_config::Config;
 use crate::exit_app;
 use crate::restart_app;
+use crate::user_config::UserConfig;
 use anyhow::bail;
 use anyhow::Context;
 use anyhow::Error;
@@ -93,7 +93,7 @@ impl SystemTray {
             .on_menu_event(move |event: MenuEvent| {
                 if let Ok(event) = SystemTrayEvent::from_str(event.id.as_ref()) {
                     match event {
-                        SystemTrayEvent::OpenConfig => Config::open(),
+                        SystemTrayEvent::OpenConfig => UserConfig::open(),
                         SystemTrayEvent::ReloadConfig => restart_app(),
                         SystemTrayEvent::Exit => exit_app(),
                     }

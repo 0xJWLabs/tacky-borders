@@ -1,5 +1,5 @@
-use crate::border_config::ConfigType;
-use crate::border_config::CONFIG_TYPE;
+use crate::user_config::ConfigFormat;
+use crate::user_config::CONFIG_FORMAT;
 use animation::AnimationParameters;
 use animation::AnimationType;
 use easing::AnimationEasingImpl;
@@ -91,13 +91,13 @@ fn animation<'de, D>(
 where
     D: Deserializer<'de>,
 {
-    match *CONFIG_TYPE.read().unwrap() {
-        ConfigType::Json | ConfigType::Jsonc => {
+    match *CONFIG_FORMAT.read().unwrap() {
+        ConfigFormat::Json | ConfigFormat::Jsonc => {
             let map: FxHashMap<AnimationType, JsonValue> =
                 FxHashMap::deserialize(deserializer).map_err(D::Error::custom)?;
             handle_map(map).map_err(D::Error::custom)
         }
-        ConfigType::Yaml => {
+        ConfigFormat::Yaml => {
             let map: FxHashMap<AnimationType, YamlValue> =
                 FxHashMap::deserialize(deserializer).map_err(D::Error::custom)?;
             handle_map(map).map_err(D::Error::custom)

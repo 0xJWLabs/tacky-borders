@@ -3,9 +3,9 @@ use crate::animations::animation::AnimationType;
 use crate::animations::timer::KillAnimationTimer;
 use crate::animations::timer::SetAnimationTimer;
 use crate::animations::Animations;
-use crate::border_config::WindowRule;
-use crate::border_config::CONFIG;
 use crate::error::LogIfErr;
+use crate::user_config::UserConfig;
+use crate::user_config::WindowRuleConfig;
 use crate::windows_api::WindowsApi;
 use crate::windows_api::WindowsApiUtility;
 use crate::windows_api::WM_APP_FOREGROUND;
@@ -150,7 +150,7 @@ impl Border {
         }
     }
 
-    pub fn create_border_window(&mut self, window_rule: &WindowRule) -> AnyResult<()> {
+    pub fn create_border_window(&mut self, window_rule: &WindowRuleConfig) -> AnyResult<()> {
         let title = WindowsApiUtility::to_wide(
             format!(
                 "tacky-border | {} | {:?}",
@@ -239,31 +239,31 @@ impl Border {
         Ok(())
     }
 
-    fn load_from_config(&mut self, window_rule: &WindowRule) -> AnyResult<()> {
-        let config = CONFIG.read().unwrap();
+    fn load_from_config(&mut self, window_rule: &WindowRuleConfig) -> AnyResult<()> {
+        let config = UserConfig::get();
 
         let config_width = window_rule
-            .rule_match
+            .match_window
             .border_width
             .unwrap_or(config.global_rule.border_width);
         let config_offset = window_rule
-            .rule_match
+            .match_window
             .border_offset
             .unwrap_or(config.global_rule.border_offset);
         let config_radius = window_rule
-            .rule_match
-            .border_radius
+            .match_window
+            .border_style
             .clone()
-            .unwrap_or(config.global_rule.border_radius.clone());
+            .unwrap_or(config.global_rule.border_style.clone());
 
         let config_active = window_rule
-            .rule_match
+            .match_window
             .active_color
             .clone()
             .unwrap_or(config.global_rule.active_color.clone());
 
         let config_inactive = window_rule
-            .rule_match
+            .match_window
             .inactive_color
             .clone()
             .unwrap_or(config.global_rule.inactive_color.clone());
@@ -272,14 +272,14 @@ impl Border {
         self.inactive_color = config_inactive.to_color(Some(false))?;
 
         self.animations = window_rule
-            .rule_match
+            .match_window
             .animations
             .clone()
             .unwrap_or(config.global_rule.animations.clone().unwrap_or_default());
 
         let dpi = unsafe { GetDpiForWindow(self.tracking_window) } as f32;
         self.border_width = (config_width * dpi / 96.0) as i32;
-        self.border_radius = config_radius.parse(self.border_width, dpi, self.tracking_window);
+        self.border_radius = config_radius.to_radius(self.border_width, dpi, self.tracking_window);
         self.border_offset = config_offset;
 
         let available_windows = WindowsApi::collect_window_handles().unwrap_or_default();
@@ -288,13 +288,13 @@ impl Border {
         {
             true => 0,
             false => window_rule
-                .rule_match
+                .match_window
                 .initialize_delay
                 .unwrap_or(config.global_rule.initialize_delay.unwrap_or(250)),
         };
 
         self.unminimize_delay = window_rule
-            .rule_match
+            .match_window
             .unminimize_delay
             .unwrap_or(config.global_rule.unminimize_delay.unwrap_or(200));
 

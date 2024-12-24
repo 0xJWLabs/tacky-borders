@@ -9,8 +9,6 @@ extern crate sp_log;
 
 use anyhow::anyhow;
 use anyhow::Result as AnyResult;
-use border_config::Config as BorderConfig;
-use border_config::CONFIG;
 use border_manager::create_border_for_window;
 use border_manager::register_border_class;
 use border_manager::reload_borders;
@@ -27,6 +25,8 @@ use sp_log::TermLogger;
 use sp_log::TerminalMode;
 use sys_tray::SystemTray;
 use sys_tray::SystemTrayEvent;
+use user_config::UserConfig;
+use user_config::CONFIG;
 use window_event_hook::WindowEventHook;
 use window_event_hook::WIN_EVENT_HOOK;
 use windows::Win32::Foundation::LPARAM;
@@ -37,11 +37,11 @@ use windows::Win32::UI::WindowsAndMessaging::WM_QUIT;
 use windows_api::WindowsApi;
 
 mod animations;
-mod border_config;
 mod border_manager;
 mod error;
 mod keyboard_hook;
 mod sys_tray;
+mod user_config;
 mod window_event_hook;
 mod windows_api;
 mod windows_callback;
@@ -105,7 +105,7 @@ fn start_app() -> AnyResult<()> {
 
 fn restart_app() {
     debug!("reloading border...");
-    BorderConfig::reload();
+    UserConfig::reload();
     reload_borders();
     if let Some(hook) = KEYBOARD_HOOK.get() {
         hook.update(&create_bindings().unwrap());
@@ -125,7 +125,7 @@ fn exit_app() {
 }
 
 fn create_logger() -> AnyResult<()> {
-    let log_path = border_config::Config::get_config_dir()?.join("tacky-borders.log");
+    let log_path = UserConfig::get_config_dir()?.join("tacky-borders.log");
     let Some(log_path) = log_path.to_str() else {
         return Err(anyhow!("could not convert log_path to str"));
     };
@@ -163,7 +163,7 @@ fn create_bindings() -> AnyResult<Vec<KeybindingConfig>> {
         KeybindingConfig::new(
             SystemTrayEvent::OpenConfig.into(),
             config_type_lock.keybindings.open_config.clone().as_str(),
-            Some(BorderConfig::open),
+            Some(UserConfig::open),
         ),
         KeybindingConfig::new(
             SystemTrayEvent::ReloadConfig.into(),

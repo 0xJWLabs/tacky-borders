@@ -11,7 +11,7 @@ global:
 # Example: -1 slightly reduces the border’s coverage.
   border_offset: -1
 
-# border_radius: Sets a custom radius for the window border’s rounded corners.
+# border_style: Sets a custom radius for the window border’s rounded corners.
 #   - Use -1 to let the application automatically determine the radius.
 #   - Any positive value applies a fixed radius in pixels to the window corners.
 #   - You can also use predefined options in Enum format:
@@ -22,7 +22,7 @@ global:
 # Example: 5 will apply a 5-pixel radius to the corners.
 # Example of Enum usage:
 #   border_radius: "Round"
-  border_radius: "Auto"
+  border_style: "Auto"
 
 # active_color: Defines the color properties for the active window border.
 #   - Can be specified as either a string (e.g., "#RRGGBB") or a map format.

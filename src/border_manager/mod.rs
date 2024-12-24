@@ -1,7 +1,7 @@
 mod border;
 
-use crate::border_config::WindowRule;
 use crate::error::LogIfErr;
+use crate::user_config::WindowRuleConfig;
 use crate::windows_api::SendHWND;
 use crate::windows_api::WindowsApi;
 use crate::windows_api::WM_APP_HIDECLOAKED;
@@ -52,9 +52,9 @@ pub fn show_border_for_window(hwnd: HWND) {
     {
         let window_rule = WindowsApi::get_window_rule(hwnd);
 
-        if window_rule.rule_match.border_enabled == Some(false) {
+        if window_rule.match_window.enabled == Some(false) {
             info!("border is disabled for {hwnd:?}");
-        } else if window_rule.rule_match.border_enabled == Some(true)
+        } else if window_rule.match_window.enabled == Some(true)
             || !WindowsApi::has_filtered_style(hwnd)
         {
             create_border_for_window(hwnd, window_rule);
@@ -80,7 +80,7 @@ pub fn hide_border_for_window(hwnd: HWND) -> bool {
     true
 }
 
-pub fn create_border_for_window(hwnd: HWND, window_rule: WindowRule) {
+pub fn create_border_for_window(hwnd: HWND, window_rule: WindowRuleConfig) {
     debug!("creating border for: {:?}", hwnd);
     let window = SendHWND(hwnd);
 
@@ -113,7 +113,6 @@ pub fn create_border_for_window(hwnd: HWND, window_rule: WindowRule) {
         if let Err(e) = border.init() {
             error!("{e}");
         }
-        let _ = window_rule;
     });
 }
 

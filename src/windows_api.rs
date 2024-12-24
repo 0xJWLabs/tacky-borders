@@ -1,11 +1,11 @@
 extern crate windows;
 
-use crate::border_config::MatchKind;
-use crate::border_config::MatchStrategy;
-use crate::border_config::WindowRule;
-use crate::border_config::CONFIG;
 use crate::border_manager::Border;
 use crate::error::LogIfErr;
+use crate::user_config::MatchKind;
+use crate::user_config::MatchStrategy;
+use crate::user_config::WindowRuleConfig;
+use crate::user_config::CONFIG;
 use crate::windows_callback::enum_windows;
 use anyhow::anyhow;
 use anyhow::Context;
@@ -404,7 +404,7 @@ impl WindowsApi {
         Ok(process_name)
     }
 
-    pub fn get_window_rule(hwnd: HWND) -> WindowRule {
+    pub fn get_window_rule(hwnd: HWND) -> WindowRuleConfig {
         let title = match Self::get_window_title(hwnd) {
             Ok(val) => val,
             Err(err) => {
@@ -431,42 +431,44 @@ impl WindowsApi {
 
         let config = CONFIG.read().unwrap();
 
-        for rule in config.window_rules.iter() {
-            let window_name = match rule.rule_match.match_kind {
-                Some(MatchKind::Title) => &title,
-                Some(MatchKind::Process) => &process,
-                Some(MatchKind::Class) => &class,
-                None => {
-                    error!("expected 'kind' for window rule but none found!");
+        if let Some(window_rules) = &config.window_rules {
+            for rule in window_rules.iter() {
+                let window_name = match rule.match_window.match_kind {
+                    Some(MatchKind::Title) => &title,
+                    Some(MatchKind::Process) => &process,
+                    Some(MatchKind::Class) => &class,
+                    None => {
+                        error!("expected 'kind' for window rule but none found!");
+                        continue;
+                    }
+                };
+
+                let Some(match_value) = &rule.match_window.match_value else {
+                    error!("expected `value` for window rule but non found!");
                     continue;
+                };
+
+                let has_match = match rule.match_window.match_strategy {
+                    Some(MatchStrategy::Equals) | None => {
+                        window_name.to_lowercase().eq(&match_value.to_lowercase())
+                    }
+                    Some(MatchStrategy::Contains) => window_name
+                        .to_lowercase()
+                        .contains(&match_value.to_lowercase()),
+                    Some(MatchStrategy::Regex) => Regex::new(match_value)
+                        .unwrap()
+                        .captures(window_name)
+                        .is_some(),
+                };
+
+                if has_match {
+                    return rule.clone();
                 }
-            };
-
-            let Some(match_value) = &rule.rule_match.match_value else {
-                error!("expected `value` for window rule but non found!");
-                continue;
-            };
-
-            let has_match = match rule.rule_match.match_strategy {
-                Some(MatchStrategy::Equals) | None => {
-                    window_name.to_lowercase().eq(&match_value.to_lowercase())
-                }
-                Some(MatchStrategy::Contains) => window_name
-                    .to_lowercase()
-                    .contains(&match_value.to_lowercase()),
-                Some(MatchStrategy::Regex) => Regex::new(match_value)
-                    .unwrap()
-                    .captures(window_name)
-                    .is_some(),
-            };
-
-            if has_match {
-                return rule.clone();
             }
         }
         drop(config);
 
-        WindowRule::default()
+        WindowRuleConfig::default()
     }
 
     pub fn collect_window_handles() -> AnyResult<Vec<isize>> {
@@ -475,7 +477,7 @@ impl WindowsApi {
         Ok(handles)
     }
 
-    pub fn process_window_handles(callback: &dyn Fn(HWND, WindowRule)) -> AnyResult<()> {
+    pub fn process_window_handles(callback: &dyn Fn(HWND, WindowRuleConfig)) -> AnyResult<()> {
         let handles = Self::collect_window_handles()?;
 
         handles.iter().for_each(|&hwnd_u| {
@@ -484,9 +486,9 @@ impl WindowsApi {
             if Self::is_window_visible_on_screen(hwnd) {
                 let window_rule = Self::get_window_rule(hwnd);
 
-                if window_rule.rule_match.border_enabled == Some(false) {
+                if window_rule.match_window.enabled == Some(false) {
                     info!("border is disabled for {hwnd:?}");
-                } else if window_rule.rule_match.border_enabled == Some(true)
+                } else if window_rule.match_window.enabled == Some(true)
                     || !Self::has_filtered_style(hwnd)
                 {
                     callback(hwnd, window_rule);

@@ -27,7 +27,7 @@
       "required": [
         "border_width",
         "border_offset",
-        "border_radius",
+        "border_style",
         "active_color",
         "inactive_color"
       ],
@@ -42,26 +42,9 @@
           "type": "integer",
           "format": "int32"
         },
-        "border_radius": {
-          "description": "Corner radius for borders in pixels; -1 to let the program decide automatically. (default: -1)",
-          "oneOf": [
-            {
-              "type": "integer",
-              "format": "int32",
-              "minimum": -1,
-              "description": "Corner radius for borders in pixels; -1 to let the program decide automatically. (default: -1)"
-            },
-            {
-              "type": "string",
-              "enum": [
-                "Round",
-                "SmallRound",
-                "Square",
-                "Auto"
-              ],
-              "description": "Corner radius for borders in enums; Auto to let the program decide automatically. (default: Auto)"
-            }
-          ]
+        "border_style": {
+          "description": "Corner radius for borders; Radius(-1) or Auto to let the program decide automatically. (default: Auto)",
+          "$ref": "#/definitions/borderStyleProperties"
         },
         "animations": {
           "description": "Defines the animation settings for the border's visual effects, including different animations for both active and inactive states, speed, and frame rate.",
@@ -187,26 +170,9 @@
                 "type": "integer",
                 "format": "int32"
               },
-              "border_radius": {
-                "description": "Corner radius for borders in pixels; -1 to let the program decide automatically. (default: -1)",
-                "oneOf": [
-                  {
-                    "type": "integer",
-                    "format": "int32",
-                    "minimum": -1,
-                    "description": "Corner radius for borders in pixels; -1 to let the program decide automatically. (default: -1)"
-                  },
-                  {
-                    "type": "string",
-                    "enum": [
-                      "Round",
-                      "SmallRound",
-                      "Square",
-                      "Auto"
-                    ],
-                    "description": "Corner radius for borders in enums; Auto to let the program decide automatically. (default: Auto)"
-                  }
-                ]
+              "border_style": {
+                "description": "Corner radius for borders; Radius(-1) or Auto to let the program decide automatically. (default: Auto)",
+                "$ref": "#/definitions/borderStyleProperties"
               }
             }
           }
@@ -219,6 +185,25 @@
     "window_rules"
   ],
   "definitions": {
+    "borderStyleProperties": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^[Rr]adius\\([-+]?[0-9]*\\.?[0-9]+\\)$",
+          "description": "Custom corner radius specified as 'Radius(value)', where value is a floating-point number."
+        },
+        {
+          "type": "string",
+          "enum": [
+            "Round",
+            "SmallRound",
+            "Square",
+            "Auto"
+          ],
+          "description": "Corner radius for borders in enums; Auto to let the program decide automatically. (default: Auto)"
+        }
+      ]
+    },
     "colorProperties": {
       "oneOf": [
         {

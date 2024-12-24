@@ -1,5 +1,4 @@
 extern crate windows;
-
 use crate::border_manager::Border;
 use crate::error::LogIfErr;
 use crate::user_config::MatchKind;
@@ -12,9 +11,12 @@ use anyhow::Context;
 use anyhow::Result as AnyResult;
 use regex::Regex;
 use std::ffi::c_void;
+use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::iter::once;
+use std::os::windows::ffi::OsStrExt;
 use std::os::windows::ffi::OsStringExt;
 use std::path::PathBuf;
 use std::ptr;
@@ -326,10 +328,18 @@ impl WindowsApi {
         ex_style.contains(WS_EX_WINDOWEDGE) && !style.contains(WS_MAXIMIZE)
     }
 
+    pub fn get_window_text_w(hwnd: HWND, lpstring: &mut [u16]) -> i32 {
+        unsafe { GetWindowTextW(hwnd, lpstring) }
+    }
+
+    pub fn get_window_class_w(hwnd: HWND, lpstring: &mut [u16]) -> u32 {
+        unsafe { RealGetWindowClassW(hwnd, lpstring) }
+    }
+
     pub fn get_window_title(hwnd: HWND) -> AnyResult<String> {
         let mut buffer: [u16; 256] = [0; 256];
 
-        if unsafe { GetWindowTextW(hwnd, &mut buffer) } == 0 {
+        if Self::get_window_text_w(hwnd, &mut buffer) == 0 {
             let last_error = unsafe { GetLastError() };
 
             // ERROR_ENVVAR_NOT_FOUND just means the title is empty which isn't necessarily an issue
@@ -344,15 +354,13 @@ impl WindowsApi {
             }
         }
 
-        Ok(String::from_utf16_lossy(&buffer)
-            .trim_end_matches('\0')
-            .to_string())
+        Ok(buffer.to_string_lossy().trim_end_matches('\0').to_string())
     }
 
     pub fn get_window_class(hwnd: HWND) -> AnyResult<String> {
         let mut buffer: [u16; 256] = [0; 256];
 
-        if unsafe { RealGetWindowClassW(hwnd, &mut buffer) } == 0 {
+        if Self::get_window_class_w(hwnd, &mut buffer) == 0 {
             let last_error = unsafe { GetLastError() };
 
             // Handle specific error cases, similar to the GetClassNameW approach
@@ -366,10 +374,7 @@ impl WindowsApi {
             }
         }
 
-        // Convert the buffer to a UTF-16 string and remove any trailing null characters
-        Ok(String::from_utf16_lossy(&buffer)
-            .trim_end_matches('\0')
-            .to_string())
+        Ok(buffer.to_string_lossy().trim_end_matches('\0').to_string())
     }
 
     pub fn get_process_name(hwnd: HWND) -> AnyResult<String> {
@@ -575,8 +580,8 @@ impl WindowsApi {
     }
 
     pub fn show_error_dialog(title: &str, message: &str) {
-        let title_wide = WindowsApiUtility::to_wide(title);
-        let message_wide = WindowsApiUtility::to_wide(message);
+        let title_wide = title.to_wide_string();
+        let message_wide = message.to_wide_string();
 
         unsafe {
             MessageBoxW(
@@ -589,10 +594,31 @@ impl WindowsApi {
     }
 }
 
-pub struct WindowsApiUtility;
+pub trait ToWideString: AsRef<OsStr> + Sized {
+    fn to_wide_string(&self) -> Vec<u16> {
+        to_wide_chars_iter(self).collect()
+    }
 
-impl WindowsApiUtility {
-    pub fn to_wide(string: &str) -> Vec<u16> {
-        string.encode_utf16().chain(Some(0)).collect()
+    fn as_raw_pcwstr(&self) -> PCWSTR {
+        let str = self.to_wide_string();
+        PCWSTR::from_raw(str.as_ptr())
     }
 }
+
+#[allow(clippy::needless_lifetimes)]
+fn to_wide_chars_iter<'a>(str: &'a (impl AsRef<OsStr> + ?Sized)) -> impl Iterator<Item = u16> + 'a {
+    str.as_ref().encode_wide().chain(once(0))
+}
+
+impl<T: AsRef<OsStr> + Sized> ToWideString for T {}
+
+pub trait FromWideString: AsRef<[u16]> + Sized {
+    fn to_string_lossy(&self) -> String {
+        self.to_os_string().to_string_lossy().into_owned()
+    }
+
+    fn to_os_string(&self) -> OsString {
+        OsString::from_wide(self.as_ref())
+    }
+}
+impl<T: AsRef<[u16]> + Sized> FromWideString for T {}

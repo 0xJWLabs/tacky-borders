@@ -2,8 +2,8 @@ use crate::border_manager::destroy_border_for_window;
 use crate::border_manager::get_border_from_window;
 use crate::border_manager::get_borders;
 use crate::border_manager::hide_border_for_window;
+use crate::border_manager::set_active_window;
 use crate::border_manager::show_border_for_window;
-use crate::border_manager::ACTIVE_WINDOW;
 use crate::error::LogIfErr;
 use crate::windows_api::WindowsApi;
 use crate::windows_api::WM_APP_FOREGROUND;
@@ -156,7 +156,7 @@ impl WindowEventHook {
                 let target_handle = handle.0 as isize;
 
                 if !WindowsApi::get_window_ex_style(handle).contains(WS_EX_NOACTIVATE) {
-                    *ACTIVE_WINDOW.lock().unwrap() = target_handle;
+                    set_active_window(target_handle);
                 }
 
                 let visible_windows: Vec<HWND> = get_borders()

@@ -9,7 +9,6 @@ use crate::windows_api::WM_APP_SHOWUNCLOAKED;
 use anyhow::Context;
 use anyhow::Result as AnyResult;
 pub use border::Border;
-pub use border::ACTIVE_WINDOW;
 use rustc_hash::FxHashMap;
 use std::sync::LazyLock;
 use std::sync::Mutex;
@@ -28,6 +27,9 @@ use windows::Win32::UI::WindowsAndMessaging::WNDCLASSW;
 
 static BORDERS: LazyLock<Mutex<FxHashMap<isize, isize>>> =
     LazyLock::new(|| Mutex::new(FxHashMap::default()));
+
+static ACTIVE_WINDOW: LazyLock<Mutex<isize>> =
+    LazyLock::new(|| Mutex::new(WindowsApi::get_foreground_window().0 as isize));
 
 pub fn get_border_from_window(hwnd: HWND) -> Option<HWND> {
     let borders = get_borders();
@@ -65,6 +67,14 @@ pub fn show_border_for_window(hwnd: HWND) {
 
 pub fn get_borders() -> MutexGuard<'static, FxHashMap<isize, isize>> {
     BORDERS.lock().unwrap()
+}
+
+pub fn get_active_window() -> MutexGuard<'static, isize> {
+    ACTIVE_WINDOW.lock().unwrap()
+}
+
+pub fn set_active_window(handle: isize) {
+    *ACTIVE_WINDOW.lock().unwrap() = handle;
 }
 
 pub fn hide_border_for_window(hwnd: HWND) -> bool {

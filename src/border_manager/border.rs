@@ -6,8 +6,8 @@ use crate::animations::Animations;
 use crate::error::LogIfErr;
 use crate::user_config::UserConfig;
 use crate::user_config::WindowRuleConfig;
+use crate::windows_api::ToWideString;
 use crate::windows_api::WindowsApi;
-use crate::windows_api::WindowsApiUtility;
 use crate::windows_api::WM_APP_FOREGROUND;
 use crate::windows_api::WM_APP_HIDECLOAKED;
 use crate::windows_api::WM_APP_LOCATIONCHANGE;
@@ -21,7 +21,6 @@ use anyhow::Context;
 use anyhow::Result as AnyResult;
 use rustc_hash::FxHashMap;
 use std::sync::LazyLock;
-use std::sync::Mutex;
 use std::thread;
 use std::time;
 use std::time::Instant;
@@ -31,7 +30,6 @@ use win_color::GlobalColorImpl;
 use win_color::GradientImpl;
 use windows::core::CloneType;
 use windows::core::TypeKind;
-use windows::core::PCWSTR;
 use windows::Foundation::Numerics::Matrix3x2;
 use windows::Win32::Foundation::COLORREF;
 use windows::Win32::Foundation::D2DERR_RECREATE_TARGET;
@@ -95,6 +93,7 @@ use windows::Win32::UI::WindowsAndMessaging::WM_PAINT;
 use windows::Win32::UI::WindowsAndMessaging::WM_WINDOWPOSCHANGED;
 use windows::Win32::UI::WindowsAndMessaging::WM_WINDOWPOSCHANGING;
 
+use super::get_active_window;
 use super::get_borders;
 
 static RENDER_FACTORY: LazyLock<ID2D1Factory8> = unsafe {
@@ -109,9 +108,6 @@ static RENDER_FACTORY: LazyLock<ID2D1Factory8> = unsafe {
         }
     })
 };
-
-pub static ACTIVE_WINDOW: LazyLock<Mutex<isize>> =
-    LazyLock::new(|| Mutex::new(WindowsApi::get_foreground_window().0 as isize));
 
 impl TypeKind for Border {
     type TypeKind = CloneType;
@@ -155,16 +151,14 @@ impl Border {
     }
 
     pub fn create_border_window(&mut self, window_rule: &WindowRuleConfig) -> AnyResult<()> {
-        let title = WindowsApiUtility::to_wide(
-            format!(
-                "tacky-border | {} | {:?}",
-                WindowsApi::get_window_title(self.tracking_window).unwrap_or_default(),
-                self.tracking_window
-            )
-            .as_str(),
-        );
+        let title = format!(
+            "tacky-border | {} | {:?}",
+            WindowsApi::get_window_title(self.tracking_window).unwrap_or_default(),
+            self.tracking_window
+        )
+        .as_raw_pcwstr();
 
-        self.border_window = WindowsApi::create_border_window(PCWSTR(title.as_ptr()), self)?;
+        self.border_window = WindowsApi::create_border_window(title, self)?;
 
         WindowsApi::set_layered_window_attributes(self.border_window, COLORREF(0), 0, LWA_COLORKEY)
             .context("could not set LWA_COLORKEY")?;
@@ -413,7 +407,7 @@ impl Border {
     }
 
     fn update_color(&mut self, check_delay: Option<u64>) -> AnyResult<()> {
-        self.is_window_active = self.tracking_window.0 as isize == *ACTIVE_WINDOW.lock().unwrap();
+        self.is_window_active = self.tracking_window.0 as isize == *get_active_window();
 
         match self.current_animations().contains_key(&AnimationType::Fade) {
             false => self.update_brush_opacities(),

@@ -8,6 +8,8 @@ use windows::core::Result as WinResult;
 
 pub trait LogIfErr {
     fn log_if_err(&self);
+    fn log_if_err_message(&self, message: &str, pretty: bool);
+    fn map_err_with_log(self) -> Self;
 }
 
 impl<T> LogIfErr for AnyResult<T>
@@ -18,6 +20,23 @@ where
         if let Err(e) = self {
             error!("{e:#}"); // Log error using Debug formatting
         }
+    }
+
+    fn log_if_err_message(&self, message: &str, pretty: bool) {
+        if let Err(e) = self {
+            if pretty {
+                error!("{message}: {e}");
+            } else {
+                error!("{message}: {e:#}");
+            }
+        }
+    }
+
+    fn map_err_with_log(self) -> Self {
+        self.map_err(|err| {
+            error!("{err:?}");
+            err
+        })
     }
 }
 
@@ -30,6 +49,23 @@ where
             error!("{e:#}"); // Log error using Debug formatting
         }
     }
+
+    fn log_if_err_message(&self, message: &str, pretty: bool) {
+        if let Err(e) = self {
+            if pretty {
+                error!("{message}: {e}");
+            } else {
+                error!("{message}: {e:#}");
+            }
+        }
+    }
+
+    fn map_err_with_log(self) -> Self {
+        self.map_err(|err| {
+            error!("{err:?}");
+            err
+        })
+    }
 }
 
 impl<T> LogIfErr for IoResult<T>
@@ -41,6 +77,23 @@ where
             error!("{e:#}");
         }
     }
+
+    fn log_if_err_message(&self, message: &str, pretty: bool) {
+        if let Err(e) = self {
+            if pretty {
+                error!("{message}: {e}");
+            } else {
+                error!("{message}: {e:#}");
+            }
+        }
+    }
+
+    fn map_err_with_log(self) -> Self {
+        self.map_err(|err| {
+            error!("{err:?}");
+            err
+        })
+    }
 }
 
 impl<T> LogIfErr for WinOpenResult<T>
@@ -51,5 +104,22 @@ where
         if let Err(e) = self {
             error!("{e:#}");
         }
+    }
+
+    fn log_if_err_message(&self, message: &str, pretty: bool) {
+        if let Err(e) = self {
+            if pretty {
+                error!("{message}: {e}");
+            } else {
+                error!("{message}: {e:#}");
+            }
+        }
+    }
+
+    fn map_err_with_log(self) -> Self {
+        self.map_err(|err| {
+            error!("{err:?}");
+            err
+        })
     }
 }

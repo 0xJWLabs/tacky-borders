@@ -15,6 +15,7 @@ use tray_icon_win::TrayIcon;
 use tray_icon_win::TrayIconBuilder;
 
 #[allow(dead_code)]
+#[derive(Debug)]
 pub struct SystemTray(TrayIcon);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

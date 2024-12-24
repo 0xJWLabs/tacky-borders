@@ -29,9 +29,7 @@ use user_config::UserConfig;
 use user_config::CONFIG;
 use window_event_hook::WindowEventHook;
 use window_event_hook::WIN_EVENT_HOOK;
-use windows::Win32::Foundation::LPARAM;
-use windows::Win32::Foundation::WPARAM;
-use windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2;
+use windows::Win32::Foundation::GetLastError;
 use windows::Win32::UI::WindowsAndMessaging::MSG;
 use windows::Win32::UI::WindowsAndMessaging::WM_QUIT;
 use windows_api::WindowsApi;
@@ -64,42 +62,26 @@ fn start_app() -> AnyResult<()> {
         error!("logger initialization failed: {e}");
     };
 
-    if !WindowsApi::imm_disable_ime(0xFFFFFFFF).as_bool() {
+    if !WindowsApi::imm_disable_ime().as_bool() {
         error!("could not disable ime!");
     }
 
-    if let Err(e) =
-        WindowsApi::set_process_dpi_awareness_context(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
-    {
-        error!("could not make process dpi aware: {e}");
-    }
+    WindowsApi::set_process_dpi_awareness_context()
+        .log_if_err_message("could not make process dpi aware", false);
 
-    let bindings = create_bindings().map_err(|err| {
-        error!("{err:?}");
-        err
-    })?;
-
-    let window_event_hook = WindowEventHook::new().map_err(|err| {
-        error!("{err:?}");
-        err
-    })?;
-
-    let keyboard_hook = KeyboardHook::new(&bindings).map_err(|err| {
-        error!("{err:?}");
-        err
-    })?;
+    let bindings = create_bindings().map_err_with_log()?;
+    let window_event_hook = WindowEventHook::new().map_err_with_log()?;
+    let keyboard_hook = KeyboardHook::new(&bindings).map_err_with_log()?;
 
     keyboard_hook.start().log_if_err();
     window_event_hook.start().log_if_err();
 
-    let sys_tray = SystemTray::new();
-
-    if let Err(e) = sys_tray {
-        error!("could not create sys tray: {e}");
-    }
+    SystemTray::new().log_if_err_message("could not create sys tray", false);
 
     register_border_class().log_if_err();
+
     WindowsApi::process_window_handles(&create_border_for_window).log_if_err();
+
     run_message_loop()
 }
 
@@ -196,9 +178,8 @@ fn run_message_loop() -> AnyResult<()> {
             debug!("received WM_QUIT message, exiting message loop...");
             break;
         } else {
-            error!(
-                "no valid messages received in the message queue; exiting the loop unexpectedly..."
-            );
+            let last_error = unsafe { GetLastError() };
+            error!("{last_error:?}");
             return Err(anyhow!("unexpected exit from message loop.".to_string()));
         }
     }
@@ -207,5 +188,5 @@ fn run_message_loop() -> AnyResult<()> {
 }
 
 fn kill_message_loop() {
-    WindowsApi::post_message_w(None, WM_QUIT, WPARAM(0), LPARAM(0)).log_if_err();
+    WindowsApi::post_quit_message(0);
 }

@@ -459,9 +459,9 @@ dependencies = [
 
 [[package]]
 name = "tray-icon-win"
-version = "0.1.2"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af6515462d101aad01640954aacf28c1d6f3220c4249c9531e07d09366e2a826"
+checksum = "e0f2b832397d724e13381565f826241ace0f06c1b1f03fb453e12501ff4c279c"
 dependencies = [
  "crossbeam-channel",
  "muda-win",

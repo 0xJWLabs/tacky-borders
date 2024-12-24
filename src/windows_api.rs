@@ -54,7 +54,7 @@ use windows::Win32::System::Threading::QueryFullProcessImageNameW;
 use windows::Win32::System::Threading::PROCESS_NAME_WIN32;
 use windows::Win32::System::Threading::PROCESS_QUERY_LIMITED_INFORMATION;
 use windows::Win32::UI::HiDpi::SetProcessDpiAwarenessContext;
-use windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT;
+use windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2;
 use windows::Win32::UI::Input::Ime::ImmDisableIME;
 use windows::Win32::UI::Shell::FOLDERID_Profile;
 use windows::Win32::UI::Shell::SHGetKnownFolderPath;
@@ -129,12 +129,12 @@ impl WindowsApi {
         unsafe { GetModuleHandleW(None) }
     }
 
-    pub fn imm_disable_ime(param0: u32) -> BOOL {
-        unsafe { ImmDisableIME(param0) }
+    pub fn imm_disable_ime() -> BOOL {
+        unsafe { ImmDisableIME(0xFFFFFFFF) }
     }
 
-    pub fn set_process_dpi_awareness_context(value: DPI_AWARENESS_CONTEXT) -> WinResult<()> {
-        unsafe { SetProcessDpiAwarenessContext(value) }
+    pub fn set_process_dpi_awareness_context() -> WinResult<()> {
+        unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) }
     }
 
     pub fn post_message_w<P>(hwnd: P, msg: u32, wparam: WPARAM, lparam: LPARAM) -> WinResult<()>

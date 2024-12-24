@@ -21,6 +21,7 @@ use anyhow::Context;
 use anyhow::Result as AnyResult;
 use rustc_hash::FxHashMap;
 use std::sync::LazyLock;
+use std::sync::Mutex;
 use std::thread;
 use std::time;
 use std::time::Instant;
@@ -108,6 +109,9 @@ static RENDER_FACTORY: LazyLock<ID2D1Factory8> = unsafe {
         }
     })
 };
+
+pub static ACTIVE_WINDOW: LazyLock<Mutex<isize>> =
+    LazyLock::new(|| Mutex::new(WindowsApi::get_foreground_window().0 as isize));
 
 impl TypeKind for Border {
     type TypeKind = CloneType;
@@ -409,6 +413,8 @@ impl Border {
     }
 
     fn update_color(&mut self, check_delay: Option<u64>) -> AnyResult<()> {
+        self.is_window_active = self.tracking_window.0 as isize == *ACTIVE_WINDOW.lock().unwrap();
+
         match self.current_animations().contains_key(&AnimationType::Fade) {
             false => self.update_brush_opacities(),
             true if check_delay == Some(0) => {
@@ -602,8 +608,6 @@ impl Border {
             }
             // EVENT_SYSTEM_FOREGROUND
             WM_APP_FOREGROUND => {
-                self.is_window_active = WindowsApi::is_window_active(self.tracking_window);
-
                 self.update_color(None).log_if_err();
                 self.update_position(None).log_if_err();
                 self.render().log_if_err();

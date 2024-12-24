@@ -9,6 +9,7 @@ use crate::windows_api::WM_APP_SHOWUNCLOAKED;
 use anyhow::Context;
 use anyhow::Result as AnyResult;
 pub use border::Border;
+pub use border::ACTIVE_WINDOW;
 use rustc_hash::FxHashMap;
 use std::sync::LazyLock;
 use std::sync::Mutex;

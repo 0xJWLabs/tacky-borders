@@ -3,6 +3,7 @@ use crate::border_manager::get_border_from_window;
 use crate::border_manager::get_borders;
 use crate::border_manager::hide_border_for_window;
 use crate::border_manager::show_border_for_window;
+use crate::border_manager::ACTIVE_WINDOW;
 use crate::error::LogIfErr;
 use crate::windows_api::WindowsApi;
 use crate::windows_api::WM_APP_FOREGROUND;
@@ -38,6 +39,7 @@ use windows::Win32::UI::WindowsAndMessaging::OBJID_CURSOR;
 use windows::Win32::UI::WindowsAndMessaging::OBJID_WINDOW;
 use windows::Win32::UI::WindowsAndMessaging::WINEVENT_OUTOFCONTEXT;
 use windows::Win32::UI::WindowsAndMessaging::WINEVENT_SKIPOWNPROCESS;
+use windows::Win32::UI::WindowsAndMessaging::WS_EX_NOACTIVATE;
 
 pub static WIN_EVENT_HOOK: OnceLock<Arc<WindowEventHook>> = OnceLock::new();
 
@@ -152,6 +154,11 @@ impl WindowEventHook {
             }
             EVENT_SYSTEM_FOREGROUND => {
                 let target_handle = handle.0 as isize;
+
+                if !WindowsApi::get_window_ex_style(handle).contains(WS_EX_NOACTIVATE) {
+                    *ACTIVE_WINDOW.lock().unwrap() = target_handle;
+                }
+
                 let visible_windows: Vec<HWND> = get_borders()
                     .iter()
                     .filter_map(|(&key, &val)| {

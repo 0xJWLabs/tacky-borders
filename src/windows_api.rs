@@ -97,6 +97,7 @@ use windows::Win32::UI::WindowsAndMessaging::WS_EX_TOPMOST;
 use windows::Win32::UI::WindowsAndMessaging::WS_EX_TRANSPARENT;
 use windows::Win32::UI::WindowsAndMessaging::WS_EX_WINDOWEDGE;
 use windows::Win32::UI::WindowsAndMessaging::WS_MAXIMIZE;
+use windows::Win32::UI::WindowsAndMessaging::WS_MINIMIZE;
 use windows::Win32::UI::WindowsAndMessaging::WS_POPUP;
 use windows::Win32::UI::WindowsAndMessaging::WS_SYSMENU;
 
@@ -262,6 +263,18 @@ impl WindowsApi {
         unsafe { EnumWindows(callback, LPARAM(callback_data_address)) }
     }
 
+    pub fn get_window_style(hwnd: HWND) -> WINDOW_STYLE {
+        unsafe { WINDOW_STYLE(GetWindowLongW(hwnd, GWL_STYLE) as u32) }
+    }
+
+    pub fn get_window_ex_style(hwnd: HWND) -> WINDOW_EX_STYLE {
+        unsafe { WINDOW_EX_STYLE(GetWindowLongW(hwnd, GWL_EXSTYLE) as u32) }
+    }
+
+    pub fn get_foreground_window() -> HWND {
+        unsafe { GetForegroundWindow() }
+    }
+
     pub fn is_window_cloaked(hwnd: HWND) -> bool {
         let mut is_cloaked = 0;
         if let Err(e) = Self::dwm_get_window_attribute(hwnd, DWMWA_CLOAKED, &mut is_cloaked) {
@@ -280,7 +293,14 @@ impl WindowsApi {
     }
 
     pub fn is_window_active(hwnd: HWND) -> bool {
-        unsafe { GetForegroundWindow() == hwnd }
+        Self::get_foreground_window() == hwnd
+    }
+
+    #[allow(dead_code)]
+    pub fn is_window_minimized(hwnd: HWND) -> bool {
+        let style = Self::get_window_style(hwnd);
+
+        style.contains(WS_MINIMIZE)
     }
 
     pub fn is_window_visible_on_screen(hwnd: HWND) -> bool {
@@ -288,22 +308,22 @@ impl WindowsApi {
     }
 
     pub fn is_window_top_level(hwnd: HWND) -> bool {
-        let style = unsafe { GetWindowLongW(hwnd, GWL_STYLE) as u32 };
+        let style = Self::get_window_style(hwnd);
 
-        style & WS_CHILD.0 == 0
+        !style.contains(WS_CHILD)
     }
 
     pub fn has_filtered_style(hwnd: HWND) -> bool {
-        let ex_style = unsafe { GetWindowLongW(hwnd, GWL_EXSTYLE) as u32 };
+        let ex_style = Self::get_window_ex_style(hwnd);
 
-        ex_style & WS_EX_TOOLWINDOW.0 != 0 || ex_style & WS_EX_NOACTIVATE.0 != 0
+        ex_style.contains(WS_EX_TOOLWINDOW) || ex_style.contains(WS_EX_NOACTIVATE)
     }
 
     pub fn has_native_border(hwnd: HWND) -> bool {
-        let style = unsafe { GetWindowLongW(hwnd, GWL_STYLE) as u32 };
-        let ex_style = unsafe { GetWindowLongW(hwnd, GWL_EXSTYLE) as u32 };
+        let style = Self::get_window_style(hwnd);
+        let ex_style = Self::get_window_ex_style(hwnd);
 
-        ex_style & WS_EX_WINDOWEDGE.0 != 0 && style & WS_MAXIMIZE.0 == 0
+        ex_style.contains(WS_EX_WINDOWEDGE) && !style.contains(WS_MAXIMIZE)
     }
 
     pub fn get_window_title(hwnd: HWND) -> AnyResult<String> {

@@ -178,6 +178,7 @@ pub struct WindowMatchConfig {
     pub initialize_delay: Option<u64>,
     /// Delay (in milliseconds) before applying the border after unminimizing.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(alias = "restore_delay")]
     pub unminimize_delay: Option<u64>,
 }
 
@@ -253,6 +254,7 @@ fn default_exit_keybind() -> String {
 
 /// Stores the complete configuration including global rules, window rules, and keybindings.
 #[derive(Debug, Deserialize, Clone, Default)]
+#[serde(default)]
 pub struct UserConfig {
     /// Global settings applied across all windows.
     #[serde(rename = "global")]
@@ -261,7 +263,6 @@ pub struct UserConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub window_rules: Option<Vec<WindowRuleConfig>>,
     /// Application keybindings.
-    #[serde(default)]
     pub keybindings: Keybindings,
 }
 

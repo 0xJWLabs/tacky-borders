@@ -1,4 +1,5 @@
 // #![allow(unused)]
+#![feature(duration_millis_float)]
 #![cfg_attr(
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
@@ -9,16 +10,16 @@ extern crate sp_log;
 
 use anyhow::anyhow;
 use anyhow::Result as AnyResult;
-use border_manager::create_border_for_window;
 use border_manager::register_border_class;
 use border_manager::reload_borders;
+use border_manager::Border;
 use error::LogIfErr;
 use keyboard_hook::KeybindingConfig;
 use keyboard_hook::KeyboardHook;
 use keyboard_hook::KEYBOARD_HOOK;
 use sp_log::ColorChoice;
 use sp_log::CombinedLogger;
-use sp_log::Config;
+use sp_log::ConfigBuilder;
 use sp_log::FileLogger;
 use sp_log::LevelFilter;
 use sp_log::TermLogger;
@@ -76,13 +77,33 @@ fn start_app() -> AnyResult<()> {
     keyboard_hook.start().log_if_err();
     window_event_hook.start().log_if_err();
 
-    SystemTray::new().log_if_err_message("could not create sys tray", false);
+    let sys_tray = SystemTray::new();
+    sys_tray.log_if_err_message_pretty("could not create tray icon", true);
 
     register_border_class().log_if_err();
 
-    WindowsApi::process_window_handles(&create_border_for_window).log_if_err();
+    WindowsApi::process_window_handles(&Border::create).log_if_err();
 
-    run_message_loop()
+    debug!("tacky-borders event started");
+
+    let mut message = MSG::default();
+    loop {
+        // Get the next message from the message queue
+        if WindowsApi::get_message_w(&mut message, None, 0, 0).as_bool() {
+            // Translate and dispatch the message
+            let _ = WindowsApi::translate_message(&message);
+            WindowsApi::dispatch_message_w(&message);
+        } else if message.message == WM_QUIT {
+            debug!("tacky-borders event shutdown");
+            break;
+        } else {
+            let last_error = unsafe { GetLastError() };
+            error!("tacky-borders event shutdown: {last_error:?}");
+            return Err(anyhow!("unexpected exit from message loop.".to_string()));
+        }
+    }
+
+    Ok(())
 }
 
 fn restart_app() {
@@ -103,7 +124,7 @@ fn exit_app() {
         hook.stop().log_if_err();
     }
 
-    kill_message_loop();
+    WindowsApi::post_quit_message(0);
 }
 
 fn create_logger() -> AnyResult<()> {
@@ -112,22 +133,30 @@ fn create_logger() -> AnyResult<()> {
         return Err(anyhow!("could not convert log_path to str"));
     };
 
+    let mut config_builder = ConfigBuilder::new();
+
+    if let Err(e) = config_builder.set_time_offset_to_local() {
+        error!("time error: {e:?}");
+    }
+
+    let config = config_builder.build();
+
     CombinedLogger::init(vec![
         TermLogger::new(
             LevelFilter::Warn,
-            Config::default(),
+            config.clone(),
             TerminalMode::Mixed,
             ColorChoice::Auto,
         ),
         TermLogger::new(
             LevelFilter::Debug,
-            Config::default(),
+            config.clone(),
             TerminalMode::Mixed,
             ColorChoice::Auto,
         ),
         FileLogger::new(
             LevelFilter::Info,
-            Config::default(),
+            config.clone(),
             log_path,
             Some(1024 * 1024),
         ),
@@ -160,33 +189,4 @@ fn create_bindings() -> AnyResult<Vec<KeybindingConfig>> {
     ];
 
     Ok(bindings)
-}
-
-fn run_message_loop() -> AnyResult<()> {
-    debug!("entering message loop...");
-
-    let mut message = MSG::default();
-
-    loop {
-        // Get the next message from the message queue
-        if WindowsApi::get_message_w(&mut message, None, 0, 0).as_bool() {
-            // Translate and dispatch the message
-            let _ = WindowsApi::translate_message(&message);
-            WindowsApi::dispatch_message_w(&message);
-        } else if message.message == WM_QUIT {
-            // Exit the loop when WM_QUIT message is received
-            debug!("received WM_QUIT message, exiting message loop...");
-            break;
-        } else {
-            let last_error = unsafe { GetLastError() };
-            error!("{last_error:?}");
-            return Err(anyhow!("unexpected exit from message loop.".to_string()));
-        }
-    }
-
-    Ok(())
-}
-
-fn kill_message_loop() {
-    WindowsApi::post_quit_message(0);
 }

@@ -29,7 +29,7 @@ pub struct AnimationParameters {
 
 impl fmt::Debug for AnimationParameters {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AnimationParams")
+        f.debug_struct("AnimationParameters")
             .field("duration", &self.duration)
             .field("easing_fn", &Arc::as_ptr(&self.easing_fn))
             .finish()
@@ -66,7 +66,7 @@ fn animate_spiral(
         false => 1.0,
     };
 
-    let delta_x = anim_elapsed.as_secs_f32() * 1000.0 / anim_params.duration * direction;
+    let delta_x = anim_elapsed.as_millis_f32() / anim_params.duration * direction;
     border.animations.progress.spiral += delta_x;
 
     if !(0.0..=1.0).contains(&border.animations.progress.spiral) {
@@ -118,7 +118,7 @@ fn animate_fade(border: &mut Border, anim_elapsed: &Duration, anim_params: &Anim
         false => -1.0,
     };
 
-    let delta_x = anim_elapsed.as_secs_f32() * 1000.0 / anim_params.duration * direction;
+    let delta_x = anim_elapsed.as_millis_f32() / anim_params.duration * direction;
     border.animations.progress.fade += delta_x;
 
     if !(0.0..=1.0).contains(&border.animations.progress.fade) {

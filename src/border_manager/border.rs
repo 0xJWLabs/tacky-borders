@@ -3,6 +3,7 @@ use crate::animations::animation::AnimationType;
 use crate::animations::timer::KillAnimationTimer;
 use crate::animations::timer::SetAnimationTimer;
 use crate::animations::Animations;
+use crate::as_ptr;
 use crate::error::LogIfErr;
 use crate::user_config::UserConfig;
 use crate::user_config::WindowRuleConfig;
@@ -31,6 +32,7 @@ use win_color::GradientImpl;
 use windows::core::CloneType;
 use windows::core::TypeKind;
 use windows::Foundation::Numerics::Matrix3x2;
+use windows::Win32::Foundation::GetLastError;
 use windows::Win32::Foundation::COLORREF;
 use windows::Win32::Foundation::D2DERR_RECREATE_TARGET;
 use windows::Win32::Foundation::FALSE;
@@ -90,11 +92,12 @@ use windows::Win32::UI::WindowsAndMessaging::SWP_SHOWWINDOW;
 use windows::Win32::UI::WindowsAndMessaging::WM_CREATE;
 use windows::Win32::UI::WindowsAndMessaging::WM_NCDESTROY;
 use windows::Win32::UI::WindowsAndMessaging::WM_PAINT;
+use windows::Win32::UI::WindowsAndMessaging::WM_QUIT;
 use windows::Win32::UI::WindowsAndMessaging::WM_WINDOWPOSCHANGED;
 use windows::Win32::UI::WindowsAndMessaging::WM_WINDOWPOSCHANGING;
 
 use super::get_active_window;
-use super::get_borders;
+use super::window_borders;
 
 static RENDER_FACTORY: LazyLock<ID2D1Factory8> = unsafe {
     LazyLock::new(|| {
@@ -117,14 +120,14 @@ impl Eq for Border {}
 
 impl PartialEq for Border {
     fn eq(&self, other: &Self) -> bool {
-        self.tracking_window.0 as usize == other.tracking_window.0 as usize
+        self.tracking_window as usize == other.tracking_window as usize
     }
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct Border {
-    pub border_window: HWND,
-    pub tracking_window: HWND,
+    pub border_window: isize,
+    pub tracking_window: isize,
     pub is_window_active: bool,
     pub window_rect: RECT,
     pub border_width: i32,
@@ -143,11 +146,59 @@ pub struct Border {
 }
 
 impl Border {
-    pub fn new(tracking_window: HWND) -> Self {
-        Self {
-            tracking_window,
-            ..Default::default()
-        }
+    pub const fn border_window(&self) -> HWND {
+        HWND(as_ptr!(self.border_window))
+    }
+
+    pub const fn tracking_window(&self) -> HWND {
+        HWND(as_ptr!(self.tracking_window))
+    }
+
+    pub fn hide(self) -> bool {
+        let _ = std::thread::spawn(move || {
+            WindowsApi::post_message_w(
+                HWND(as_ptr!(self.border_window)),
+                WM_APP_HIDECLOAKED,
+                WPARAM(0),
+                LPARAM(0),
+            )
+            .context("hide_border_for_window")
+            .log_if_err();
+        });
+        true
+    }
+
+    pub fn create(tracking_window: isize, window_rule: WindowRuleConfig) {
+        debug!("creating border for: {:?}", HWND(as_ptr!(tracking_window)));
+
+        std::thread::spawn(move || {
+            let mut borders_hashmap = window_borders();
+
+            // Check to see if there is already a border for the given tracking window
+            if borders_hashmap.contains_key(&tracking_window) {
+                return;
+            }
+
+            let mut border = Self {
+                tracking_window,
+                ..Default::default()
+            };
+
+            if let Err(e) = border.create_border_window(&window_rule) {
+                error!("could not create border window: {e:?}");
+                return;
+            };
+
+            borders_hashmap.insert(tracking_window, border.clone());
+
+            drop(borders_hashmap);
+            let _ = window_rule;
+            let _ = tracking_window;
+
+            if let Err(e) = border.init() {
+                error!("{e}");
+            }
+        });
     }
 
     pub fn create_border_window(&mut self, window_rule: &WindowRuleConfig) -> AnyResult<()> {
@@ -159,9 +210,6 @@ impl Border {
         .as_raw_pcwstr();
 
         self.border_window = WindowsApi::create_border_window(title, self)?;
-
-        WindowsApi::set_layered_window_attributes(self.border_window, COLORREF(0), 0, LWA_COLORKEY)
-            .context("could not set LWA_COLORKEY")?;
 
         self.load_from_config(window_rule).log_if_err();
 
@@ -185,8 +233,16 @@ impl Border {
                 };
             }
 
-            DwmEnableBlurBehindWindow(self.border_window, &bh)
+            DwmEnableBlurBehindWindow(HWND(as_ptr!(self.border_window)), &bh)
                 .context("could not make window transparent")?;
+
+            WindowsApi::set_layered_window_attributes(
+                self.border_window,
+                COLORREF(0),
+                0,
+                LWA_COLORKEY,
+            )
+            .context("could not set LWA_COLORKEY")?;
 
             WindowsApi::set_layered_window_attributes(
                 self.border_window,
@@ -226,12 +282,29 @@ impl Border {
             )
             .log_if_err();
 
+            debug!("border window event started");
+
             let mut message = MSG::default();
-            while WindowsApi::get_message_w(&mut message, HWND::default(), 0, 0).into() {
-                let _ = WindowsApi::translate_message(&message);
-                WindowsApi::dispatch_message_w(&message);
+            loop {
+                // Get the next message from the message queue
+                if WindowsApi::get_message_w(&mut message, None, 0, 0).as_bool() {
+                    // Translate and dispatch the message
+                    let _ = WindowsApi::translate_message(&message);
+                    WindowsApi::dispatch_message_w(&message);
+                } else if message.message == WM_QUIT {
+                    debug!("border window event shutdown");
+                    break;
+                } else {
+                    let last_error = GetLastError();
+                    error!("border window event shutdown: {last_error:?}");
+                    return Err(anyhow!("unexpected exit from message loop.".to_string()));
+                }
             }
-            debug!("exiting border thread for {:?}!", self.tracking_window);
+
+            debug!(
+                "exiting border thread for {:?}!",
+                HWND(as_ptr!(self.tracking_window))
+            );
         }
 
         Ok(())
@@ -275,15 +348,14 @@ impl Border {
             .clone()
             .unwrap_or(config.global_rule.animations.clone().unwrap_or_default());
 
-        let dpi = unsafe { GetDpiForWindow(self.tracking_window) } as f32;
+        let dpi = unsafe { GetDpiForWindow(self.tracking_window()) } as f32;
         self.border_width = (config_width * dpi / 96.0) as i32;
         self.border_radius = config_radius.to_radius(self.border_width, dpi, self.tracking_window);
         self.border_offset = config_offset;
 
         let available_windows = WindowsApi::collect_window_handles().unwrap_or_default();
 
-        self.initialize_delay = match available_windows.contains(&(self.tracking_window.0 as isize))
-        {
+        self.initialize_delay = match available_windows.contains(&self.tracking_window) {
             true => 0,
             false => window_rule
                 .match_window
@@ -311,7 +383,7 @@ impl Border {
             ..Default::default()
         };
         let hwnd_render_target_properties = D2D1_HWND_RENDER_TARGET_PROPERTIES {
-            hwnd: self.border_window,
+            hwnd: self.border_window(),
             pixelSize: Default::default(),
             presentOptions: D2D1_PRESENT_OPTIONS_RETAIN_CONTENTS | D2D1_PRESENT_OPTIONS_IMMEDIATELY,
         };
@@ -375,19 +447,19 @@ impl Border {
     fn update_position(&mut self, other_flags: Option<SET_WINDOW_POS_FLAGS>) -> AnyResult<()> {
         unsafe {
             // Place the window border above the tracking window
-            let hwnd_above_tracking = GetWindow(self.tracking_window, GW_HWNDPREV);
+            let hwnd_above_tracking = GetWindow(self.tracking_window(), GW_HWNDPREV);
 
             let mut swp_flags = SWP_NOSENDCHANGING
                 | SWP_NOACTIVATE
                 | SWP_NOREDRAW
                 | other_flags.unwrap_or_default();
 
-            if hwnd_above_tracking == Ok(self.border_window) {
+            if hwnd_above_tracking == Ok(self.border_window()) {
                 swp_flags |= SWP_NOZORDER;
             }
 
             if let Err(e) = SetWindowPos(
-                self.border_window,
+                self.border_window(),
                 hwnd_above_tracking.unwrap_or(HWND_TOP),
                 self.window_rect.left,
                 self.window_rect.top,
@@ -407,7 +479,7 @@ impl Border {
     }
 
     fn update_color(&mut self, check_delay: Option<u64>) -> AnyResult<()> {
-        self.is_window_active = self.tracking_window.0 as isize == *get_active_window();
+        self.is_window_active = self.tracking_window == *get_active_window();
 
         match self.current_animations().contains_key(&AnimationType::Fade) {
             false => self.update_brush_opacities(),
@@ -552,11 +624,17 @@ impl Border {
     fn exit_border_thread(&mut self) {
         self.pause = true;
         KillAnimationTimer(self).log_if_err();
-        let mut borders_hashmap = get_borders();
-        borders_hashmap.remove(&(self.tracking_window.0 as isize));
+        let mut borders_hashmap = window_borders();
+        borders_hashmap.remove(&(self.tracking_window));
 
         drop(borders_hashmap);
         WindowsApi::post_quit_message(0);
+    }
+
+    pub fn destroy(&self) {
+        WindowsApi::destroy_window(self.border_window)
+            .context("destroy_border_for_window")
+            .log_if_err();
     }
 
     fn callback(&mut self, window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {

@@ -1,9 +1,8 @@
-use crate::border_manager::destroy_border_for_window;
-use crate::border_manager::get_border_from_window;
-use crate::border_manager::get_borders;
-use crate::border_manager::hide_border_for_window;
+use crate::as_ptr;
 use crate::border_manager::set_active_window;
 use crate::border_manager::show_border_for_window;
+use crate::border_manager::window_border;
+use crate::border_manager::window_borders;
 use crate::error::LogIfErr;
 use crate::windows_api::WindowsApi;
 use crate::windows_api::WM_APP_FOREGROUND;
@@ -128,9 +127,9 @@ impl WindowEventHook {
                     return;
                 }
 
-                if let Some(border) = get_border_from_window(handle) {
+                if let Some(border) = window_border(handle.0 as isize) {
                     WindowsApi::send_notify_message_w(
-                        border,
+                        HWND(as_ptr!(border.border_window)),
                         WM_APP_LOCATIONCHANGE,
                         WPARAM(0),
                         LPARAM(0),
@@ -140,10 +139,10 @@ impl WindowEventHook {
                 }
             }
             EVENT_OBJECT_REORDER => {
-                let visible_windows: Vec<_> = get_borders()
+                let visible_windows: Vec<_> = window_borders()
                     .values()
-                    .map(|&val| HWND(val as _))
-                    .filter(|&border_window| WindowsApi::is_window_visible(border_window))
+                    .filter(|&border| WindowsApi::is_window_visible(border.border_window))
+                    .map(|border| HWND(as_ptr!(border.border_window)))
                     .collect();
 
                 for border_window in visible_windows {
@@ -155,16 +154,16 @@ impl WindowEventHook {
             EVENT_SYSTEM_FOREGROUND => {
                 let target_handle = handle.0 as isize;
 
-                if !WindowsApi::get_window_ex_style(handle).contains(WS_EX_NOACTIVATE) {
+                if !WindowsApi::get_window_ex_style(target_handle).contains(WS_EX_NOACTIVATE) {
                     set_active_window(target_handle);
                 }
 
-                let visible_windows: Vec<HWND> = get_borders()
+                let visible_windows: Vec<HWND> = window_borders()
                     .iter()
-                    .filter_map(|(&key, &val)| {
-                        let border_window = HWND(val as _);
+                    .filter_map(|(&key, hwnd)| {
+                        let border_window = hwnd.border_window;
                         if WindowsApi::is_window_visible(border_window) || key == target_handle {
-                            Some(border_window)
+                            Some(HWND(as_ptr!(border_window)))
                         } else {
                             None
                         }
@@ -183,29 +182,43 @@ impl WindowEventHook {
                 }
             }
             EVENT_OBJECT_SHOW | EVENT_OBJECT_UNCLOAKED => {
-                show_border_for_window(handle);
+                show_border_for_window(handle.0 as isize);
             }
             EVENT_OBJECT_HIDE | EVENT_OBJECT_CLOAKED => {
-                hide_border_for_window(handle);
+                if let Some(border) = window_border(handle.0 as isize) {
+                    border.hide();
+                }
             }
             EVENT_SYSTEM_MINIMIZESTART => {
-                if let Some(border) = get_border_from_window(handle) {
-                    WindowsApi::post_message_w(border, WM_APP_MINIMIZESTART, WPARAM(0), LPARAM(0))
-                        .with_context(|| "EVENT_SYSTEM_MINIMIZESTART")
-                        .log_if_err();
+                if let Some(border) = window_border(handle.0 as isize) {
+                    WindowsApi::post_message_w(
+                        HWND(as_ptr!(border.border_window)),
+                        WM_APP_MINIMIZESTART,
+                        WPARAM(0),
+                        LPARAM(0),
+                    )
+                    .with_context(|| "EVENT_SYSTEM_MINIMIZESTART")
+                    .log_if_err();
                 }
             }
             EVENT_SYSTEM_MINIMIZEEND => {
-                if let Some(border) = get_border_from_window(handle) {
-                    WindowsApi::post_message_w(border, WM_APP_MINIMIZEEND, WPARAM(0), LPARAM(0))
-                        .with_context(|| "EVENT_SYSTEM_MINIMIZEEND")
-                        .log_if_err();
+                if let Some(border) = window_border(handle.0 as isize) {
+                    WindowsApi::post_message_w(
+                        HWND(as_ptr!(border.border_window)),
+                        WM_APP_MINIMIZEEND,
+                        WPARAM(0),
+                        LPARAM(0),
+                    )
+                    .with_context(|| "EVENT_SYSTEM_MINIMIZEEND")
+                    .log_if_err();
                 }
             }
             // TODO this is called an unnecessary number of times which may hurt performance?
             EVENT_OBJECT_DESTROY => {
                 if id_child == CHILDID_SELF as i32 {
-                    destroy_border_for_window(handle);
+                    if let Some(border) = window_border(handle.0 as isize) {
+                        border.destroy();
+                    }
                 }
             }
             _ => {}

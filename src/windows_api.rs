@@ -18,8 +18,10 @@ use std::hash::Hasher;
 use std::iter::once;
 use std::os::windows::ffi::OsStrExt;
 use std::os::windows::ffi::OsStringExt;
+use std::os::windows::io::AsRawHandle;
 use std::path::PathBuf;
 use std::ptr;
+use std::thread::JoinHandle;
 use windows::core::w;
 use windows::core::Param;
 use windows::core::Result as WinResult;
@@ -51,6 +53,7 @@ use windows::Win32::Graphics::Dwm::DWM_CLOAKED_SHELL;
 use windows::Win32::Graphics::Dwm::DWM_WINDOW_CORNER_PREFERENCE;
 use windows::Win32::System::Com::CoTaskMemFree;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::Threading::GetThreadId;
 use windows::Win32::System::Threading::OpenProcess;
 use windows::Win32::System::Threading::QueryFullProcessImageNameW;
 use windows::Win32::System::Threading::PROCESS_NAME_WIN32;
@@ -73,6 +76,7 @@ use windows::Win32::UI::WindowsAndMessaging::IsWindowVisible;
 use windows::Win32::UI::WindowsAndMessaging::MessageBoxW;
 use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
 use windows::Win32::UI::WindowsAndMessaging::PostQuitMessage;
+use windows::Win32::UI::WindowsAndMessaging::PostThreadMessageW;
 use windows::Win32::UI::WindowsAndMessaging::RealGetWindowClassW;
 use windows::Win32::UI::WindowsAndMessaging::SendNotifyMessageW;
 use windows::Win32::UI::WindowsAndMessaging::SetLayeredWindowAttributes;
@@ -89,6 +93,8 @@ use windows::Win32::UI::WindowsAndMessaging::MSG;
 use windows::Win32::UI::WindowsAndMessaging::WINDOW_EX_STYLE;
 use windows::Win32::UI::WindowsAndMessaging::WINDOW_STYLE;
 use windows::Win32::UI::WindowsAndMessaging::WM_APP;
+use windows::Win32::UI::WindowsAndMessaging::WM_NCDESTROY;
+use windows::Win32::UI::WindowsAndMessaging::WM_QUIT;
 use windows::Win32::UI::WindowsAndMessaging::WNDENUMPROC;
 use windows::Win32::UI::WindowsAndMessaging::WS_CHILD;
 use windows::Win32::UI::WindowsAndMessaging::WS_DISABLED;
@@ -111,6 +117,13 @@ pub const WM_APP_HIDECLOAKED: u32 = WM_APP + 4;
 pub const WM_APP_MINIMIZESTART: u32 = WM_APP + 5;
 pub const WM_APP_MINIMIZEEND: u32 = WM_APP + 6;
 pub const WM_APP_TIMER: u32 = WM_APP + 7;
+
+#[macro_export]
+macro_rules! as_ptr {
+    ($value:expr) => {
+        $value as *mut core::ffi::c_void
+    };
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SendHWND(pub HWND);
@@ -238,22 +251,22 @@ impl WindowsApi {
     }
 
     pub fn set_layered_window_attributes(
-        hwnd: HWND,
+        hwnd: isize,
         crkey: COLORREF,
         alpha: u8,
         flags: LAYERED_WINDOW_ATTRIBUTES_FLAGS,
     ) -> WinResult<()> {
-        unsafe { SetLayeredWindowAttributes(hwnd, crkey, alpha, flags) }
+        unsafe { SetLayeredWindowAttributes(HWND(as_ptr!(hwnd)), crkey, alpha, flags) }
     }
 
     pub fn dwm_get_window_attribute<T>(
-        hwnd: HWND,
+        hwnd: isize,
         attribute: DWMWINDOWATTRIBUTE,
         value: &mut T,
     ) -> WinResult<()> {
         unsafe {
             DwmGetWindowAttribute(
-                hwnd,
+                HWND(as_ptr!(hwnd)),
                 attribute,
                 (value as *mut T).cast(),
                 u32::try_from(std::mem::size_of::<T>())?,
@@ -261,23 +274,30 @@ impl WindowsApi {
         }
     }
 
+    pub fn destroy_window(hwnd: isize) -> AnyResult<()> {
+        match Self::post_message_w(HWND(as_ptr!(hwnd)), WM_NCDESTROY, WPARAM(0), LPARAM(0)) {
+            Ok(()) => Ok(()),
+            Err(_) => Err(anyhow!("could not destroy window")),
+        }
+    }
+
     pub fn enum_windows(callback: WNDENUMPROC, callback_data_address: isize) -> WinResult<()> {
         unsafe { EnumWindows(callback, LPARAM(callback_data_address)) }
     }
 
-    pub fn get_window_style(hwnd: HWND) -> WINDOW_STYLE {
-        unsafe { WINDOW_STYLE(GetWindowLongW(hwnd, GWL_STYLE) as u32) }
+    pub fn get_window_style(hwnd: isize) -> WINDOW_STYLE {
+        unsafe { WINDOW_STYLE(GetWindowLongW(HWND(as_ptr!(hwnd)), GWL_STYLE) as u32) }
     }
 
-    pub fn get_window_ex_style(hwnd: HWND) -> WINDOW_EX_STYLE {
-        unsafe { WINDOW_EX_STYLE(GetWindowLongW(hwnd, GWL_EXSTYLE) as u32) }
+    pub fn get_window_ex_style(hwnd: isize) -> WINDOW_EX_STYLE {
+        unsafe { WINDOW_EX_STYLE(GetWindowLongW(HWND(as_ptr!(hwnd)), GWL_EXSTYLE) as u32) }
     }
 
     pub fn get_foreground_window() -> HWND {
         unsafe { GetForegroundWindow() }
     }
 
-    pub fn is_window_cloaked(hwnd: HWND) -> bool {
+    pub fn is_window_cloaked(hwnd: isize) -> bool {
         let mut is_cloaked = 0;
         if let Err(e) = Self::dwm_get_window_attribute(hwnd, DWMWA_CLOAKED, &mut is_cloaked) {
             error!("could not check if window is cloaked: {e}");
@@ -290,53 +310,53 @@ impl WindowsApi {
         )
     }
 
-    pub fn is_window_visible(hwnd: HWND) -> bool {
-        unsafe { IsWindowVisible(hwnd) }.into()
+    pub fn is_window_visible(hwnd: isize) -> bool {
+        unsafe { IsWindowVisible(HWND(as_ptr!(hwnd))) }.into()
     }
 
-    pub fn is_window_active(hwnd: HWND) -> bool {
-        Self::get_foreground_window() == hwnd
+    pub fn is_window_active(hwnd: isize) -> bool {
+        Self::get_foreground_window() == HWND(as_ptr!(hwnd))
     }
 
     #[allow(dead_code)]
-    pub fn is_window_minimized(hwnd: HWND) -> bool {
+    pub fn is_window_minimized(hwnd: isize) -> bool {
         let style = Self::get_window_style(hwnd);
 
         style.contains(WS_MINIMIZE)
     }
 
-    pub fn is_window_visible_on_screen(hwnd: HWND) -> bool {
+    pub fn is_window_visible_on_screen(hwnd: isize) -> bool {
         Self::is_window_visible(hwnd) && !Self::is_window_cloaked(hwnd)
     }
 
-    pub fn is_window_top_level(hwnd: HWND) -> bool {
+    pub fn is_window_top_level(hwnd: isize) -> bool {
         let style = Self::get_window_style(hwnd);
 
         !style.contains(WS_CHILD)
     }
 
-    pub fn has_filtered_style(hwnd: HWND) -> bool {
+    pub fn has_filtered_style(hwnd: isize) -> bool {
         let ex_style = Self::get_window_ex_style(hwnd);
 
         ex_style.contains(WS_EX_TOOLWINDOW) || ex_style.contains(WS_EX_NOACTIVATE)
     }
 
-    pub fn has_native_border(hwnd: HWND) -> bool {
+    pub fn has_native_border(hwnd: isize) -> bool {
         let style = Self::get_window_style(hwnd);
         let ex_style = Self::get_window_ex_style(hwnd);
 
         ex_style.contains(WS_EX_WINDOWEDGE) && !style.contains(WS_MAXIMIZE)
     }
 
-    pub fn get_window_text_w(hwnd: HWND, lpstring: &mut [u16]) -> i32 {
-        unsafe { GetWindowTextW(hwnd, lpstring) }
+    pub fn get_window_text_w(hwnd: isize, lpstring: &mut [u16]) -> i32 {
+        unsafe { GetWindowTextW(HWND(as_ptr!(hwnd)), lpstring) }
     }
 
-    pub fn get_window_class_w(hwnd: HWND, lpstring: &mut [u16]) -> u32 {
-        unsafe { RealGetWindowClassW(hwnd, lpstring) }
+    pub fn get_window_class_w(hwnd: isize, lpstring: &mut [u16]) -> u32 {
+        unsafe { RealGetWindowClassW(HWND(as_ptr!(hwnd)), lpstring) }
     }
 
-    pub fn get_window_title(hwnd: HWND) -> AnyResult<String> {
+    pub fn get_window_title(hwnd: isize) -> AnyResult<String> {
         let mut buffer: [u16; 256] = [0; 256];
 
         if Self::get_window_text_w(hwnd, &mut buffer) == 0 {
@@ -357,7 +377,7 @@ impl WindowsApi {
         Ok(buffer.to_string_lossy().trim_end_matches('\0').to_string())
     }
 
-    pub fn get_window_class(hwnd: HWND) -> AnyResult<String> {
+    pub fn get_window_class(hwnd: isize) -> AnyResult<String> {
         let mut buffer: [u16; 256] = [0; 256];
 
         if Self::get_window_class_w(hwnd, &mut buffer) == 0 {
@@ -377,10 +397,10 @@ impl WindowsApi {
         Ok(buffer.to_string_lossy().trim_end_matches('\0').to_string())
     }
 
-    pub fn get_process_name(hwnd: HWND) -> AnyResult<String> {
+    pub fn get_process_name(hwnd: isize) -> AnyResult<String> {
         let mut process_id = 0u32;
         unsafe {
-            GetWindowThreadProcessId(hwnd, Some(&mut process_id));
+            GetWindowThreadProcessId(HWND(as_ptr!(hwnd)), Some(&mut process_id));
         }
 
         let process_handle =
@@ -429,7 +449,7 @@ impl WindowsApi {
         Ok(process_name)
     }
 
-    pub fn get_window_rule(hwnd: HWND) -> WindowRuleConfig {
+    pub fn get_window_rule(hwnd: isize) -> WindowRuleConfig {
         let title = match Self::get_window_title(hwnd) {
             Ok(val) => val,
             Err(err) => {
@@ -502,12 +522,10 @@ impl WindowsApi {
         Ok(handles)
     }
 
-    pub fn process_window_handles(callback: &dyn Fn(HWND, WindowRuleConfig)) -> AnyResult<()> {
+    pub fn process_window_handles(callback: &dyn Fn(isize, WindowRuleConfig)) -> AnyResult<()> {
         let handles = Self::collect_window_handles()?;
 
-        handles.iter().for_each(|&hwnd_u| {
-            let hwnd = HWND(hwnd_u as *mut _);
-
+        handles.iter().for_each(|&hwnd| {
             if Self::is_window_visible_on_screen(hwnd) {
                 let window_rule = Self::get_window_rule(hwnd);
 
@@ -524,7 +542,7 @@ impl WindowsApi {
         Ok(())
     }
 
-    pub fn get_window_corner_preference(hwnd: HWND) -> DWM_WINDOW_CORNER_PREFERENCE {
+    pub fn get_window_corner_preference(hwnd: isize) -> DWM_WINDOW_CORNER_PREFERENCE {
         let mut corner_preference = DWM_WINDOW_CORNER_PREFERENCE::default();
 
         Self::dwm_get_window_attribute::<DWM_WINDOW_CORNER_PREFERENCE>(
@@ -538,8 +556,8 @@ impl WindowsApi {
         corner_preference
     }
 
-    pub fn create_border_window(name: PCWSTR, border: &mut Border) -> WinResult<HWND> {
-        Self::create_window_ex_w(
+    pub fn create_border_window(name: PCWSTR, border: &mut Border) -> WinResult<isize> {
+        match Self::create_window_ex_w(
             WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE,
             w!("border"),
             name,
@@ -552,7 +570,10 @@ impl WindowsApi {
             None,
             Self::module_handle_w()?,
             Some(ptr::addr_of!(*border) as _),
-        )
+        ) {
+            Ok(window) => Ok(window.0 as isize),
+            Err(e) => Err(e),
+        }
     }
 
     pub fn home_dir() -> AnyResult<PathBuf> {
@@ -591,6 +612,17 @@ impl WindowsApi {
                 MB_ICONERROR | MB_OK | MB_SYSTEMMODAL,
             );
         }
+    }
+
+    #[allow(dead_code)]
+    pub fn kill_thread_message_loop<T>(thread: &JoinHandle<T>) -> AnyResult<()> {
+        let handle = thread.as_raw_handle();
+        let handle = HANDLE(handle);
+        let thread_id = unsafe { GetThreadId(handle) };
+
+        unsafe { PostThreadMessageW(thread_id, WM_QUIT, WPARAM::default(), LPARAM::default()) }?;
+
+        Ok(())
     }
 }
 

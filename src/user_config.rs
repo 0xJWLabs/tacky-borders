@@ -18,7 +18,6 @@ use std::sync::LazyLock;
 use std::sync::RwLock;
 use std::sync::RwLockReadGuard;
 use win_color::GlobalColor;
-use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Dwm::DWMWCP_DEFAULT;
 use windows::Win32::Graphics::Dwm::DWMWCP_DONOTROUND;
 use windows::Win32::Graphics::Dwm::DWMWCP_ROUND;
@@ -73,13 +72,13 @@ impl<'de> Deserialize<'de> for BorderStyle {
         D: Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        if s.to_ascii_uppercase() == "ROUND" {
+        if s.eq_ignore_ascii_case("ROUND") {
             Ok(BorderStyle::Round)
-        } else if s == "Square" {
+        } else if s.eq_ignore_ascii_case("SQUARE") {
             Ok(BorderStyle::Square)
-        } else if s.to_ascii_uppercase() == "SMALLROUND" {
+        } else if s.eq_ignore_ascii_case("SMALLROUND") {
             Ok(BorderStyle::SmallRound)
-        } else if s.to_ascii_uppercase() == "AUTO" {
+        } else if s.eq_ignore_ascii_case("AUTO") {
             Ok(BorderStyle::Auto)
         } else if s.to_ascii_uppercase().starts_with("RADIUS(") && s.ends_with(")") {
             let inner = &s[7..s.len() - 1];
@@ -94,7 +93,7 @@ impl<'de> Deserialize<'de> for BorderStyle {
 }
 
 impl BorderStyle {
-    pub fn to_radius(&self, border_width: i32, dpi: f32, tracking_window: HWND) -> f32 {
+    pub fn to_radius(&self, border_width: i32, dpi: f32, tracking_window: isize) -> f32 {
         let base_radius = (border_width as f32) / 2.0;
         let scale_factor = dpi / 96.0;
 

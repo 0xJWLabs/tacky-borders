@@ -1,9 +1,10 @@
 #![allow(dead_code)]
 
+use crate::as_ptr;
 use crate::border_manager::Border;
 use crate::error::LogIfErr;
+use crate::windows_api::WindowsApi;
 use crate::windows_api::WM_APP_TIMER;
-use crate::windows_api::{SendHWND, WindowsApi};
 use anyhow::{anyhow, Result as AnyResult};
 use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
@@ -11,7 +12,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::thread::{sleep, spawn};
 use std::time::{Duration, Instant};
-use windows::Win32::Foundation::{LPARAM, WPARAM};
+use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 
 const NUM_SHARDS: usize = 16;
 
@@ -59,7 +60,7 @@ impl GlobalAnimationTimer {
     /// * `Ok(())` if the timer was added successfully.
     /// * `Err` if a timer for the window already exists.
     pub fn add_timer(&self, border: &Border, timer: AnimationTimer) -> AnyResult<()> {
-        let hwnd_u = border.border_window.0 as usize;
+        let hwnd_u = border.border_window as usize;
         let shard_index = self.get_shard_index(hwnd_u);
         // Attempt to acquire the lock safely
         let mut timers = self.timers[shard_index]
@@ -83,7 +84,7 @@ impl GlobalAnimationTimer {
     /// * `Ok(())` if the timer was removed successfully.
     /// * `Err` if no timer was found for the specified window.
     pub fn remove_timer(&self, border: &Border) -> AnyResult<()> {
-        let hwnd_u = border.border_window.0 as usize;
+        let hwnd_u = border.border_window as usize;
         let shard_index = self.get_shard_index(hwnd_u);
 
         // Attempt to acquire the lock safely
@@ -123,19 +124,16 @@ impl AnimationTimer {
 
         let running = Arc::new(AtomicBool::new(true));
         let running_clone = running.clone();
-        let window_sent = SendHWND(border.border_window);
+        let border_clone = border.clone();
         spawn(move || {
-            let window_sent = window_sent;
+            let window_sent = HWND(as_ptr!(border_clone.border_window));
             let mut next_tick = Instant::now() + Duration::from_millis(interval_ms);
             while running_clone.load(Ordering::SeqCst) {
                 // Send the timer message and schedule next tick
                 if Instant::now() >= next_tick {
-                    if let Err(e) = WindowsApi::post_message_w(
-                        window_sent.0,
-                        WM_APP_TIMER,
-                        WPARAM(0),
-                        LPARAM(0),
-                    ) {
+                    if let Err(e) =
+                        WindowsApi::post_message_w(window_sent, WM_APP_TIMER, WPARAM(0), LPARAM(0))
+                    {
                         error!("could not send animation timer message: {e}");
                         break;
                     }
@@ -154,7 +152,7 @@ impl AnimationTimer {
         TIMER_MANAGER
             .lock()
             .map_err(|e| anyhow!("failed to lock the TIMER_MANAGER: {e}"))?
-            .add_timer(&border.clone(), timer.clone())
+            .add_timer(border, timer.clone())
             .log_if_err();
 
         border.animations.timer = Some(timer.clone());
@@ -196,7 +194,7 @@ where
     F: Fn(&Border) -> bool,
 {
     // If condition exists, check it; otherwise, proceed directly
-    if condition.map_or(true, |cond| cond(border)) && border.animations.timer.is_none() {
+    if condition.is_none_or(|cond| cond(border)) && border.animations.timer.is_none() {
         let timer_duration = (1000.0 / border.animations.fps as f32) as u64;
         AnimationTimer::start(border, timer_duration).log_if_err();
     }

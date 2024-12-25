@@ -154,14 +154,14 @@ impl FromStr for AnimationEasing {
 }
 
 pub trait AnimationEasingImpl {
-    fn to_points(&self) -> [f32; 4];
+    fn evaluate(&self) -> [f32; 4];
 }
 
 impl AnimationEasingImpl for AnimationEasing {
     /// Converts the easing to a corresponding array of points.
     /// Linear and named easing variants will return predefined control points,
     /// while CubicBezier returns its own array.
-    fn to_points(&self) -> [f32; 4] {
+    fn evaluate(&self) -> [f32; 4] {
         match self {
             // Linear
             AnimationEasing::Linear => [0.0, 0.0, 1.0, 1.0],

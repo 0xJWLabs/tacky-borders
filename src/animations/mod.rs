@@ -50,10 +50,6 @@ pub struct Animations {
     pub timer: Option<AnimationTimer>,
 }
 
-fn default_fps() -> i32 {
-    60
-}
-
 fn handle_map<T>(
     map: FxHashMap<AnimationType, T>,
 ) -> Result<FxHashMap<AnimationType, AnimationParameters>, AnimationParserError>
@@ -64,7 +60,7 @@ where
         .map(|(animation_type, animation_value)| {
             let (duration, easing) = parse_animation(animation_type, animation_value)?;
 
-            let easing_points = easing.to_points();
+            let easing_points = easing.evaluate();
 
             let easing_fn = bezier(
                 easing_points[0],
@@ -104,4 +100,8 @@ where
         }
         _ => Err(D::Error::custom("Invalid file type")),
     }
+}
+
+fn default_fps() -> i32 {
+    60
 }

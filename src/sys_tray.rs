@@ -14,10 +14,6 @@ use tray_icon_win::Icon;
 use tray_icon_win::TrayIcon;
 use tray_icon_win::TrayIconBuilder;
 
-#[allow(dead_code)]
-#[derive(Debug)]
-pub struct SystemTray(TrayIcon);
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SystemTrayEvent {
     OpenConfig,
@@ -60,13 +56,18 @@ impl From<SystemTrayEvent> for &'static str {
     }
 }
 
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct SystemTray(TrayIcon);
+
 impl SystemTray {
     pub fn new() -> AnyResult<Self> {
-        let tray_icon = Self::create_tray()?;
+        let tray_icon = Self::create_tray_icon()?;
 
         Ok(Self(tray_icon))
     }
-    pub fn create_tray() -> AnyResult<TrayIcon> {
+
+    pub fn create_tray_icon() -> AnyResult<TrayIcon> {
         let icon = match Icon::from_resource(32152, Some((64, 64))) {
             Ok(icon) => icon,
             Err(e) => {

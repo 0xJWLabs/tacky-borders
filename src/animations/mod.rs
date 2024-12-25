@@ -1,19 +1,14 @@
 use crate::user_config::ConfigFormat;
 use crate::user_config::CONFIG_FORMAT;
-use animation::AnimationParameters;
+use animation::Animation;
 use animation::AnimationType;
-use easing::AnimationEasingImpl;
-use parser::parse_animation;
 use parser::AnimationParserError;
 use parser::IdentifiableAnimationValue;
-use rustc_hash::FxHashMap;
 use serde::de::Error;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde_jsonc2::Value as JsonValue;
 use serde_yml::Value as YamlValue;
-use simple_bezier_easing::bezier;
-use std::sync::Arc;
 use timer::AnimationTimer;
 
 pub mod animation;
@@ -37,9 +32,9 @@ pub struct AnimationFlags {
 #[derive(Debug, Deserialize, Clone, Default)]
 pub struct Animations {
     #[serde(deserialize_with = "animation", default)]
-    pub active: FxHashMap<AnimationType, AnimationParameters>,
+    pub active: Vec<Animation>,
     #[serde(deserialize_with = "animation", default)]
-    pub inactive: FxHashMap<AnimationType, AnimationParameters>,
+    pub inactive: Vec<Animation>,
     #[serde(default = "default_fps")]
     pub fps: i32,
     #[serde(skip)]
@@ -50,53 +45,39 @@ pub struct Animations {
     pub timer: Option<AnimationTimer>,
 }
 
-fn handle_map<T>(
-    map: FxHashMap<AnimationType, T>,
-) -> Result<FxHashMap<AnimationType, AnimationParameters>, AnimationParserError>
+pub trait AnimationsImpl {
+    fn contains_kind(&self, kind: AnimationType) -> bool;
+}
+
+// Implement the trait for Vec<Animation>
+impl AnimationsImpl for Vec<Animation> {
+    fn contains_kind(&self, kind: AnimationType) -> bool {
+        self.iter().any(|a| a.kind == kind)
+    }
+}
+
+fn handle_vec<T>(vec: Vec<T>) -> Result<Vec<Animation>, AnimationParserError>
 where
     T: IdentifiableAnimationValue,
 {
-    map.iter()
-        .map(|(animation_type, animation_value)| {
-            let (duration, easing) = parse_animation(animation_type, animation_value)?;
-
-            let easing_points = easing.evaluate();
-
-            let easing_fn = bezier(
-                easing_points[0],
-                easing_points[1],
-                easing_points[2],
-                easing_points[3],
-            )
-            .map_err(|e| AnimationParserError::Custom(e.to_string()))?;
-
-            Ok((
-                animation_type.clone(),
-                AnimationParameters {
-                    duration,
-                    easing_fn: Arc::new(easing_fn),
-                },
-            ))
-        })
+    vec.into_iter()
+        .map(|animation_value| animation_value.parse())
         .collect()
 }
 
-fn animation<'de, D>(
-    deserializer: D,
-) -> Result<FxHashMap<AnimationType, AnimationParameters>, D::Error>
+fn animation<'de, D>(deserializer: D) -> Result<Vec<Animation>, D::Error>
 where
     D: Deserializer<'de>,
 {
     match *CONFIG_FORMAT.read().unwrap() {
         ConfigFormat::Json | ConfigFormat::Jsonc => {
-            let map: FxHashMap<AnimationType, JsonValue> =
-                FxHashMap::deserialize(deserializer).map_err(D::Error::custom)?;
-            handle_map(map).map_err(D::Error::custom)
+            let vec: Vec<JsonValue> = Vec::deserialize(deserializer).map_err(D::Error::custom)?;
+
+            handle_vec(vec).map_err(D::Error::custom)
         }
         ConfigFormat::Yaml => {
-            let map: FxHashMap<AnimationType, YamlValue> =
-                FxHashMap::deserialize(deserializer).map_err(D::Error::custom)?;
-            handle_map(map).map_err(D::Error::custom)
+            let vec: Vec<YamlValue> = Vec::deserialize(deserializer).map_err(D::Error::custom)?;
+            handle_vec(vec).map_err(D::Error::custom)
         }
         _ => Err(D::Error::custom("Invalid file type")),
     }

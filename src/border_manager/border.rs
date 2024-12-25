@@ -1,8 +1,9 @@
-use crate::animations::animation::AnimationParameters;
+use crate::animations::animation::Animation;
 use crate::animations::animation::AnimationType;
 use crate::animations::timer::KillAnimationTimer;
 use crate::animations::timer::SetAnimationTimer;
 use crate::animations::Animations;
+use crate::animations::AnimationsImpl;
 use crate::as_ptr;
 use crate::error::LogIfErr;
 use crate::user_config::UserConfig;
@@ -20,7 +21,6 @@ use crate::windows_api::WM_APP_TIMER;
 use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result as AnyResult;
-use rustc_hash::FxHashMap;
 use std::sync::LazyLock;
 use std::thread;
 use std::time;
@@ -481,7 +481,7 @@ impl Border {
     fn update_color(&mut self, check_delay: Option<u64>) -> AnyResult<()> {
         self.is_window_active = self.tracking_window == *get_active_window();
 
-        match self.current_animations().contains_key(&AnimationType::Fade) {
+        match self.current_animations().contains_kind(AnimationType::Fade) {
             false => self.update_brush_opacities(),
             true if check_delay == Some(0) => {
                 self.update_brush_opacities();
@@ -509,7 +509,7 @@ impl Border {
         bottom_color.set_opacity(0.0);
     }
 
-    fn current_animations(&self) -> &FxHashMap<AnimationType, AnimationParameters> {
+    fn current_animations(&self) -> &Vec<Animation> {
         match self.is_window_active {
             true => &self.animations.active,
             false => &self.animations.inactive,
@@ -780,15 +780,15 @@ impl Border {
                     self.inactive_color.set_transform(&Matrix3x2::identity());
                     animations_updated = false;
                 } else {
-                    for (anim_type, anim_value) in current_animations.clone().iter() {
-                        match anim_type {
+                    for animation in current_animations.clone() {
+                        match animation.kind {
                             AnimationType::Spiral | AnimationType::ReverseSpiral => {
-                                anim_value.play(anim_type, self, &anim_elapsed);
+                                animation.play(&animation.kind, self, &anim_elapsed);
                                 animations_updated = true;
                             }
                             AnimationType::Fade => {
                                 if self.animations.flags.should_fade {
-                                    anim_value.play(anim_type, self, &anim_elapsed);
+                                    animation.play(&animation.kind, self, &anim_elapsed);
                                     animations_updated = true;
                                 }
                             }

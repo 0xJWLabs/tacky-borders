@@ -1,7 +1,7 @@
 use crate::border_manager::Border;
 use crate::windows_api::WindowsApi;
-use core::fmt;
 use serde::Deserialize;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use win_color::ColorImpl;
@@ -21,22 +21,39 @@ pub enum AnimationType {
     ReverseSpiral,
 }
 
+impl FromStr for AnimationType {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "spiral" => Ok(AnimationType::Spiral),
+            "fade" => Ok(AnimationType::Fade),
+            "reverse_spiral" | "reversespiral" | "reverse-spiral" => {
+                Ok(AnimationType::ReverseSpiral)
+            }
+            _ => Err("Unknown animation type"),
+        }
+    }
+}
+
 #[derive(Clone)]
-pub struct AnimationParameters {
+pub struct Animation {
+    pub kind: AnimationType,
     pub duration: f32,
     pub easing_fn: Arc<dyn Fn(f32) -> Result<f32, simple_bezier_easing::BezierError> + Send + Sync>,
 }
 
-impl fmt::Debug for AnimationParameters {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AnimationParameters")
+impl core::fmt::Debug for Animation {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Animation")
+            .field("kind", &self.kind)
             .field("duration", &self.duration)
-            .field("easing_fn", &Arc::as_ptr(&self.easing_fn))
+            .field("easing_fn", &"Easing function (function pointer)") // You could also use a function name or other identifier
             .finish()
     }
 }
 
-impl AnimationParameters {
+impl Animation {
     pub fn play(
         &self,
         animation_type: &AnimationType,
@@ -58,7 +75,7 @@ impl AnimationParameters {
 fn animate_spiral(
     border: &mut Border,
     anim_elapsed: &Duration,
-    anim_params: &AnimationParameters,
+    anim_params: &Animation,
     reverse: bool,
 ) {
     let direction = match reverse {
@@ -97,7 +114,7 @@ fn animate_spiral(
     border.inactive_color.set_transform(&transform);
 }
 
-fn animate_fade(border: &mut Border, anim_elapsed: &Duration, anim_params: &AnimationParameters) {
+fn animate_fade(border: &mut Border, anim_elapsed: &Duration, anim_params: &Animation) {
     // If both are 0, that means the window has been opened for the first time or has been
     // unminimized. If that is the case, only one of the colors should be visible while fading.
     if border.active_color.get_opacity() == Some(0.0)

@@ -1,8 +1,10 @@
 use regex::Regex;
 use serde::de::Error as SerdeError;
 use serde_jsonc2::Error as JsonError;
+use serde_jsonc2::Map;
 use serde_jsonc2::Value as JsonValue;
 use serde_yml::Error as YamlError;
+use serde_yml::Mapping;
 use serde_yml::Value as YamlValue;
 use simple_bezier_easing::bezier;
 use std::error::Error as StdError;
@@ -13,7 +15,11 @@ use std::sync::Arc;
 use super::animation::Animation;
 use super::animation::AnimationType;
 use super::easing::AnimationEasing;
+use super::easing::AnimationEasingCallback;
 use super::easing::AnimationEasingImpl;
+
+const MISSING_KIND_FIELD: &str = "Missing 'kind' field";
+const INVALID_KIND_FIELD_TYPE: &str = "Invalid 'kind' field type";
 
 pub fn parse_cubic_bezier(input: &str) -> Option<[f32; 4]> {
     let re = Regex::new(r"(?i)^cubic[-_]?bezier\(([-+]?[0-9]*\.?[0-9]+),\s*([-+]?[0-9]*\.?[0-9]+),\s*([-+]?[0-9]*\.?[0-9]+),\s*([-+]?[0-9]*\.?[0-9]+)\)$").unwrap();
@@ -76,6 +82,74 @@ impl fmt::Display for AnimationParserError {
     }
 }
 
+pub enum AnimationDataType {
+    Yaml(Mapping),
+    Json(Map<String, JsonValue>),
+}
+
+fn parse_animation_from_map(
+    anim_value: &AnimationDataType,
+    default_duration: f32,
+    default_easing: AnimationEasing,
+) -> Result<(f32, Arc<AnimationEasingCallback>), AnimationParserError> {
+    let easing = match anim_value {
+        AnimationDataType::Json(obj) => obj
+            .get("easing")
+            .and_then(|v| v.as_str().and_then(|s| AnimationEasing::from_str(s).ok()))
+            .unwrap_or(default_easing),
+        AnimationDataType::Yaml(obj) => obj
+            .get("easing")
+            .and_then(|v| v.as_str().and_then(|s| AnimationEasing::from_str(s).ok()))
+            .unwrap_or(default_easing),
+    };
+
+    let duration = match anim_value {
+        AnimationDataType::Json(obj) => obj
+            .get("duration")
+            .and_then(|v| match v {
+                JsonValue::String(s) => parse_duration_str(s),
+                JsonValue::Number(n) => n.as_f64().map(|f| f as f32),
+                _ => None,
+            })
+            .unwrap_or(default_duration),
+        AnimationDataType::Yaml(obj) => obj
+            .get("duration")
+            .and_then(|v| match v {
+                YamlValue::String(s) => parse_duration_str(s),
+                YamlValue::Number(n) => n.as_f64().map(|f| f as f32),
+                _ => None,
+            })
+            .unwrap_or(default_duration),
+    };
+
+    let easing_points = easing.evaluate();
+
+    let easing_fn = bezier(
+        easing_points[0],
+        easing_points[1],
+        easing_points[2],
+        easing_points[3],
+    )
+    .map_err(|e| match anim_value {
+        AnimationDataType::Json(_) => AnimationParserError::Json(JsonError::custom(e.to_string())),
+        AnimationDataType::Yaml(_) => AnimationParserError::Yaml(YamlError::custom(e.to_string())),
+    })?;
+
+    Ok((duration, Arc::new(easing_fn)))
+}
+
+impl From<JsonError> for AnimationParserError {
+    fn from(err: JsonError) -> Self {
+        AnimationParserError::Json(err)
+    }
+}
+
+impl From<YamlError> for AnimationParserError {
+    fn from(err: YamlError) -> Self {
+        AnimationParserError::Yaml(err)
+    }
+}
+
 pub trait IdentifiableAnimationValue {
     const TYPE_NAME: &'static str;
 
@@ -89,13 +163,13 @@ impl IdentifiableAnimationValue for JsonValue {
         match self {
             JsonValue::Object(obj) => {
                 let kind = obj.get("kind").ok_or_else(|| {
-                    AnimationParserError::Json(JsonError::custom("Missing `kind` field"))
+                    AnimationParserError::Json(JsonError::custom(MISSING_KIND_FIELD))
                 })?;
 
                 let animation_type = kind
                     .as_str()
                     .ok_or_else(|| {
-                        AnimationParserError::Json(JsonError::custom("Invalid `kind` field type"))
+                        AnimationParserError::Json(JsonError::custom(INVALID_KIND_FIELD_TYPE))
                     })?
                     .parse::<AnimationType>()
                     .map_err(|e| AnimationParserError::Json(JsonError::custom(e)))?;
@@ -105,35 +179,17 @@ impl IdentifiableAnimationValue for JsonValue {
                     AnimationType::Fade => 200.0,
                 };
 
-                let duration = obj
-                    .get("duration")
-                    .and_then(|v| match v {
-                        JsonValue::String(s) => parse_duration_str(s),
-                        JsonValue::Number(n) => n.as_f64().map(|f| f as f32),
-                        _ => None,
-                    })
-                    .unwrap_or(default_duration);
-
-                let easing = obj
-                    .get("easing")
-                    .and_then(|v| v.as_str().and_then(|s| AnimationEasing::from_str(s).ok()))
-                    .unwrap_or(AnimationEasing::Linear);
-
-                let easing_points = easing.evaluate();
-
-                let easing_fn = bezier(
-                    easing_points[0],
-                    easing_points[1],
-                    easing_points[2],
-                    easing_points[3],
-                )
-                .map_err(|e| AnimationParserError::Json(JsonError::custom(e.to_string())))?;
+                let (duration, easing_fn) = parse_animation_from_map(
+                    &AnimationDataType::Json(obj.clone()),
+                    default_duration,
+                    AnimationEasing::Linear,
+                )?;
 
                 // Return the constructed AnimationConfig
                 Ok(Animation {
                     kind: animation_type,
                     duration,
-                    easing_fn: Arc::new(easing_fn),
+                    easing_fn,
                 })
             }
             _ => Err(AnimationParserError::Json(JsonError::custom(
@@ -166,35 +222,17 @@ impl IdentifiableAnimationValue for YamlValue {
                     AnimationType::Fade => 200.0,
                 };
 
-                let duration = obj
-                    .get("duration")
-                    .and_then(|v| match v {
-                        YamlValue::String(s) => parse_duration_str(s),
-                        YamlValue::Number(n) => n.as_f64().map(|f| f as f32),
-                        _ => None,
-                    })
-                    .unwrap_or(default_duration);
-
-                let easing = obj
-                    .get("easing")
-                    .and_then(|v| v.as_str().and_then(|s| AnimationEasing::from_str(s).ok()))
-                    .unwrap_or(AnimationEasing::Linear);
-
-                let easing_points = easing.evaluate();
-
-                let easing_fn = bezier(
-                    easing_points[0],
-                    easing_points[1],
-                    easing_points[2],
-                    easing_points[3],
-                )
-                .map_err(|e| AnimationParserError::Yaml(YamlError::custom(e.to_string())))?;
+                let (duration, easing_fn) = parse_animation_from_map(
+                    &AnimationDataType::Yaml(obj.clone()),
+                    default_duration,
+                    AnimationEasing::Linear,
+                )?;
 
                 // Return the constructed AnimationConfig
                 Ok(Animation {
                     kind: animation_type,
                     duration,
-                    easing_fn: Arc::new(easing_fn),
+                    easing_fn,
                 })
             }
             _ => Err(AnimationParserError::Yaml(YamlError::custom(

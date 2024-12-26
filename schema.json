@@ -338,7 +338,8 @@
               "reverseSpiral",
               "reverse-spiral",
               "reverse_spiral"
-            ]
+            ],
+            "description": "Specifies the type of animation, such as fade, spiral, or reverse spiral."
           },
           "duration": {
             "anyOf": [

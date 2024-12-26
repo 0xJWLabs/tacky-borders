@@ -7,6 +7,8 @@ use std::time::Duration;
 use win_color::ColorImpl;
 use windows::Foundation::Numerics::Matrix3x2;
 
+use super::easing::AnimationEasingCallback;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
 pub enum AnimationType {
     #[serde(alias = "spiral")]
@@ -40,7 +42,7 @@ impl FromStr for AnimationType {
 pub struct Animation {
     pub kind: AnimationType,
     pub duration: f32,
-    pub easing_fn: Arc<dyn Fn(f32) -> Result<f32, simple_bezier_easing::BezierError> + Send + Sync>,
+    pub easing_fn: Arc<AnimationEasingCallback>,
 }
 
 impl core::fmt::Debug for Animation {

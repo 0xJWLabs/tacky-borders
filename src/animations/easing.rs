@@ -46,6 +46,9 @@ pub enum AnimationEasing {
     CubicBezier([f32; 4]),
 }
 
+pub type AnimationEasingCallback =
+    dyn Fn(f32) -> Result<f32, simple_bezier_easing::BezierError> + Send + Sync;
+
 impl FromStr for AnimationEasing {
     type Err = String;
 

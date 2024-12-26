@@ -17,7 +17,7 @@ rustc-hash = "2.1.0"
 anyhow = "1.0.94"
 simple-bezier-easing = "0.1.1"
 win-color = "0.1.0"
-serde_jsonc2 = "0.1.0"
+serde_jsonc2 = "0.1.1"
 tray-icon-win = "0.1.5"
 win-open = "0.1.2"
 

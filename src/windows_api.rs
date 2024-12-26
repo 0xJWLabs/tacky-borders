@@ -530,7 +530,7 @@ impl WindowsApi {
                 let window_rule = Self::get_window_rule(hwnd);
 
                 if window_rule.match_window.enabled == Some(false) {
-                    info!("border is disabled for {hwnd:?}");
+                    info!("border is disabled for {:?}", HWND(as_ptr!(hwnd)));
                 } else if window_rule.match_window.enabled == Some(true)
                     || !Self::has_filtered_style(hwnd)
                 {

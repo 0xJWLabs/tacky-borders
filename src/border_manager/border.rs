@@ -1,5 +1,5 @@
 use crate::animations::animation::Animation;
-use crate::animations::animation::AnimationType;
+use crate::animations::animation::AnimationKind;
 use crate::animations::timer::KillAnimationTimer;
 use crate::animations::timer::SetAnimationTimer;
 use crate::animations::Animations;
@@ -481,38 +481,40 @@ impl Border {
     fn update_color(&mut self, check_delay: Option<u64>) -> AnyResult<()> {
         self.is_window_active = self.tracking_window == *get_active_window();
 
-        match self.current_animations().contains_kind(AnimationType::Fade) {
-            false => self.update_brush_opacities(),
-            true if check_delay == Some(0) => {
+        if self.current_animations().contains_kind(AnimationKind::Fade) {
+            if check_delay.is_some_and(|delay| delay == 0) {
+                // More idiomatic check
                 self.update_brush_opacities();
                 self.refresh_fade_progress();
+            } else {
+                self.animations.flags.should_fade = true;
             }
-            true => self.animations.flags.should_fade = true,
+        } else {
+            self.update_brush_opacities();
         }
 
         Ok(())
     }
 
     fn refresh_fade_progress(&mut self) {
-        self.animations.progress.fade = match self.is_window_active {
-            true => 1.0,
-            false => 0.0,
-        };
+        self.animations.progress.fade = if self.is_window_active { 1.0 } else { 0.0 };
     }
 
     fn update_brush_opacities(&mut self) {
-        let (top_color, bottom_color) = match self.is_window_active {
-            true => (&mut self.active_color, &mut self.inactive_color),
-            false => (&mut self.inactive_color, &mut self.active_color),
+        let (top_color, bottom_color) = if self.is_window_active {
+            (&mut self.active_color, &mut self.inactive_color)
+        } else {
+            (&mut self.inactive_color, &mut self.active_color)
         };
         top_color.set_opacity(1.0);
         bottom_color.set_opacity(0.0);
     }
 
     fn current_animations(&self) -> &Vec<Animation> {
-        match self.is_window_active {
-            true => &self.animations.active,
-            false => &self.animations.inactive,
+        if self.is_window_active {
+            &self.animations.active
+        } else {
+            &self.animations.inactive
         }
     }
 
@@ -760,7 +762,7 @@ impl Border {
                     return LRESULT(0);
                 }
 
-                let anim_elapsed = self
+                let animation_elapsed = self
                     .last_animation_time
                     .unwrap_or(time::Instant::now())
                     .elapsed();
@@ -782,13 +784,13 @@ impl Border {
                 } else {
                     for animation in current_animations.clone() {
                         match animation.kind {
-                            AnimationType::Spiral | AnimationType::ReverseSpiral => {
-                                animation.play(&animation.kind, self, &anim_elapsed);
+                            AnimationKind::Spiral | AnimationKind::ReverseSpiral => {
+                                animation.play(self, &animation_elapsed);
                                 animations_updated = true;
                             }
-                            AnimationType::Fade => {
+                            AnimationKind::Fade => {
                                 if self.animations.flags.should_fade {
-                                    animation.play(&animation.kind, self, &anim_elapsed);
+                                    animation.play(self, &animation_elapsed);
                                     animations_updated = true;
                                 }
                             }

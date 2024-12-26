@@ -1,7 +1,7 @@
 use crate::user_config::ConfigFormat;
 use crate::user_config::CONFIG_FORMAT;
 use animation::Animation;
-use animation::AnimationType;
+use animation::AnimationKind;
 use parser::AnimationParserError;
 use parser::IdentifiableAnimationValue;
 use serde::de::Error;
@@ -17,19 +17,6 @@ mod parser;
 pub mod timer;
 
 #[derive(Debug, Deserialize, Clone, Default)]
-pub struct AnimationProgress {
-    pub fade: f32,
-    pub spiral: f32,
-    pub angle: f32,
-}
-
-#[derive(Debug, Deserialize, Clone, Default)]
-pub struct AnimationFlags {
-    pub fade_to_visible: bool,
-    pub should_fade: bool,
-}
-
-#[derive(Debug, Deserialize, Clone, Default)]
 pub struct Animations {
     #[serde(deserialize_with = "animation", default)]
     pub active: Vec<Animation>,
@@ -38,21 +25,46 @@ pub struct Animations {
     #[serde(default = "default_fps")]
     pub fps: i32,
     #[serde(skip)]
-    pub progress: AnimationProgress,
+    pub progress: AnimationsProgress,
     #[serde(skip)]
-    pub flags: AnimationFlags,
+    pub flags: AnimationsFlags,
     #[serde(skip)]
     pub timer: Option<AnimationTimer>,
 }
 
+#[derive(Debug, Deserialize, Clone, Default)]
+pub struct AnimationsProgress {
+    pub fade: f32,
+    pub spiral: f32,
+    pub angle: f32,
+}
+
+#[derive(Debug, Deserialize, Clone, Default)]
+pub struct AnimationsFlags {
+    pub fade_to_visible: bool,
+    pub should_fade: bool,
+}
+
 pub trait AnimationsImpl {
-    fn contains_kind(&self, kind: AnimationType) -> bool;
+    fn contains_kind(&self, kind: AnimationKind) -> bool;
+    fn add(&mut self, item: Animation);
 }
 
 // Implement the trait for Vec<Animation>
 impl AnimationsImpl for Vec<Animation> {
-    fn contains_kind(&self, kind: AnimationType) -> bool {
+    fn contains_kind(&self, kind: AnimationKind) -> bool {
         self.iter().any(|a| a.kind == kind)
+    }
+
+    fn add(&mut self, item: Animation) {
+        let kind = &item.kind;
+        for animation in self.iter_mut() {
+            if &animation.kind == kind {
+                *animation = item;
+                return;
+            }
+        }
+        self.push(item);
     }
 }
 
@@ -61,8 +73,11 @@ where
     T: IdentifiableAnimationValue,
 {
     vec.into_iter()
-        .map(|animation_value| animation_value.parse())
-        .collect()
+        .try_fold(Vec::new(), |mut acc, animation_value| {
+            let animation = animation_value.parse()?;
+            acc.add(animation);
+            Ok(acc)
+        })
 }
 
 fn animation<'de, D>(deserializer: D) -> Result<Vec<Animation>, D::Error>

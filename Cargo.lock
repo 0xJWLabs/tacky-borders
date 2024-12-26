@@ -293,9 +293,9 @@ dependencies = [
 
 [[package]]
 name = "serde_jsonc2"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "639939f32661b6b7761cac04cc5a2bfddbb74c307cd3efcafc6dfe366626f8cc"
+checksum = "7391d921c43ea13fa19bea43ffeee9d002aeaff8ddb8ee41889da22ec1b2a642"
 dependencies = [
  "itoa",
  "memchr",

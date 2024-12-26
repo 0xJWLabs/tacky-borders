@@ -1,4 +1,5 @@
 use crate::as_ptr;
+use crate::border_manager::get_active_window;
 use crate::border_manager::set_active_window;
 use crate::border_manager::show_border_for_window;
 use crate::border_manager::window_border;
@@ -25,6 +26,7 @@ use windows::Win32::UI::Accessibility::HWINEVENTHOOK;
 use windows::Win32::UI::WindowsAndMessaging::CHILDID_SELF;
 use windows::Win32::UI::WindowsAndMessaging::EVENT_OBJECT_CLOAKED;
 use windows::Win32::UI::WindowsAndMessaging::EVENT_OBJECT_DESTROY;
+use windows::Win32::UI::WindowsAndMessaging::EVENT_OBJECT_FOCUS;
 use windows::Win32::UI::WindowsAndMessaging::EVENT_OBJECT_HIDE;
 use windows::Win32::UI::WindowsAndMessaging::EVENT_OBJECT_LOCATIONCHANGE;
 use windows::Win32::UI::WindowsAndMessaging::EVENT_OBJECT_REORDER;
@@ -151,12 +153,20 @@ impl WindowEventHook {
                         .log_if_err();
                 }
             }
-            EVENT_SYSTEM_FOREGROUND => {
+            EVENT_SYSTEM_FOREGROUND | EVENT_OBJECT_FOCUS => {
                 let target_handle = handle.0 as isize;
 
-                if !WindowsApi::get_window_ex_style(target_handle).contains(WS_EX_NOACTIVATE) {
-                    set_active_window(target_handle);
+                if !WindowsApi::is_window_top_level(target_handle)
+                    || WindowsApi::get_window_ex_style(target_handle).contains(WS_EX_NOACTIVATE)
+                {
+                    return;
                 }
+
+                if target_handle == *get_active_window() {
+                    return;
+                }
+
+                set_active_window(target_handle);
 
                 let visible_windows: Vec<HWND> = window_borders()
                     .iter()

@@ -362,7 +362,7 @@ impl WindowsApi {
             ) {
                 // We manually reset LastError here because it doesn't seem to reset by itself
                 unsafe { SetLastError(ERROR_SUCCESS) };
-                return Err(anyhow!("{last_error:?}"));
+                return Err(anyhow!("failed to retrieve window title: {last_error:?}"));
             }
         }
 
@@ -382,7 +382,7 @@ impl WindowsApi {
             ) {
                 // Reset LastError as it doesn't seem to reset automatically
                 unsafe { SetLastError(ERROR_SUCCESS) };
-                return Err(anyhow!("{last_error:?}"));
+                return Err(anyhow!("failed to retrieve window class: {last_error:?}"));
             }
         }
 

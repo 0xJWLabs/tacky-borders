@@ -96,6 +96,7 @@ use windows::Win32::UI::WindowsAndMessaging::WM_WINDOWPOSCHANGED;
 use windows::Win32::UI::WindowsAndMessaging::WM_WINDOWPOSCHANGING;
 
 use super::get_active_window;
+use super::window_border;
 use super::window_borders;
 
 static RENDER_FACTORY: LazyLock<ID2D1Factory8> = unsafe {
@@ -153,16 +154,94 @@ impl Border {
         HWND(as_ptr!(self.tracking_window))
     }
 
-    pub fn hide(self) -> bool {
-        let _ = std::thread::spawn(move || {
-            WindowsApi::post_message_w(
-                HWND(as_ptr!(self.border_window)),
-                WM_APP_HIDECLOAKED,
+    pub fn from_optional(handle: isize) -> Option<Border> {
+        // Check if the border already exists.
+        if let Some(existing_border) = window_border(handle) {
+            return Some(existing_border);
+        }
+
+        // Ensure the window is visible on screen and is a top-level window.
+        if !WindowsApi::is_window_visible_on_screen(handle)
+            || !WindowsApi::is_window_top_level(handle)
+        {
+            return None;
+        }
+
+        // Retrieve window-specific rules.
+        let window_rule = WindowsApi::get_window_rule(handle);
+
+        // Handle border creation based on the rule's enabled status.
+        match window_rule.match_window.enabled {
+            Some(false) => {
+                info!(
+                    "Border creation is disabled for window: {:?}",
+                    HWND(as_ptr!(handle))
+                );
+                None
+            }
+            Some(true) | None if !WindowsApi::has_filtered_style(handle) => {
+                Border::create(handle, window_rule);
+                None
+            }
+            _ => None,
+        }
+    }
+
+    pub fn show(handle: isize) {
+        // Check if the border already exists for the given window.
+        if let Some(existing_border) = window_border(handle) {
+            // Post a 'SHOW' message to make the existing border visible.
+            if let Err(e) = WindowsApi::post_message_w(
+                HWND(as_ptr!(existing_border.border_window)),
+                WM_APP_SHOWUNCLOAKED,
                 WPARAM(0),
                 LPARAM(0),
-            )
-            .context("hide_border_for_window")
-            .log_if_err();
+            ) {
+                error!("failed to post WM_APP_SHOW_UNCLOAKED message: {:?}", e);
+            }
+            return;
+        }
+
+        // Ensure the window is visible on screen and is a top-level window.
+        if !WindowsApi::is_window_visible_on_screen(handle)
+            || !WindowsApi::is_window_top_level(handle)
+        {
+            return;
+        }
+
+        // Retrieve the window's specific rule configuration.
+        let window_rule = WindowsApi::get_window_rule(handle);
+
+        // Determine if border creation should proceed based on the window rule's enabled status.
+        match window_rule.match_window.enabled {
+            // If border creation is explicitly disabled, log and exit.
+            Some(false) => {
+                info!(
+                    "border creation is disabled for window: {:?}",
+                    HWND(as_ptr!(handle))
+                );
+            }
+            // If border creation is enabled or the rule doesn't specify, check for filtered styles.
+            Some(true) | None if !WindowsApi::has_filtered_style(handle) => {
+                // Create the border for the window using the retrieved rule.
+                Border::create(handle, window_rule);
+            }
+            _ => {}
+        }
+    }
+
+    pub fn hide(handle: isize) -> bool {
+        let _ = std::thread::spawn(move || {
+            if let Some(border) = window_border(handle) {
+                WindowsApi::post_message_w(
+                    HWND(as_ptr!(border.border_window)),
+                    WM_APP_HIDECLOAKED,
+                    WPARAM(0),
+                    LPARAM(0),
+                )
+                .context("border::hide")
+                .log_if_err();
+            }
         });
         true
     }
@@ -527,11 +606,6 @@ impl Border {
         let rect_width = WindowsApi::get_rect_width(self.window_rect) as f32;
         let rect_height = WindowsApi::get_rect_height(self.window_rect) as f32;
 
-        let pixel_size = D2D_SIZE_U {
-            width: rect_width as u32,
-            height: rect_height as u32,
-        };
-
         let border_width = self.border_width as f32;
         let border_offset = self.border_offset as f32;
 
@@ -544,7 +618,10 @@ impl Border {
 
         unsafe {
             render_target
-                .Resize(&pixel_size)
+                .Resize(&D2D_SIZE_U {
+                    width: rect_width as u32,
+                    height: rect_height as u32,
+                })
                 .context("could not resize render_target")?;
 
             let (bottom_color, top_color) = match self.is_window_active {

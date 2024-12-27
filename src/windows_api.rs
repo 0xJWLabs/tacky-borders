@@ -13,8 +13,6 @@ use regex::Regex;
 use std::ffi::c_void;
 use std::ffi::OsStr;
 use std::ffi::OsString;
-use std::hash::Hash;
-use std::hash::Hasher;
 use std::iter::once;
 use std::os::windows::ffi::OsStrExt;
 use std::os::windows::ffi::OsStringExt;
@@ -125,17 +123,11 @@ macro_rules! as_ptr {
     };
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SendHWND(pub HWND);
-unsafe impl Send for SendHWND {}
-unsafe impl Sync for SendHWND {}
-
-impl Hash for SendHWND {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        // Convert the HWND to a pointer and hash that pointer as a usize
-        let hwnd_ptr = self.0 .0 as usize; // Convert HWND to pointer (usize)
-        hwnd_ptr.hash(state); // Hash the pointer value
-    }
+#[macro_export]
+macro_rules! as_int {
+    ($value:expr) => {
+        $value as isize
+    };
 }
 
 pub struct WindowsApi;

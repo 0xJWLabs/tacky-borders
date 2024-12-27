@@ -16,6 +16,9 @@ use windows::Win32::UI::WindowsAndMessaging::WH_KEYBOARD_LL;
 use windows::Win32::UI::WindowsAndMessaging::WM_KEYDOWN;
 use windows::Win32::UI::WindowsAndMessaging::WM_SYSKEYDOWN;
 
+use crate::as_int;
+use crate::as_ptr;
+
 const MODIFIER_KEYS: [u16; 6] = [
     VK_LSHIFT.0,
     VK_RSHIFT.0,
@@ -34,14 +37,8 @@ pub struct ActiveKeybinding {
 }
 
 #[derive(Debug)]
-pub struct SendHHOOK(HHOOK);
-
-unsafe impl Send for SendHHOOK {}
-unsafe impl Sync for SendHHOOK {}
-
-#[derive(Debug)]
 pub struct KeyboardHook {
-    hook: Arc<Mutex<SendHHOOK>>,
+    hook: Arc<Mutex<isize>>,
     keybindings_by_trigger_key: Arc<Mutex<FxHashMap<u16, Vec<ActiveKeybinding>>>>,
 }
 
@@ -80,7 +77,7 @@ impl KeyboardHook {
     /// Creates an instance of `KeyboardHook`.
     pub fn new(keybindings: &Vec<KeybindingConfig>) -> AnyResult<Arc<Self>> {
         let keyboard_hook = Arc::new(Self {
-            hook: Arc::new(Mutex::new(SendHHOOK(HHOOK::default()))),
+            hook: Arc::new(Mutex::new(isize::default())),
             keybindings_by_trigger_key: Arc::new(Mutex::new(Self::keybindings_by_trigger_key(
                 keybindings,
             ))),
@@ -97,26 +94,21 @@ impl KeyboardHook {
     ///
     /// Assumes that a message loop is currently running.
     pub fn start(&self) -> AnyResult<()> {
-        let mut hook_lock = self
-            .hook
-            .lock()
-            .map_err(|_| anyhow::anyhow!("failed to lock hook"))?;
-        hook_lock.0 =
-            unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook_proc), None, 0) }?;
+        *self.hook.lock().unwrap() = as_int!(
+            unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook_proc), None, 0) }?.0
+        );
 
         Ok(())
     }
 
     pub fn update(&self, keybindings: &[KeybindingConfig]) {
-        let keybindings_clone = keybindings.to_owned(); // Converts slice to Vec
-        let keybindings_by_trigger_key = Arc::clone(&self.keybindings_by_trigger_key);
-        let mut keybinding_map = keybindings_by_trigger_key.lock().unwrap();
-        *keybinding_map = Self::keybindings_by_trigger_key(&keybindings_clone);
+        *self.keybindings_by_trigger_key.lock().unwrap() =
+            Self::keybindings_by_trigger_key(&keybindings.to_owned());
     }
 
     /// Stops the low-level keyboard hook.
     pub fn stop(&self) -> AnyResult<()> {
-        unsafe { UnhookWindowsHookEx(self.hook.lock().unwrap().0) }?;
+        unsafe { UnhookWindowsHookEx(HHOOK(as_ptr!(*self.hook.lock().unwrap()))) }?;
         Ok(())
     }
 

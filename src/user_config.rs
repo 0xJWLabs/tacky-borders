@@ -1,4 +1,6 @@
 use crate::animations::Animations;
+use crate::core::length::deserialize_length;
+use crate::core::length::deserialize_optional_length;
 use crate::error::LogIfErr;
 use crate::windows_api::WindowsApi;
 use anyhow::anyhow;
@@ -165,9 +167,11 @@ pub struct WindowMatchConfig {
     pub border_style: Option<BorderStyle>,
     /// Width of the border in pixels.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub border_width: Option<f32>,
+    #[serde(deserialize_with = "deserialize_optional_length", default)]
+    pub border_width: Option<i32>,
     /// Offset of the border relative to the window.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(deserialize_with = "deserialize_optional_length", default)]
     pub border_offset: Option<i32>,
     /// Whether borders are enabled for this match.
     #[serde(rename = "enabled")]
@@ -194,8 +198,10 @@ pub struct WindowRuleConfig {
 #[derive(Debug, Deserialize, Clone, Default)]
 pub struct GlobalRuleConfig {
     /// Default width of the window borders.
-    pub border_width: f32,
+    #[serde(deserialize_with = "deserialize_length")]
+    pub border_width: i32,
     /// Default offset for the window borders.
+    #[serde(deserialize_with = "deserialize_length")]
     pub border_offset: i32,
     /// Default border radius settings.
     pub border_style: BorderStyle,

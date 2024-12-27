@@ -37,6 +37,7 @@ use windows_api::WindowsApi;
 
 mod animations;
 mod border_manager;
+mod core;
 mod error;
 mod keyboard_hook;
 mod sys_tray;

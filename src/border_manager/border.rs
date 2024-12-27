@@ -427,7 +427,7 @@ impl Border {
             .unwrap_or(config.global_rule.animations.clone().unwrap_or_default());
 
         let dpi = unsafe { GetDpiForWindow(self.tracking_window()) } as f32;
-        self.border_width = (config_width * dpi / 96.0) as i32;
+        self.border_width = config_width * dpi as i32 / 96;
         self.border_radius = config_radius.to_radius(self.border_width, dpi, self.tracking_window);
         self.border_offset = config_offset;
 

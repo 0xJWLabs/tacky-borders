@@ -1,0 +1,124 @@
+#![allow(dead_code)]
+use crate::user_config::{ConfigFormat, CONFIG_FORMAT};
+use serde_jsonc2::Number as JsonNumber;
+use serde_jsonc2::Value as JsonValue;
+use serde_yml::Number as YamlNumber;
+use serde_yml::Value as YamlValue;
+
+use serde::de::Error;
+use serde::Deserialize;
+use serde::Deserializer;
+
+pub enum LengthValue {
+    JsonNumber(JsonNumber),
+    YamlNumber(YamlNumber),
+    String(String),
+}
+
+pub trait AsI64 {
+    fn as_i64(&self) -> Option<i64>;
+}
+
+impl AsI64 for JsonNumber {
+    fn as_i64(&self) -> Option<i64> {
+        self.as_i64()
+    }
+}
+
+impl AsI64 for YamlNumber {
+    fn as_i64(&self) -> Option<i64> {
+        self.as_i64()
+    }
+}
+
+fn parse_value<E>(value: LengthValue) -> Result<i32, E>
+where
+    E: Error,
+{
+    match value {
+        LengthValue::JsonNumber(num) => num.as_i64(),
+        LengthValue::YamlNumber(num) => num.as_i64(),
+        LengthValue::String(s) => {
+            let trimmed = s.strip_suffix("px").unwrap_or(&s);
+            trimmed.parse::<i64>().ok()
+        }
+    }
+    .map(|n| n as i32)
+    .ok_or_else(|| E::custom("Invalid value"))
+}
+
+fn parse_optional_value<E>(value: LengthValue) -> Result<Option<i32>, E>
+where
+    E: Error,
+{
+    let val = match value {
+        LengthValue::JsonNumber(num) => num.as_i64(),
+        LengthValue::YamlNumber(num) => num.as_i64(),
+        LengthValue::String(s) => {
+            let trimmed = s.strip_suffix("px").unwrap_or(&s);
+            trimmed.parse::<i64>().ok()
+        }
+    }
+    .map(|n| n as i32);
+
+    Ok(val)
+}
+
+pub fn deserialize_length<'de, D>(deserializer: D) -> Result<i32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    match *CONFIG_FORMAT.read().unwrap() {
+        ConfigFormat::Json | ConfigFormat::Jsonc => {
+            let value: JsonValue = Deserialize::deserialize(deserializer)?;
+            match value {
+                JsonValue::Number(num) => parse_value(LengthValue::JsonNumber(num)),
+                JsonValue::String(s) => parse_value(LengthValue::String(s)),
+                _ => Err(D::Error::custom("Expected a number or a string")),
+            }
+        }
+        ConfigFormat::Yaml => {
+            let value: YamlValue = Deserialize::deserialize(deserializer)?;
+            match value {
+                YamlValue::Number(num) => parse_value(LengthValue::YamlNumber(num)),
+                YamlValue::String(s) => parse_value(LengthValue::String(s)),
+                _ => Err(D::Error::custom("Expected a number or a string")),
+            }
+        }
+        _ => Err(D::Error::custom("Invalid file type")),
+    }
+}
+
+pub fn deserialize_optional_length<'de, D>(deserializer: D) -> Result<Option<i32>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    // Deserialize into Option<JsonValue> (for Json) or Option<YamlValue> (for Yaml)
+    match *CONFIG_FORMAT.read().unwrap() {
+        ConfigFormat::Json | ConfigFormat::Jsonc => {
+            let value: Option<JsonValue> = Option::deserialize(deserializer)?;
+            match value {
+                Some(value) => match value {
+                    JsonValue::Number(num) => parse_optional_value(LengthValue::JsonNumber(num)),
+                    JsonValue::String(s) => parse_optional_value(LengthValue::String(s)),
+                    JsonValue::Null => Ok(None),
+                    _ => Err(D::Error::custom("Expected a number or string")),
+                },
+                None => Ok(None), // Handle the case where the value is missing
+            }
+        }
+        ConfigFormat::Yaml => {
+            let value: Option<YamlValue> = Option::deserialize(deserializer)?;
+            match value {
+                Some(value) => match value {
+                    YamlValue::Number(num) => parse_optional_value(LengthValue::YamlNumber(num)),
+                    YamlValue::String(s) => parse_optional_value(LengthValue::String(s)),
+                    YamlValue::Null => Ok(None),
+                    _ => Err(D::Error::custom("Expected a number or string")),
+                },
+                None => Ok(None), // Handle the case where the value is missing
+            }
+        }
+        _ => Err(D::Error::custom("Invalid file type")), // Handle invalid file types
+    }
+}

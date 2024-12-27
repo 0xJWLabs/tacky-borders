@@ -1,8 +1,6 @@
 use super::animation::Animation;
 use super::animation::AnimationKind;
 use super::easing::AnimationEasing;
-use super::easing::AnimationEasingCallback;
-use super::easing::AnimationEasingImpl;
 use regex::Regex;
 use serde::de::Error as SerdeError;
 use serde_jsonc2::Error as JsonError;
@@ -11,11 +9,9 @@ use serde_jsonc2::Value as JsonValue;
 use serde_yml::Error as YamlError;
 use serde_yml::Mapping as YamlMapping;
 use serde_yml::Value as YamlValue;
-use simple_bezier_easing::bezier;
 use std::error::Error as StdError;
 use std::fmt;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::sync::LazyLock;
 
 const CUBIC_BEZIER_PATTERN: &str = r"(?i)^cubic[-_]?bezier\(([-+]?[0-9]*\.?[0-9]+),\s*([-+]?[0-9]*\.?[0-9]+),\s*([-+]?[0-9]*\.?[0-9]+),\s*([-+]?[0-9]*\.?[0-9]+)\)$";
@@ -100,21 +96,21 @@ impl From<YamlError> for AnimationParserError {
 pub trait IdentifiableMappingValue {
     const TYPE_NAME: &'static str;
 
-    fn fetch_duration_and_easing_fn(
+    fn fetch_duration_and_easing(
         &self,
         default_duration: f32,
         default_easing: AnimationEasing,
-    ) -> Result<(f32, Arc<AnimationEasingCallback>), AnimationParserError>;
+    ) -> (f32, AnimationEasing);
 }
 
 impl IdentifiableMappingValue for JsonMap<String, JsonValue> {
     const TYPE_NAME: &'static str = "serde_jsonc2::Map<String, JsonValue>";
 
-    fn fetch_duration_and_easing_fn(
+    fn fetch_duration_and_easing(
         &self,
         default_duration: f32,
         default_easing: AnimationEasing,
-    ) -> Result<(f32, Arc<AnimationEasingCallback>), AnimationParserError> {
+    ) -> (f32, AnimationEasing) {
         let easing = self
             .get("easing")
             .and_then(|v| v.as_str().and_then(|s| AnimationEasing::from_str(s).ok()))
@@ -129,28 +125,18 @@ impl IdentifiableMappingValue for JsonMap<String, JsonValue> {
             })
             .unwrap_or(default_duration);
 
-        let easing_points = easing.evaluate();
-
-        let easing_fn = bezier(
-            easing_points[0],
-            easing_points[1],
-            easing_points[2],
-            easing_points[3],
-        )
-        .map_err(|e| AnimationParserError::Json(JsonError::custom(e.to_string())))?;
-
-        Ok((duration, Arc::new(easing_fn)))
+        (duration, easing)
     }
 }
 
 impl IdentifiableMappingValue for YamlMapping {
     const TYPE_NAME: &'static str = "serde_yml::Mapping";
 
-    fn fetch_duration_and_easing_fn(
+    fn fetch_duration_and_easing(
         &self,
         default_duration: f32,
         default_easing: AnimationEasing,
-    ) -> Result<(f32, Arc<AnimationEasingCallback>), AnimationParserError> {
+    ) -> (f32, AnimationEasing) {
         let easing = self
             .get("easing")
             .and_then(|v| v.as_str().and_then(|s| AnimationEasing::from_str(s).ok()))
@@ -165,17 +151,7 @@ impl IdentifiableMappingValue for YamlMapping {
             })
             .unwrap_or(default_duration);
 
-        let easing_points = easing.evaluate();
-
-        let easing_fn = bezier(
-            easing_points[0],
-            easing_points[1],
-            easing_points[2],
-            easing_points[3],
-        )
-        .map_err(|e| AnimationParserError::Yaml(YamlError::custom(e.to_string())))?;
-
-        Ok((duration, Arc::new(easing_fn)))
+        (duration, easing)
     }
 }
 
@@ -208,14 +184,14 @@ impl IdentifiableAnimationValue for JsonValue {
                     AnimationKind::Fade => 200.0,
                 };
 
-                let (duration, easing_fn) =
-                    obj.fetch_duration_and_easing_fn(default_duration, AnimationEasing::Linear)?;
+                let (duration, easing) =
+                    obj.fetch_duration_and_easing(default_duration, AnimationEasing::Linear);
 
                 // Return the constructed AnimationConfig
                 Ok(Animation {
                     kind,
                     duration,
-                    easing_fn,
+                    easing,
                 })
             }
             _ => Err(AnimationParserError::Json(JsonError::custom(
@@ -248,14 +224,14 @@ impl IdentifiableAnimationValue for YamlValue {
                     AnimationKind::Fade => 200.0,
                 };
 
-                let (duration, easing_fn) =
-                    obj.fetch_duration_and_easing_fn(default_duration, AnimationEasing::Linear)?;
+                let (duration, easing) =
+                    obj.fetch_duration_and_easing(default_duration, AnimationEasing::Linear);
 
                 // Return the constructed AnimationConfig
                 Ok(Animation {
                     kind,
                     duration,
-                    easing_fn,
+                    easing,
                 })
             }
             _ => Err(AnimationParserError::Yaml(YamlError::custom(

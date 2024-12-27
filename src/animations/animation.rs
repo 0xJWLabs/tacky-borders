@@ -2,12 +2,11 @@ use crate::border_manager::Border;
 use crate::windows_api::WindowsApi;
 use serde::Deserialize;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::time::Duration;
 use win_color::ColorImpl;
 use windows::Foundation::Numerics::Matrix3x2;
 
-use super::easing::AnimationEasingCallback;
+use super::easing::{AnimationEasing, AnimationEasingImpl};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
 pub enum AnimationKind {
@@ -38,21 +37,11 @@ impl FromStr for AnimationKind {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct Animation {
     pub kind: AnimationKind,
     pub duration: f32,
-    pub easing_fn: Arc<AnimationEasingCallback>,
-}
-
-impl core::fmt::Debug for Animation {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("Animation")
-            .field("kind", &self.kind)
-            .field("duration", &self.duration)
-            .field("easing_fn", &"Easing function (function pointer)") // You could also use a function name or other identifier
-            .finish()
-    }
+    pub easing: AnimationEasing,
 }
 
 impl Animation {
@@ -86,7 +75,15 @@ impl Animation {
             border.animations.progress.spiral = border.animations.progress.spiral.rem_euclid(1.0);
         }
 
-        let y_coord = match (self.easing_fn)(border.animations.progress.spiral) {
+        let easing_fn = match self.easing.to_fn() {
+            Ok(func) => func,
+            Err(err) => {
+                error!("could not transform easing to function: {err}");
+                return;
+            }
+        };
+
+        let y_coord = match (easing_fn)(border.animations.progress.spiral) {
             Ok(val) => val,
             Err(err) => {
                 error!("could not create bezier easing function: {err}");
@@ -150,7 +147,15 @@ impl Animation {
             return;
         }
 
-        let y_coord = match self.easing_fn.as_ref()(border.animations.progress.fade) {
+        let easing_fn = match self.easing.to_fn() {
+            Ok(func) => func,
+            Err(err) => {
+                error!("could not transform easing to function: {err}");
+                return;
+            }
+        };
+
+        let y_coord = match (easing_fn)(border.animations.progress.fade) {
             Ok(val) => val,
             Err(err) => {
                 error!("could not create bezier easing function: {err}");

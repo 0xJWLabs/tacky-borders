@@ -1,7 +1,5 @@
 use crate::user_config::ConfigFormat;
 use crate::user_config::CONFIG_FORMAT;
-use animation::Animation;
-use animation::AnimationKind;
 use parser::AnimationParserError;
 use parser::IdentifiableAnimationValue;
 use serde::de::Error;
@@ -10,18 +8,20 @@ use serde::Deserializer;
 use serde_jsonc2::Value as JsonValue;
 use serde_yml::Value as YamlValue;
 use timer::AnimationTimer;
+pub use wrapper::AnimationsVec;
 
 pub mod animation;
 mod easing;
 mod parser;
 pub mod timer;
+pub mod wrapper;
 
 #[derive(Debug, Deserialize, Clone, Default)]
 pub struct Animations {
     #[serde(deserialize_with = "animation", default)]
-    pub active: Vec<Animation>,
+    pub active: AnimationsVec,
     #[serde(deserialize_with = "animation", default)]
-    pub inactive: Vec<Animation>,
+    pub inactive: AnimationsVec,
     #[serde(default = "default_fps")]
     pub fps: i32,
     #[serde(skip)]
@@ -45,42 +45,19 @@ pub struct AnimationsFlags {
     pub should_fade: bool,
 }
 
-pub trait AnimationsImpl {
-    fn contains_kind(&self, kind: AnimationKind) -> bool;
-    fn add(&mut self, item: Animation);
-}
-
-// Implement the trait for Vec<Animation>
-impl AnimationsImpl for Vec<Animation> {
-    fn contains_kind(&self, kind: AnimationKind) -> bool {
-        self.iter().any(|a| a.kind == kind)
-    }
-
-    fn add(&mut self, item: Animation) {
-        let kind = &item.kind;
-        for animation in self.iter_mut() {
-            if &animation.kind == kind {
-                *animation = item;
-                return;
-            }
-        }
-        self.push(item);
-    }
-}
-
-fn handle_vec<T>(vec: Vec<T>) -> Result<Vec<Animation>, AnimationParserError>
+fn handle_vec<T>(vec: Vec<T>) -> Result<AnimationsVec, AnimationParserError>
 where
     T: IdentifiableAnimationValue,
 {
     vec.into_iter()
-        .try_fold(Vec::new(), |mut acc, animation_value| {
+        .try_fold(AnimationsVec::new(), |mut acc, animation_value| {
             let animation = animation_value.parse()?;
-            acc.add(animation);
+            acc.insert(animation);
             Ok(acc)
         })
 }
 
-fn animation<'de, D>(deserializer: D) -> Result<Vec<Animation>, D::Error>
+fn animation<'de, D>(deserializer: D) -> Result<AnimationsVec, D::Error>
 where
     D: Deserializer<'de>,
 {

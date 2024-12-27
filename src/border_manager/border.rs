@@ -1,9 +1,8 @@
-use crate::animations::animation::Animation;
 use crate::animations::animation::AnimationKind;
 use crate::animations::timer::KillAnimationTimer;
 use crate::animations::timer::SetAnimationTimer;
 use crate::animations::Animations;
-use crate::animations::AnimationsImpl;
+use crate::animations::AnimationsVec;
 use crate::as_ptr;
 use crate::error::LogIfErr;
 use crate::user_config::UserConfig;
@@ -510,7 +509,7 @@ impl Border {
         bottom_color.set_opacity(0.0);
     }
 
-    fn current_animations(&self) -> &Vec<Animation> {
+    fn current_animations(&self) -> &AnimationsVec {
         if self.is_window_active {
             &self.animations.active
         } else {

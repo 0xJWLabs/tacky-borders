@@ -34,11 +34,11 @@
       "properties": {
         "border_width": {
           "description": "Thickness of the window borders in pixels. This can be specified as an integer (e.g., 2) or a string with a 'px' suffix (e.g., '10px'). Default is 2.",
-          "$ref": "#definitions/borderWidthProperties"
+          "$ref": "#/definitions/borderWidthProperties"
         },
         "border_offset": {
           "description": "Adjusts the border size relative to the window in pixels. Positive values expand the border, and negative values shrink it. This can be specified as an integer (e.g., -1) or a string with a 'px' suffix (e.g., '-5px'). Default is -1.",
-          "$ref": "#definitions/borderOffsetProperties"
+          "$ref": "#/definitions/borderOffsetProperties"
         },
         "border_style": {
           "description": "Corner radius for borders; Radius(-1) or Auto to let the program decide automatically. (default: Auto)",
@@ -160,11 +160,11 @@
               },
               "border_width": {
                 "description": "Thickness of the window borders in pixels. This can be specified as an integer (e.g., 2) or a string with a 'px' suffix (e.g., '10px'). Default is 2.",
-                "$ref": "#definitions/borderWidthProperties"
+                "$ref": "#/definitions/borderWidthProperties"
               },
               "border_offset": {
                 "description": "Adjusts the border size relative to the window in pixels. Positive values expand the border, and negative values shrink it. This can be specified as an integer (e.g., -1) or a string with a 'px' suffix (e.g., '-5px'). Default is -1.",
-                "$ref": "#definitions/borderOffsetProperties"
+                "$ref": "#/definitions/borderOffsetProperties"
               },
               "border_style": {
                 "description": "Corner radius for borders; Radius(-1) or Auto to let the program decide automatically. (default: Auto)",
@@ -190,7 +190,7 @@
         },
         {
           "type": "string",
-          "pattern": "^\\d+px$",
+          "pattern": "^-?\\d+(px)?$",
           "description": "A string representing the thickness of the window border in pixels, with a 'px' suffix (e.g., '10px')."
         }
       ]
@@ -204,7 +204,7 @@
         },
         {
           "type": "string",
-          "pattern": "^\\d+px$",
+          "pattern": "^-?\\d+(px)?$",
           "description": "A string representing the border offset in pixels with a 'px' suffix (e.g., '5px' or '-5px'). Positive values expand, negative values shrink the border."
         }
       ]

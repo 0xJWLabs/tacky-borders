@@ -23,8 +23,9 @@ use error::LogIfErr;
 use keyboard_hook::KeybindingConfig;
 use keyboard_hook::KeyboardHook;
 use keyboard_hook::KEYBOARD_HOOK;
-use notify_win::RecursiveMode;
 use notify_win_debouncer_full::new_debouncer;
+use notify_win_debouncer_full::notify_win::Error as NotifyError;
+use notify_win_debouncer_full::notify_win::RecursiveMode;
 use notify_win_debouncer_full::DebouncedEvent;
 use sp_log::ColorChoice;
 use sp_log::CombinedLogger;
@@ -226,7 +227,7 @@ fn watcher_config() -> AnyResult<std::thread::JoinHandle<AnyResult<()>>> {
             let mut debouncer = new_debouncer(
                 Duration::from_millis(500),
                 None,
-                move |result: Result<Vec<DebouncedEvent>, Vec<notify_win::Error>>| {
+                move |result: Result<Vec<DebouncedEvent>, Vec<NotifyError>>| {
                     if let Ok(events) = result {
                         for event in events {
                             // Ensure `event` type is `DebouncedEvent`

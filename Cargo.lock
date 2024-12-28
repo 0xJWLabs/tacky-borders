@@ -446,7 +446,6 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "log",
- "notify-win",
  "notify-win-debouncer-full",
  "regex",
  "rustc-hash",

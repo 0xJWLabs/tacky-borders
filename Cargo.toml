@@ -20,7 +20,6 @@ win-color = "0.1.0"
 serde_jsonc2 = "0.1.1"
 tray-icon-win = "0.1.5"
 win-open = "0.1.2"
-notify-win = "0.1.2"
 notify-win-debouncer-full = "0.1.2"
 
 [dependencies.windows]

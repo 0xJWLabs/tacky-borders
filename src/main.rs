@@ -27,6 +27,7 @@ use notify_win_debouncer_full::new_debouncer;
 use notify_win_debouncer_full::notify_win::Error as NotifyError;
 use notify_win_debouncer_full::notify_win::RecursiveMode;
 use notify_win_debouncer_full::DebouncedEvent;
+use sp_log::format_description;
 use sp_log::ColorChoice;
 use sp_log::CombinedLogger;
 use sp_log::ConfigBuilder;
@@ -157,7 +158,13 @@ fn initialize_logger() -> AnyResult<()> {
         return Err(anyhow!("could not convert log_path to str"));
     };
 
+    std::fs::write(log_path, "").log_if_err();
+
     let mut config_builder = ConfigBuilder::new();
+
+    config_builder.set_time_format_custom(format_description!(
+        "[day]/[month]/[year] [hour]:[minute]:[second],[subsecond digits:3]"
+    ));
 
     if let Err(e) = config_builder.set_time_offset_to_local() {
         error!("time offset error: {e:?}");
@@ -212,7 +219,7 @@ fn create_keybindings() -> AnyResult<Vec<KeybindingConfig>> {
         ),
     ];
 
-    debug!("keybindings created: {bindings:?}");
+    debug!("keybindings created: {bindings:#?}");
 
     Ok(bindings)
 }
@@ -244,7 +251,10 @@ fn watcher_config() -> AnyResult<std::thread::JoinHandle<AnyResult<()>>> {
             let config_dir = UserConfig::get_config_dir()?;
             let config_file = UserConfig::detect_config_file(&config_dir)?;
 
-            debug!("watching configuration file: {config_file:?}");
+            debug!(
+                "watching configuration file: {}",
+                config_file.display().to_string()
+            );
             debouncer.watch(config_file.as_path(), RecursiveMode::Recursive)?;
 
             // Loop until the stop flag is set to true

@@ -21,6 +21,7 @@ serde_jsonc2 = "0.1.1"
 tray-icon-win = "0.1.5"
 win-open = "0.1.2"
 notify-win-debouncer-full = "0.1.2"
+time = "0.3.37"
 
 [dependencies.windows]
 version = "0.58.0"

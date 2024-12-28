@@ -454,6 +454,7 @@ dependencies = [
  "serde_yml",
  "simple-bezier-easing",
  "sp_log",
+ "time",
  "tray-icon-win",
  "win-color",
  "win-open",

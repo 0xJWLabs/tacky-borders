@@ -8,6 +8,12 @@
 extern crate log;
 extern crate sp_log;
 
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::LazyLock;
+use std::time::Duration;
+
 use anyhow::anyhow;
 use anyhow::Result as AnyResult;
 use border_manager::register_border_class;
@@ -17,6 +23,9 @@ use error::LogIfErr;
 use keyboard_hook::KeybindingConfig;
 use keyboard_hook::KeyboardHook;
 use keyboard_hook::KEYBOARD_HOOK;
+use notify_win::RecursiveMode;
+use notify_win_debouncer_full::new_debouncer;
+use notify_win_debouncer_full::DebouncedEvent;
 use sp_log::ColorChoice;
 use sp_log::CombinedLogger;
 use sp_log::ConfigBuilder;
@@ -46,6 +55,8 @@ mod window_event_hook;
 mod windows_api;
 mod windows_callback;
 
+static STOP_FLAG: LazyLock<Arc<AtomicBool>> = LazyLock::new(|| Arc::new(AtomicBool::new(false)));
+
 fn main() -> AnyResult<()> {
     let res = start_app();
 
@@ -60,7 +71,7 @@ fn main() -> AnyResult<()> {
 }
 
 fn start_app() -> AnyResult<()> {
-    if let Err(e) = &create_logger() {
+    if let Err(e) = &initialize_logger() {
         error!("logger initialization failed: {e}");
     };
 
@@ -71,7 +82,7 @@ fn start_app() -> AnyResult<()> {
     WindowsApi::set_process_dpi_awareness_context()
         .log_if_err_message("could not make process dpi aware", false);
 
-    let bindings = create_bindings().map_err_with_log()?;
+    let bindings = create_keybindings().map_err_with_log()?;
     let window_event_hook = WindowEventHook::new().map_err_with_log()?;
     let keyboard_hook = KeyboardHook::new(&bindings).map_err_with_log()?;
 
@@ -84,6 +95,7 @@ fn start_app() -> AnyResult<()> {
     register_border_class().log_if_err();
 
     WindowsApi::process_window_handles(&Border::create).log_if_err();
+    let watcher_handle = watcher_config().map_err_with_log()?;
 
     debug!("tacky-borders event started");
 
@@ -95,28 +107,38 @@ fn start_app() -> AnyResult<()> {
             let _ = WindowsApi::translate_message(&message);
             WindowsApi::dispatch_message_w(&message);
         } else if message.message == WM_QUIT {
-            debug!("tacky-borders event shutdown");
+            STOP_FLAG.store(true, Ordering::SeqCst);
+            debug!("tacky-borders event is shutting down gracefully.");
             break;
         } else {
+            STOP_FLAG.store(true, Ordering::SeqCst);
             let last_error = unsafe { GetLastError() };
-            error!("tacky-borders event shutdown: {last_error:?}");
+            error!("unexpected termination of the message loop. Last error: {last_error:?}");
             return Err(anyhow!("unexpected exit from message loop.".to_string()));
         }
     }
 
+    watcher_handle
+        .join()
+        .map_err(|_| anyhow!("failed to close watcher thread"))??;
+
     Ok(())
 }
 
-fn restart_app() {
-    debug!("reloading border...");
+fn restart_application() {
+    debug!("reloading application configuration and restarting borders.");
     UserConfig::reload();
     reload_borders();
+
     if let Some(hook) = KEYBOARD_HOOK.get() {
-        hook.update(&create_bindings().unwrap());
+        if let Ok(bindings) = create_keybindings() {
+            hook.update(&bindings);
+        }
     }
 }
 
-fn exit_app() {
+fn exit_application() {
+    debug!("stopping hooks and posting quit message to shut down the application.");
     if let Some(hook) = KEYBOARD_HOOK.get() {
         hook.stop().log_if_err();
     }
@@ -128,7 +150,7 @@ fn exit_app() {
     WindowsApi::post_quit_message(0);
 }
 
-fn create_logger() -> AnyResult<()> {
+fn initialize_logger() -> AnyResult<()> {
     let log_path = UserConfig::get_config_dir()?.join("tacky-borders.log");
     let Some(log_path) = log_path.to_str() else {
         return Err(anyhow!("could not convert log_path to str"));
@@ -137,7 +159,7 @@ fn create_logger() -> AnyResult<()> {
     let mut config_builder = ConfigBuilder::new();
 
     if let Err(e) = config_builder.set_time_offset_to_local() {
-        error!("time error: {e:?}");
+        error!("time offset error: {e:?}");
     }
 
     let config = config_builder.build();
@@ -166,7 +188,7 @@ fn create_logger() -> AnyResult<()> {
     Ok(())
 }
 
-fn create_bindings() -> AnyResult<Vec<KeybindingConfig>> {
+fn create_keybindings() -> AnyResult<Vec<KeybindingConfig>> {
     let config_type_lock = CONFIG
         .read()
         .map_err(|e| anyhow!("failed to acquire read lock for CONFIG_TYPE: {}", e))?;
@@ -180,14 +202,61 @@ fn create_bindings() -> AnyResult<Vec<KeybindingConfig>> {
         KeybindingConfig::new(
             SystemTrayEvent::ReloadConfig.into(),
             config_type_lock.keybindings.reload.clone().as_str(),
-            Some(restart_app),
+            Some(restart_application),
         ),
         KeybindingConfig::new(
             SystemTrayEvent::Exit.into(),
             config_type_lock.keybindings.exit.clone().as_str(),
-            Some(exit_app),
+            Some(exit_application),
         ),
     ];
 
+    debug!("keybindings created: {bindings:?}");
+
     Ok(bindings)
+}
+
+fn watcher_config() -> AnyResult<std::thread::JoinHandle<AnyResult<()>>> {
+    debug!("configuration watcher has started.");
+
+    // Spawn the watcher thread
+    let handle = std::thread::spawn({
+        let stop_flag = STOP_FLAG.clone(); // Use the static flag
+        move || -> AnyResult<()> {
+            let mut debouncer = new_debouncer(
+                Duration::from_millis(500),
+                None,
+                move |result: Result<Vec<DebouncedEvent>, Vec<notify_win::Error>>| {
+                    if let Ok(events) = result {
+                        for event in events {
+                            // Ensure `event` type is `DebouncedEvent`
+                            if event.kind.is_modify() {
+                                debug!("configuration file modified. Restarting...");
+                                restart_application();
+                                break;
+                            }
+                        }
+                    }
+                },
+            )?;
+
+            let config_dir = UserConfig::get_config_dir()?;
+            let config_file = UserConfig::detect_config_file(&config_dir)?;
+
+            debug!("watching configuration file: {config_file:?}");
+            debouncer.watch(config_file.as_path(), RecursiveMode::Recursive)?;
+
+            // Loop until the stop flag is set to true
+            while !stop_flag.load(Ordering::SeqCst) {
+                // Sleep to prevent tight looping
+                std::thread::sleep(Duration::from_millis(100));
+            }
+
+            debug!("configuration watcher detected stop flag. Preparing to exit.");
+            debouncer.unwatch(config_file.as_path())?;
+            Ok(())
+        }
+    });
+
+    Ok(handle)
 }

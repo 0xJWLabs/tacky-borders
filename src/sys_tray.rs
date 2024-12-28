@@ -1,5 +1,5 @@
-use crate::exit_app;
-use crate::restart_app;
+use crate::exit_application;
+use crate::restart_application;
 use crate::user_config::UserConfig;
 use anyhow::bail;
 use anyhow::Context;
@@ -96,8 +96,8 @@ impl SystemTray {
                 if let Ok(event) = SystemTrayEvent::from_str(event.id.as_ref()) {
                     match event {
                         SystemTrayEvent::OpenConfig => UserConfig::open(),
-                        SystemTrayEvent::ReloadConfig => restart_app(),
-                        SystemTrayEvent::Exit => exit_app(),
+                        SystemTrayEvent::ReloadConfig => restart_application(),
+                        SystemTrayEvent::Exit => exit_application(),
                     }
                 }
             })

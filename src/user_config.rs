@@ -317,7 +317,7 @@ impl UserConfig {
     }
 
     /// Detects the configuration file in the given directory or creates a default config file if none exists.
-    fn detect_config_file(config_dir: &Path) -> AnyResult<PathBuf> {
+    pub fn detect_config_file(config_dir: &Path) -> AnyResult<PathBuf> {
         let candidates = [
             ("yaml", ConfigFormat::Yaml),
             ("json", ConfigFormat::Json),

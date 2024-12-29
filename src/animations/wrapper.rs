@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use super::animation::{Animation, AnimationKind};
+use super::animation::{Animation, AnimationConfig, AnimationKind};
 use std::ops::{Deref, DerefMut};
 
 #[derive(Debug)]
@@ -125,18 +125,6 @@ impl<'a> IntoIterator for &'a mut AnimationsVec {
     }
 }
 
-impl From<Vec<Animation>> for AnimationsVec {
-    fn from(value: Vec<Animation>) -> Self {
-        Self(value)
-    }
-}
-
-impl From<AnimationsVec> for Vec<Animation> {
-    fn from(value: AnimationsVec) -> Self {
-        value.0
-    }
-}
-
 pub struct Kinds<'a, V>(std::slice::Iter<'a, V>);
 
 impl<'a> Iterator for Kinds<'a, Animation> {
@@ -154,5 +142,18 @@ impl Iterator for IntoKinds<Animation> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next().map(|animation| animation.kind)
+    }
+}
+
+impl TryFrom<Vec<AnimationConfig>> for AnimationsVec {
+    type Error = anyhow::Error;
+    fn try_from(value: Vec<AnimationConfig>) -> Result<AnimationsVec, Self::Error> {
+        value
+            .into_iter()
+            .try_fold(AnimationsVec::new(), |mut acc, animation_value| {
+                let animation = Animation::try_from(animation_value)?; // Assuming `transform` returns `Result<Animation, anyhow::Error>`
+                acc.insert(animation); // Assuming `insert` is defined for AnimationsVec
+                Ok(acc)
+            })
     }
 }

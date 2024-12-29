@@ -2,6 +2,7 @@ use crate::animations::animation::AnimationKind;
 use crate::animations::timer::KillAnimationTimer;
 use crate::animations::timer::SetAnimationTimer;
 use crate::animations::Animations;
+use crate::animations::AnimationsConfig;
 use crate::animations::AnimationsVec;
 use crate::as_ptr;
 use crate::error::LogIfErr;
@@ -417,14 +418,17 @@ impl Border {
             .clone()
             .unwrap_or(config.global_rule.inactive_color.clone());
 
+        let binding = AnimationsConfig::default();
+        let animations_config = window_rule
+            .match_window
+            .animations
+            .as_ref()
+            .unwrap_or(config.global_rule.animations.as_ref().unwrap_or(&binding));
+
         self.active_color = config_active.to_color(Some(true))?;
         self.inactive_color = config_inactive.to_color(Some(false))?;
 
-        self.animations = window_rule
-            .match_window
-            .animations
-            .clone()
-            .unwrap_or(config.global_rule.animations.clone().unwrap_or_default());
+        self.animations = Animations::try_from(animations_config.clone())?;
 
         let dpi = unsafe { GetDpiForWindow(self.tracking_window()) } as f32;
         self.border_width = config_width * dpi as i32 / 96;

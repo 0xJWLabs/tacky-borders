@@ -1,5 +1,8 @@
 use crate::border_manager::Border;
+use crate::core::duration::DurationValue;
 use crate::windows_api::WindowsApi;
+use anyhow::anyhow;
+use anyhow::Error as AnyError;
 use serde::Deserialize;
 use std::str::FromStr;
 use std::time::Duration;
@@ -7,18 +10,12 @@ use win_color::ColorImpl;
 use windows::Foundation::Numerics::Matrix3x2;
 
 use super::easing::{AnimationEasing, AnimationEasingImpl};
+use super::parser::parse_duration_str;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
 pub enum AnimationKind {
-    #[serde(alias = "spiral")]
     Spiral,
-    #[serde(alias = "fade")]
     Fade,
-    #[serde(
-        alias = "reverse_spiral",
-        alias = "reverseSpiral",
-        alias = "reverse-spiral"
-    )]
     ReverseSpiral,
 }
 
@@ -34,6 +31,47 @@ impl FromStr for AnimationKind {
             }
             _ => Err("Unknown animation type"),
         }
+    }
+}
+
+#[derive(Clone, PartialEq, Debug, Deserialize)]
+pub struct AnimationConfig {
+    pub kind: String,
+    pub duration: Option<DurationValue>,
+    pub easing: Option<String>,
+}
+
+impl TryFrom<AnimationConfig> for Animation {
+    type Error = AnyError;
+    fn try_from(value: AnimationConfig) -> Result<Animation, Self::Error> {
+        // Try to parse the kind. If it's invalid, return an error.
+        let kind = AnimationKind::from_str(value.kind.as_str())
+            .map_err(|_| anyhow!("invalid or missing animation kind"))?;
+
+        let default_duration = match kind {
+            AnimationKind::Spiral | AnimationKind::ReverseSpiral => 1800.0,
+            AnimationKind::Fade => 200.0,
+        };
+
+        // Parse easing, using a default value if not provided or invalid.
+        let easing = AnimationEasing::from_str(value.easing.clone().unwrap_or_default().as_str())
+            .unwrap_or_default();
+
+        // Parse or default the duration.
+        let duration = match value.duration {
+            Some(DurationValue::Number(value)) => value,
+            Some(DurationValue::Text(ref value)) => {
+                parse_duration_str(value).unwrap_or(default_duration)
+            } // Default to 1.0 if parsing fails
+            None => default_duration, // Default duration
+        };
+
+        // Return the constructed Animation struct.
+        Ok(Animation {
+            kind,
+            duration,
+            easing,
+        })
     }
 }
 

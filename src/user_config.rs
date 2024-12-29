@@ -1,4 +1,4 @@
-use crate::animations::Animations;
+use crate::animations::AnimationsConfig;
 use crate::core::length::deserialize_length;
 use crate::core::length::deserialize_optional_length;
 use crate::error::LogIfErr;
@@ -139,7 +139,7 @@ pub enum MatchStrategy {
 }
 
 /// Represents criteria used to match windows for applying specific configurations.
-#[derive(Debug, Deserialize, Clone, Default)]
+#[derive(Debug, Deserialize, Clone, Default, PartialEq)]
 pub struct WindowMatchConfig {
     /// Type of match (e.g., title, class, or process).
     #[serde(rename = "kind")]
@@ -161,7 +161,7 @@ pub struct WindowMatchConfig {
     pub inactive_color: Option<GlobalColor>,
     /// Animation settings for the window borders.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub animations: Option<Animations>,
+    pub animations: Option<AnimationsConfig>,
     /// Radius of the border corners.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub border_style: Option<BorderStyle>,
@@ -187,7 +187,7 @@ pub struct WindowMatchConfig {
 }
 
 /// Represents a rule for a specific window, including matching criteria and associated actions.
-#[derive(Debug, Deserialize, Clone, Default)]
+#[derive(Debug, Deserialize, Clone, Default, PartialEq)]
 pub struct WindowRuleConfig {
     /// The matching details and settings for a specific type of window.
     #[serde(rename = "match")]
@@ -195,7 +195,7 @@ pub struct WindowRuleConfig {
 }
 
 /// Contains global configuration settings applied across all windows.
-#[derive(Debug, Deserialize, Clone, Default)]
+#[derive(Debug, Deserialize, Clone, Default, PartialEq)]
 pub struct GlobalRuleConfig {
     /// Default width of the window borders.
     #[serde(deserialize_with = "deserialize_length")]
@@ -211,7 +211,7 @@ pub struct GlobalRuleConfig {
     pub inactive_color: GlobalColor,
     /// Animation settings for borders.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub animations: Option<Animations>,
+    pub animations: Option<AnimationsConfig>,
     /// Delay (in milliseconds) before applying borders after initialization.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(alias = "init_delay")]
@@ -223,7 +223,7 @@ pub struct GlobalRuleConfig {
 }
 
 /// Defines the structure for the application's keybindings.
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 pub struct Keybindings {
     /// Keybinding to reload the configuration.
     #[serde(default = "default_reload_keybind")]
@@ -259,7 +259,7 @@ fn default_exit_keybind() -> String {
 }
 
 /// Stores the complete configuration including global rules, window rules, and keybindings.
-#[derive(Debug, Deserialize, Clone, Default)]
+#[derive(Debug, Deserialize, Clone, Default, PartialEq)]
 #[serde(default)]
 pub struct UserConfig {
     /// Global settings applied across all windows.
@@ -287,7 +287,7 @@ impl UserConfig {
     }
 
     /// Attempts to create a new configuration instance by reading from the config file.
-    fn new() -> AnyResult<Self> {
+    pub fn new() -> AnyResult<Self> {
         let config_dir = Self::get_config_dir()?;
 
         let config_file = Self::detect_config_file(&config_dir)?;

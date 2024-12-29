@@ -107,6 +107,12 @@ impl GlobalAnimationTimer {
 #[derive(Debug, Clone)]
 pub struct AnimationTimer(Arc<AtomicBool>);
 
+impl PartialEq for AnimationTimer {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.load(Ordering::SeqCst) == other.0.load(Ordering::SeqCst)
+    }
+}
+
 impl AnimationTimer {
     /// Starts a new animation timer for a window.
     ///

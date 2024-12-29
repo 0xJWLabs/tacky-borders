@@ -8,17 +8,6 @@
 extern crate log;
 extern crate sp_log;
 
-use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::sync::mpsc::channel;
-use std::sync::mpsc::Receiver;
-use std::sync::mpsc::Sender;
-use std::sync::Arc;
-use std::sync::LazyLock;
-use std::sync::Mutex;
-use std::time::Duration;
-
 use anyhow::anyhow;
 use anyhow::Result as AnyResult;
 use border_manager::register_border_class;
@@ -28,11 +17,6 @@ use error::LogIfErr;
 use keyboard_hook::KeybindingConfig;
 use keyboard_hook::KeyboardHook;
 use keyboard_hook::KEYBOARD_HOOK;
-use notify_win_debouncer_full::new_debouncer;
-use notify_win_debouncer_full::notify_win::Error as NotifyError;
-use notify_win_debouncer_full::notify_win::EventKind;
-use notify_win_debouncer_full::notify_win::RecursiveMode;
-use notify_win_debouncer_full::DebouncedEvent;
 use sp_log::format_description;
 use sp_log::ColorChoice;
 use sp_log::CombinedLogger;
@@ -44,6 +28,7 @@ use sp_log::TerminalMode;
 use sys_tray::SystemTray;
 use sys_tray::SystemTrayEvent;
 use user_config::UserConfig;
+use user_config::UserConfigWatcher;
 use user_config::CONFIG;
 use window_event_hook::WindowEventHook;
 use window_event_hook::WIN_EVENT_HOOK;
@@ -62,8 +47,6 @@ mod user_config;
 mod window_event_hook;
 mod windows_api;
 mod windows_callback;
-
-static STOP_FLAG: LazyLock<Arc<AtomicBool>> = LazyLock::new(|| Arc::new(AtomicBool::new(false)));
 
 fn main() -> AnyResult<()> {
     let res = start_app();
@@ -103,7 +86,7 @@ fn start_app() -> AnyResult<()> {
     register_border_class().log_if_err();
 
     WindowsApi::process_window_handles(&Border::create).log_if_err();
-    let mut config_watcher = ConfigWatcher::new()?;
+    let mut config_watcher = UserConfigWatcher::new()?;
     config_watcher.start().log_if_err();
 
     debug!("tacky-borders event started");
@@ -116,11 +99,9 @@ fn start_app() -> AnyResult<()> {
             let _ = WindowsApi::translate_message(&message);
             WindowsApi::dispatch_message_w(&message);
         } else if message.message == WM_QUIT {
-            STOP_FLAG.store(true, Ordering::SeqCst);
             debug!("tacky-borders event is shutting down gracefully.");
             break;
         } else {
-            STOP_FLAG.store(true, Ordering::SeqCst);
             let last_error = unsafe { GetLastError() };
             error!("unexpected termination of the message loop. Last error: {last_error:?}");
             return Err(anyhow!("unexpected exit from message loop.".to_string()));
@@ -227,101 +208,4 @@ fn create_keybindings() -> AnyResult<Vec<KeybindingConfig>> {
     debug!("keybindings created: {bindings:#?}");
 
     Ok(bindings)
-}
-
-fn get_latest_config() -> AnyResult<UserConfig> {
-    let new_config = UserConfig::new()?;
-
-    Ok(new_config)
-}
-
-struct ConfigWatcher {
-    stop_tx: Sender<()>,
-    stop_rx: Arc<Mutex<Receiver<()>>>,
-    thread: Option<std::thread::JoinHandle<AnyResult<()>>>,
-    config_file: PathBuf,
-}
-
-impl ConfigWatcher {
-    fn new() -> AnyResult<Self> {
-        let (stop_tx, stop_rx) = channel();
-        let config_dir = UserConfig::get_config_dir()?;
-        let config_file = UserConfig::detect_config_file(&config_dir)?;
-
-        Ok(Self {
-            stop_tx,
-            stop_rx: Arc::new(Mutex::new(stop_rx)),
-            thread: None,
-            config_file,
-        })
-    }
-
-    fn start(&mut self) -> AnyResult<()> {
-        debug!("configuration watcher has started.");
-
-        let stop_rx = Arc::clone(&self.stop_rx);
-        let config_file = self.config_file.clone();
-        let handle = std::thread::spawn({
-            move || -> AnyResult<()> {
-                let mut debouncer = new_debouncer(
-                    Duration::from_millis(200),
-                    None,
-                    move |result: Result<Vec<DebouncedEvent>, Vec<NotifyError>>| {
-                        if let Ok(events) = result {
-                            for event in events {
-                                if let EventKind::Modify(_) = event.kind {
-                                    let new_config = get_latest_config().unwrap();
-                                    if new_config != *CONFIG.read().unwrap() {
-                                        debug!("configuration file modified. Restarting...");
-                                        restart_application();
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    },
-                )?;
-
-                debug!(
-                    "watching configuration file: {}",
-                    config_file.display().to_string()
-                );
-                debouncer.watch(config_file.as_path(), RecursiveMode::Recursive)?;
-
-                loop {
-                    let receiver = stop_rx.lock().unwrap();
-                    if receiver.try_recv().is_ok() {
-                        break;
-                    }
-                    drop(receiver);
-                    std::thread::sleep(Duration::from_millis(200));
-                }
-
-                debug!("configuration watcher detected stop flag. Preparing to exit.");
-                debouncer.unwatch(config_file.as_path())?;
-                Ok(())
-            }
-        });
-
-        self.thread = Some(handle);
-
-        Ok(())
-    }
-
-    fn stop(&mut self) -> AnyResult<()> {
-        debug!("stopping configuration watcher...");
-        let _ = self.stop_tx.send(()); // Send the stop signal
-        if let Some(handle) = self.thread.take() {
-            handle
-                .join()
-                .map_err(|e| anyhow::anyhow!("Thread join failed: {:?}", e))??;
-        }
-        Ok(())
-    }
-}
-
-impl Drop for ConfigWatcher {
-    fn drop(&mut self) {
-        let _ = self.stop(); // Ensure cleanup on drop
-    }
 }

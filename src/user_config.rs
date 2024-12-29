@@ -2,10 +2,15 @@ use crate::animations::AnimationsConfig;
 use crate::core::length::deserialize_length;
 use crate::core::length::deserialize_optional_length;
 use crate::error::LogIfErr;
+use crate::restart_application;
 use crate::windows_api::WindowsApi;
 use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result as AnyResult;
+use notify_win_debouncer_full::new_debouncer;
+use notify_win_debouncer_full::notify_win::Error as NotifyError;
+use notify_win_debouncer_full::notify_win::RecursiveMode;
+use notify_win_debouncer_full::DebouncedEvent;
 use serde::de;
 use serde::Deserialize;
 use serde::Deserializer;
@@ -16,9 +21,15 @@ use std::fs::write;
 use std::fs::DirBuilder;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::mpsc::channel;
+use std::sync::mpsc::Receiver;
+use std::sync::mpsc::Sender;
+use std::sync::Arc;
 use std::sync::LazyLock;
+use std::sync::Mutex;
 use std::sync::RwLock;
 use std::sync::RwLockReadGuard;
+use std::time::Duration;
 use win_color::GlobalColor;
 use windows::Win32::Graphics::Dwm::DWMWCP_DEFAULT;
 use windows::Win32::Graphics::Dwm::DWMWCP_DONOTROUND;
@@ -424,5 +435,96 @@ impl UserConfig {
             }
             Err(err) => error!("{err}"),
         }
+    }
+}
+
+pub struct UserConfigWatcher {
+    stop_tx: Sender<()>,
+    stop_rx: Arc<Mutex<Receiver<()>>>,
+    thread: Option<std::thread::JoinHandle<AnyResult<()>>>,
+    config_file: PathBuf,
+}
+
+impl UserConfigWatcher {
+    pub fn new() -> AnyResult<Self> {
+        let (stop_tx, stop_rx) = channel();
+        let config_dir = UserConfig::get_config_dir()?;
+        let config_file = UserConfig::detect_config_file(&config_dir)?;
+
+        Ok(Self {
+            stop_tx,
+            stop_rx: Arc::new(Mutex::new(stop_rx)),
+            thread: None,
+            config_file,
+        })
+    }
+
+    pub fn start(&mut self) -> AnyResult<()> {
+        debug!("configuration watcher has started.");
+
+        let stop_rx = Arc::clone(&self.stop_rx);
+        let config_file = self.config_file.clone();
+        let handle = std::thread::spawn({
+            move || -> AnyResult<()> {
+                let mut debouncer = new_debouncer(
+                    Duration::from_millis(200),
+                    None,
+                    move |result: Result<Vec<DebouncedEvent>, Vec<NotifyError>>| {
+                        if let Ok(events) = result {
+                            for event in events {
+                                if event.kind.is_modify() {
+                                    let new_config = UserConfig::new().unwrap_or_default();
+                                    if new_config != *CONFIG.read().unwrap() {
+                                        debug!("configuration file modified. Restarting...");
+                                        restart_application();
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    },
+                )?;
+
+                debug!(
+                    "watching configuration file: {}",
+                    config_file.display().to_string()
+                );
+                debouncer.watch(config_file.as_path(), RecursiveMode::Recursive)?;
+
+                loop {
+                    let receiver = stop_rx.lock().unwrap();
+                    if receiver.try_recv().is_ok() {
+                        break;
+                    }
+                    drop(receiver);
+                    std::thread::sleep(Duration::from_millis(200));
+                }
+
+                debug!("configuration watcher detected stop flag. Preparing to exit.");
+                debouncer.unwatch(config_file.as_path())?;
+                Ok(())
+            }
+        });
+
+        self.thread = Some(handle);
+
+        Ok(())
+    }
+
+    pub fn stop(&mut self) -> AnyResult<()> {
+        debug!("stopping configuration watcher...");
+        let _ = self.stop_tx.send(()); // Send the stop signal
+        if let Some(handle) = self.thread.take() {
+            handle
+                .join()
+                .map_err(|e| anyhow::anyhow!("Thread join failed: {:?}", e))??;
+        }
+        Ok(())
+    }
+}
+
+impl Drop for UserConfigWatcher {
+    fn drop(&mut self) {
+        let _ = self.stop(); // Ensure cleanup on drop
     }
 }

@@ -46,6 +46,9 @@ pub static CONFIG: LazyLock<RwLock<UserConfig>> =
 pub static CONFIG_FORMAT: LazyLock<RwLock<ConfigFormat>> =
     LazyLock::new(|| RwLock::new(ConfigFormat::default()));
 
+pub static CONFIG_WATCHER: LazyLock<RwLock<Option<UserConfigWatcher>>> =
+    LazyLock::new(|| RwLock::new(None));
+
 /// Default configuration content stored as a YAML string.
 const DEFAULT_CONFIG: &str = include_str!("../resources/config.yaml");
 
@@ -281,6 +284,9 @@ pub struct UserConfig {
     pub window_rules: Option<Vec<WindowRuleConfig>>,
     /// Application keybindings.
     pub keybindings: Keybindings,
+    /// Enables monitoring for changes in the configuration file.
+    #[serde(default)]
+    pub monitor_config_changes: bool,
 }
 
 /// Methods for managing the configuration, including loading, saving, and reloading.
@@ -307,7 +313,43 @@ impl UserConfig {
         let contents = read_to_string(&config_file)
             .with_context(|| format!("failed to read config file: {}", config_file.display()))?;
 
-        Self::deserialize(contents)
+        let config = Self::deserialize(contents)?;
+
+        if config.monitor_config_changes {
+            Self::start_config_watcher().log_if_err();
+        } else if !config.monitor_config_changes {
+            Self::stop_config_watcher().log_if_err();
+        }
+
+        Ok(config)
+    }
+
+    fn start_config_watcher() -> AnyResult<()> {
+        let mut config_watcher = CONFIG_WATCHER
+            .write()
+            .map_err(|e| anyhow!("RwLock Poisoned: {e:?}"))?;
+
+        if config_watcher.is_none() {
+            let mut watcher = UserConfigWatcher::new()?;
+            watcher.start().log_if_err();
+
+            *config_watcher = Some(watcher);
+        }
+
+        Ok(())
+    }
+
+    pub fn stop_config_watcher() -> AnyResult<()> {
+        let mut config_watcher = CONFIG_WATCHER
+            .write()
+            .map_err(|e| anyhow!("Mutex Poisoned: {e:?}"))?;
+
+        if let Some(mut watcher) = config_watcher.take() {
+            watcher.stop().log_if_err();
+            *config_watcher = None;
+        }
+
+        Ok(())
     }
 
     /// Deserializes configuration content into a `Config` instance based on the file format.
@@ -438,10 +480,11 @@ impl UserConfig {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct UserConfigWatcher {
     stop_tx: Sender<()>,
     stop_rx: Arc<Mutex<Receiver<()>>>,
-    thread: Option<std::thread::JoinHandle<AnyResult<()>>>,
+    thread: Arc<Mutex<Option<std::thread::JoinHandle<AnyResult<()>>>>>,
     config_file: PathBuf,
 }
 
@@ -454,7 +497,7 @@ impl UserConfigWatcher {
         Ok(Self {
             stop_tx,
             stop_rx: Arc::new(Mutex::new(stop_rx)),
-            thread: None,
+            thread: Arc::new(Mutex::new(None)),
             config_file,
         })
     }
@@ -506,7 +549,7 @@ impl UserConfigWatcher {
             }
         });
 
-        self.thread = Some(handle);
+        self.thread = Arc::new(Mutex::new(Some(handle)));
 
         Ok(())
     }
@@ -514,10 +557,11 @@ impl UserConfigWatcher {
     pub fn stop(&mut self) -> AnyResult<()> {
         debug!("stopping configuration watcher...");
         let _ = self.stop_tx.send(()); // Send the stop signal
-        if let Some(handle) = self.thread.take() {
+        let mut thread_guard = self.thread.lock().unwrap();
+        if let Some(handle) = thread_guard.take() {
             handle
                 .join()
-                .map_err(|e| anyhow::anyhow!("Thread join failed: {:?}", e))??;
+                .map_err(|e| anyhow::anyhow!("thread join failed: {:?}", e))??;
         }
         Ok(())
     }

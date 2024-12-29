@@ -28,7 +28,6 @@ use sp_log::TerminalMode;
 use sys_tray::SystemTray;
 use sys_tray::SystemTrayEvent;
 use user_config::UserConfig;
-use user_config::UserConfigWatcher;
 use user_config::CONFIG;
 use window_event_hook::WindowEventHook;
 use window_event_hook::WIN_EVENT_HOOK;
@@ -86,8 +85,6 @@ fn start_app() -> AnyResult<()> {
     register_border_class().log_if_err();
 
     WindowsApi::process_window_handles(&Border::create).log_if_err();
-    let mut config_watcher = UserConfigWatcher::new()?;
-    config_watcher.start().log_if_err();
 
     debug!("tacky-borders event started");
 
@@ -107,8 +104,6 @@ fn start_app() -> AnyResult<()> {
             return Err(anyhow!("unexpected exit from message loop.".to_string()));
         }
     }
-
-    config_watcher.stop().log_if_err();
 
     Ok(())
 }
@@ -134,6 +129,8 @@ fn exit_application() {
     if let Some(hook) = WIN_EVENT_HOOK.get() {
         hook.stop().log_if_err();
     }
+
+    UserConfig::stop_config_watcher().log_if_err();
 
     WindowsApi::post_quit_message(0);
 }

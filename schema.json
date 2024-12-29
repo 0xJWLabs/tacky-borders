@@ -3,6 +3,10 @@
   "title": "TackyConfig",
   "type": "object",
   "properties": {
+    "monitor_config_changes": {
+      "description": "Enables monitoring for changes in the configuration file",
+      "type": "boolean"
+    },
     "keybindings": {
       "description": "Defines the keybindings for interacting with the 'tacky-borders' application. These keybindings control important actions",
       "type": "object",

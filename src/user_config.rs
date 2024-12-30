@@ -22,15 +22,15 @@ use std::fs::write;
 use std::fs::DirBuilder;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::mpsc::channel;
-use std::sync::mpsc::Receiver;
-use std::sync::mpsc::Sender;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::sync::Mutex;
 use std::sync::RwLock;
 use std::sync::RwLockReadGuard;
 use std::time::Duration;
+use std::time::Instant;
 use win_color::GlobalColor;
 use windows::Win32::Graphics::Dwm::DWMWCP_DEFAULT;
 use windows::Win32::Graphics::Dwm::DWMWCP_DONOTROUND;
@@ -47,8 +47,17 @@ pub static CONFIG: LazyLock<RwLock<UserConfig>> =
 pub static CONFIG_FORMAT: LazyLock<RwLock<ConfigFormat>> =
     LazyLock::new(|| RwLock::new(ConfigFormat::default()));
 
-pub static CONFIG_WATCHER: LazyLock<Mutex<Option<UserConfigWatcher>>> =
-    LazyLock::new(|| Mutex::new(None));
+pub static CONFIG_WATCHER: LazyLock<Mutex<UserConfigWatcher>> = LazyLock::new(|| {
+    let config_dir = UserConfig::get_config_dir().unwrap_or_default();
+    let config_file = UserConfig::detect_config_file(&config_dir).unwrap_or_default();
+    Mutex::new(UserConfigWatcher::new(
+        config_file,
+        Duration::from_millis(200),
+    ))
+});
+
+// pub static CONFIG_WATCHER: LazyLock<Mutex<UserConfigWatcher>> =
+//     LazyLock::new(|| Mutex::new(UserConfigWatcher::new()));
 
 /// Default configuration content stored as a YAML string.
 const DEFAULT_CONFIG: &str = include_str!("../resources/config.yaml");
@@ -311,11 +320,9 @@ impl UserConfig {
             .lock()
             .map_err(|e| anyhow!("Mutex Poisoned: {e:?}"))?;
 
-        if config_watcher.is_none() {
-            let mut watcher = UserConfigWatcher::new()?;
-            watcher.start().log_if_err();
-
-            *config_watcher = Some(watcher);
+        if !config_watcher.running.load(Ordering::SeqCst) {
+            config_watcher.start().log_if_err();
+            config_watcher.running.store(true, Ordering::SeqCst)
         }
 
         drop(config_watcher);
@@ -328,9 +335,9 @@ impl UserConfig {
             .lock()
             .map_err(|e| anyhow!("Mutex Poisoned: {e:?}"))?;
 
-        if let Some(mut watcher) = config_watcher.take() {
-            watcher.stop().log_if_err();
-            *config_watcher = None;
+        if config_watcher.running.load(Ordering::SeqCst) {
+            config_watcher.stop().log_if_err();
+            config_watcher.running.store(false, Ordering::SeqCst)
         }
 
         drop(config_watcher);
@@ -468,35 +475,42 @@ impl UserConfig {
 
 #[derive(Clone, Debug)]
 pub struct UserConfigWatcher {
-    stop_tx: Sender<()>,
-    stop_rx: Arc<Mutex<Receiver<()>>>,
     thread: Arc<Mutex<Option<std::thread::JoinHandle<AnyResult<()>>>>>,
     config_path: PathBuf,
+    running: Arc<AtomicBool>,
+    timeout: Duration,
+    debounce: Duration,
 }
 
 impl UserConfigWatcher {
-    pub fn new() -> AnyResult<Self> {
-        let (stop_tx, stop_rx) = channel();
-        let config_dir = UserConfig::get_config_dir()?;
-        let config_path = UserConfig::detect_config_file(&config_dir)?;
+    pub fn new(config_path: PathBuf, timeout: Duration) -> Self {
+        let running = AtomicBool::new(false);
 
-        Ok(Self {
-            stop_tx,
-            stop_rx: Arc::new(Mutex::new(stop_rx)),
+        Self {
             thread: Arc::new(Mutex::new(None)),
             config_path,
-        })
+            running: Arc::new(running),
+            timeout,
+            debounce: Duration::from_millis(500),
+        }
     }
 
     pub fn start(&mut self) -> AnyResult<()> {
         debug!("configuration watcher has started.");
 
-        let stop_rx = Arc::clone(&self.stop_rx);
+        if self.running.load(Ordering::SeqCst) {
+            return Err(anyhow!("config watcher is already running"));
+        }
+
+        self.running.store(true, Ordering::SeqCst);
+        let running = Arc::clone(&self.running);
         let config_path = self.config_path.clone();
+        let timeout = self.timeout;
+        let debounce = self.debounce;
         let handle = std::thread::spawn({
             move || -> AnyResult<()> {
                 let mut debouncer = new_debouncer(
-                    Duration::from_millis(200),
+                    timeout,
                     None,
                     move |result: Result<Vec<DebouncedEvent>, Vec<NotifyError>>| {
                         if let Ok(events) = result {
@@ -520,13 +534,16 @@ impl UserConfigWatcher {
                 );
                 debouncer.watch(config_path.as_path(), RecursiveMode::Recursive)?;
 
+                let mut now = Instant::now();
                 loop {
-                    let receiver = stop_rx.lock().unwrap();
-                    if receiver.try_recv().is_ok() {
+                    if !running.load(Ordering::SeqCst) {
                         break;
                     }
-                    drop(receiver);
-                    std::thread::sleep(Duration::from_millis(200));
+
+                    if now.elapsed() < debounce {
+                        std::thread::sleep(debounce - now.elapsed());
+                    }
+                    now = Instant::now();
                 }
 
                 debug!("configuration watcher detected stop flag. Preparing to exit.");
@@ -542,7 +559,7 @@ impl UserConfigWatcher {
 
     pub fn stop(&mut self) -> AnyResult<()> {
         debug!("stopping configuration watcher...");
-        let _ = self.stop_tx.send(()); // Send the stop signal
+        self.running.store(false, Ordering::SeqCst);
         let mut thread_guard = self.thread.lock().unwrap();
         if let Some(handle) = thread_guard.take() {
             handle

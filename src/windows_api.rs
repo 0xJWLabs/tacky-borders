@@ -56,6 +56,7 @@ use windows::Win32::System::Threading::OpenProcess;
 use windows::Win32::System::Threading::QueryFullProcessImageNameW;
 use windows::Win32::System::Threading::PROCESS_NAME_WIN32;
 use windows::Win32::System::Threading::PROCESS_QUERY_LIMITED_INFORMATION;
+use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::HiDpi::SetProcessDpiAwarenessContext;
 use windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2;
 use windows::Win32::UI::Input::Ime::ImmDisableIME;
@@ -143,6 +144,10 @@ impl WindowsApi {
 
     pub fn set_process_dpi_awareness_context() -> WinResult<()> {
         unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) }
+    }
+
+    pub fn get_dpi_for_window(hwnd: isize) -> u32 {
+        unsafe { GetDpiForWindow(HWND(as_ptr!(hwnd))) }
     }
 
     pub fn post_message_w<P>(hwnd: P, msg: u32, wparam: WPARAM, lparam: LPARAM) -> WinResult<()>

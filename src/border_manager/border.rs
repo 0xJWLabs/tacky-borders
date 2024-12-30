@@ -7,6 +7,7 @@ use crate::core::timer::SetCustomTimer;
 use crate::error::LogIfErr;
 use crate::user_config::UserConfig;
 use crate::user_config::WindowRuleConfig;
+use crate::user_config::CONFIG;
 use crate::windows_api::ToWideString;
 use crate::windows_api::WindowsApi;
 use crate::windows_api::WM_APP_FOREGROUND;
@@ -66,7 +67,6 @@ use windows::Win32::Graphics::Dwm::DWM_BLURBEHIND;
 use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_UNKNOWN;
 use windows::Win32::Graphics::Gdi::CreateRectRgn;
 use windows::Win32::Graphics::Gdi::ValidateRect;
-use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::WindowsAndMessaging::DefWindowProcW;
 use windows::Win32::UI::WindowsAndMessaging::GetSystemMetrics;
 use windows::Win32::UI::WindowsAndMessaging::GetWindow;
@@ -143,6 +143,7 @@ pub struct Border {
     pub initialize_delay: u64,
     pub unminimize_delay: u64,
     pub pause: bool,
+    pub current_dpi: f32,
 }
 
 impl Border {
@@ -289,7 +290,7 @@ impl Border {
 
         self.border_window = WindowsApi::create_border_window(title, self)?;
 
-        self.load_from_config(window_rule).log_if_err();
+        self.load_from_config(window_rule)?;
 
         Ok(())
     }
@@ -427,12 +428,17 @@ impl Border {
         self.active_color = config_active.to_color(Some(true))?;
         self.inactive_color = config_inactive.to_color(Some(false))?;
 
-        self.animations = Animations::try_from(animations_config.clone())?;
+        self.current_dpi = match WindowsApi::get_dpi_for_window(self.tracking_window) as f32 {
+            0.0 => return Err(anyhow!("received invalid dpi of 0 from GetDpiForWindow")),
+            valid_dpi => valid_dpi,
+        };
 
-        let dpi = unsafe { GetDpiForWindow(self.tracking_window()) } as f32;
-        self.border_width = config_width * dpi as i32 / 96;
-        self.border_radius = config_radius.to_radius(self.border_width, dpi, self.tracking_window);
+        self.border_width = (config_width as f32 * self.current_dpi / 96.0).round() as i32;
+        self.border_radius =
+            config_radius.to_radius(self.border_width, self.current_dpi, self.tracking_window);
         self.border_offset = config_offset;
+
+        self.animations = Animations::try_from(animations_config.clone())?;
 
         let available_windows = WindowsApi::collect_window_handles().unwrap_or_default();
 
@@ -594,6 +600,26 @@ impl Border {
         bottom_color.set_opacity(0.0);
     }
 
+    fn update_width_radius(&mut self) {
+        let window_rule = WindowsApi::get_window_rule(self.tracking_window);
+        let config = CONFIG.read().unwrap();
+        let global = &config.global_rule;
+
+        let width_config = window_rule
+            .match_window
+            .border_width
+            .unwrap_or(global.border_width);
+        let radius_config = window_rule
+            .match_window
+            .border_style
+            .as_ref()
+            .unwrap_or(&global.border_style);
+
+        self.border_width = (width_config as f32 * self.current_dpi / 96.0).round() as i32;
+        self.border_radius =
+            radius_config.to_radius(self.border_width, self.current_dpi, self.tracking_window);
+    }
+
     fn current_animations(&self) -> &AnimationsVec {
         if self.is_window_active {
             &self.animations.active
@@ -728,6 +754,9 @@ impl Border {
                 if self.pause {
                     return LRESULT(0);
                 }
+
+                let mut should_render = false;
+
                 if !WindowsApi::has_native_border(self.tracking_window) {
                     self.update_position(Some(SWP_HIDEWINDOW)).log_if_err();
                     return LRESULT(0);
@@ -736,23 +765,36 @@ impl Border {
                 let old_rect = self.window_rect;
                 self.update_window_rect().log_if_err();
 
-                let update_pos_flags = match WindowsApi::is_window_visible(self.border_window) {
-                    true => None,
-                    false => Some(SWP_SHOWWINDOW),
-                };
+                if !WindowsApi::is_rect_visible(&self.window_rect) {
+                    self.window_rect = old_rect;
+                    return LRESULT(0);
+                }
 
+                if !WindowsApi::are_rects_same_size(&self.window_rect, &old_rect) {
+                    should_render |= true;
+                }
+
+                let update_pos_flags =
+                    (!WindowsApi::is_window_visible(self.border_window)).then_some(SWP_SHOWWINDOW);
                 self.update_position(update_pos_flags).log_if_err();
 
-                // TODO When a window is minimized, all four points of the rect go way below 0. For
-                // some reason, after unminimizing/restoring, render() will sometimes render at
-                // this minimized size. self.window_rect = old_rect is hopefully only a temporary solution.
-                match WindowsApi::is_rect_visible(&self.window_rect) {
-                    true => {
-                        if !WindowsApi::are_rects_same_size(&self.window_rect, &old_rect) {
-                            self.render().log_if_err();
-                        }
+                let new_dpi = match WindowsApi::get_dpi_for_window(self.tracking_window) as f32 {
+                    0.0 => {
+                        error!("received invalid dpi of 0 from GetDpiForWindow");
+                        self.exit_border_thread();
+                        return LRESULT(0);
                     }
-                    false => self.window_rect = old_rect,
+                    valid_dpi => valid_dpi,
+                };
+
+                if new_dpi != self.current_dpi {
+                    self.current_dpi = new_dpi;
+                    self.update_width_radius();
+                    should_render |= true;
+                }
+
+                if should_render {
+                    self.render().log_if_err();
                 }
             }
             // EVENT_OBJECT_REORDER

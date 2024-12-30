@@ -1,54 +1,34 @@
-use serde::{de, Deserialize, Deserializer};
-use std::fmt;
+use serde::Deserialize;
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default)]
 pub struct Keybindings {
+    #[serde(default = "default_reload_key")]
     pub reload: String,
+    #[serde(default = "default_open_config_key")]
     pub open_config: String,
+    #[serde(default = "default_exit_key")]
     pub exit: String,
 }
 
-impl<'de> Deserialize<'de> for Keybindings {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct KeybindingsVisitor;
+fn default_reload_key() -> String {
+    "f8".to_string()
+}
 
-        impl<'de> de::Visitor<'de> for KeybindingsVisitor {
-            type Value = Keybindings;
+fn default_open_config_key() -> String {
+    "f9".to_string()
+}
 
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a map with keys 'reload', 'open_config', and 'exit'")
-            }
+fn default_exit_key() -> String {
+    "f10".to_string()
+}
 
-            fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
-            where
-                M: de::MapAccess<'de>,
-            {
-                let mut reload: Option<String> = None;
-                let mut open_config: Option<String> = None;
-                let mut exit: Option<String> = None;
-
-                while let Some(key) = map.next_key::<String>()? {
-                    match key.as_str() {
-                        "reload" => reload = map.next_value()?,
-                        "open_config" => open_config = map.next_value()?,
-                        "exit" => exit = map.next_value()?,
-                        _ => {
-                            let _: de::IgnoredAny = map.next_value()?; // Ignore unknown fields
-                        }
-                    }
-                }
-
-                Ok(Keybindings {
-                    reload: reload.unwrap_or_else(|| "f8".to_string()),
-                    open_config: open_config.unwrap_or_else(|| "f9".to_string()),
-                    exit: exit.unwrap_or_else(|| "f10".to_string()),
-                })
-            }
+impl Default for Keybindings {
+    fn default() -> Self {
+        Self {
+            reload: default_reload_key(),
+            open_config: default_open_config_key(),
+            exit: default_exit_key(),
         }
-
-        deserializer.deserialize_map(KeybindingsVisitor)
     }
 }

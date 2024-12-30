@@ -137,14 +137,13 @@ impl FromStr for AnimationEasing {
                 Ok(AnimationEasing::EaseInOutBack)
             }
 
-            // Cubic-bezier parsing
             _ if input.to_ascii_lowercase().starts_with("cubic-bezier")
                 || input.to_ascii_lowercase().starts_with("cubicbezier")
                 || input.to_lowercase().starts_with("cubic_bezier") =>
             {
                 parse_cubic_bezier(input)
                     .map(AnimationEasing::CubicBezier)
-                    .ok_or_else(|| format!("invalid cubic-bezier format: {}", input))
+                    .map_err(|err| format!("invalid cubic-bezier format: {}: {}", input, err))
             }
 
             _ => Ok(AnimationEasing::default()),

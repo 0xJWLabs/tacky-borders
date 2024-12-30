@@ -1,5 +1,4 @@
 use crate::exit_application;
-use crate::restart_application;
 use crate::user_config::UserConfig;
 use anyhow::bail;
 use anyhow::Context;
@@ -22,13 +21,29 @@ pub enum SystemTrayEvent {
 }
 
 impl SystemTrayEvent {
+    pub fn execute(&self) {
+        match self {
+            SystemTrayEvent::OpenConfig => UserConfig::open(),
+            SystemTrayEvent::Exit => exit_application(),
+            SystemTrayEvent::ReloadConfig => UserConfig::reload(),
+        }
+    }
+
+    pub fn as_function_name(&self) -> &'static str {
+        match self {
+            SystemTrayEvent::OpenConfig => type_name_of_val(&UserConfig::open),
+            SystemTrayEvent::Exit => type_name_of_val(&exit_application),
+            SystemTrayEvent::ReloadConfig => type_name_of_val(&UserConfig::reload),
+        }
+    }
+
     pub fn as_str(&self) -> &'static str {
         (*self).into()
     }
 }
 
-impl std::fmt::Display for SystemTrayEvent {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for SystemTrayEvent {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", self.as_str())
     }
 }
@@ -37,22 +52,29 @@ impl FromStr for SystemTrayEvent {
     type Err = anyhow::Error;
 
     fn from_str(event: &str) -> Result<Self, Self::Err> {
-        match event {
-            "open_config" => Ok(SystemTrayEvent::OpenConfig),
-            "reload_config" => Ok(SystemTrayEvent::ReloadConfig),
-            "exit" => Ok(SystemTrayEvent::Exit),
+        let event_name_split: Vec<&str> = event.split("_").collect();
+        match event_name_split.as_slice() {
+            ["open", "config"] => Ok(SystemTrayEvent::OpenConfig),
+            ["reload", "config"] => Ok(SystemTrayEvent::ReloadConfig),
+            ["exit"] => Ok(SystemTrayEvent::Exit),
             _ => bail!("Invalid menu event: {}", event),
         }
     }
 }
 
 impl From<SystemTrayEvent> for &'static str {
-    fn from(event: SystemTrayEvent) -> Self {
-        match event {
+    fn from(value: SystemTrayEvent) -> Self {
+        match value {
             SystemTrayEvent::OpenConfig => "open_config",
             SystemTrayEvent::ReloadConfig => "reload_config",
             SystemTrayEvent::Exit => "exit",
         }
+    }
+}
+
+impl From<SystemTrayEvent> for String {
+    fn from(event: SystemTrayEvent) -> Self {
+        event.as_str().to_string()
     }
 }
 
@@ -94,11 +116,7 @@ impl SystemTray {
             .with_icon(icon)
             .on_menu_event(move |event: MenuEvent| {
                 if let Ok(event) = SystemTrayEvent::from_str(event.id.as_ref()) {
-                    match event {
-                        SystemTrayEvent::OpenConfig => UserConfig::open(),
-                        SystemTrayEvent::ReloadConfig => restart_application(),
-                        SystemTrayEvent::Exit => exit_application(),
-                    }
+                    event.execute()
                 }
             })
             .build()
@@ -106,4 +124,9 @@ impl SystemTray {
 
         tray
     }
+}
+
+// Helpers
+pub fn type_name_of_val<T: ?Sized>(_val: &T) -> &'static str {
+    std::any::type_name::<T>()
 }

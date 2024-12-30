@@ -11,7 +11,6 @@ extern crate sp_log;
 use anyhow::anyhow;
 use anyhow::Result as AnyResult;
 use border_manager::register_border_class;
-use border_manager::reload_borders;
 use border_manager::Border;
 use error::LogIfErr;
 use keyboard_hook::KeybindingConfig;
@@ -108,18 +107,6 @@ fn start_app() -> AnyResult<()> {
     Ok(())
 }
 
-fn restart_application() {
-    debug!("reloading application configuration and restarting borders.");
-    UserConfig::reload();
-    reload_borders();
-
-    if let Some(hook) = KEYBOARD_HOOK.get() {
-        if let Ok(bindings) = create_keybindings() {
-            hook.update(&bindings);
-        }
-    }
-}
-
 fn exit_application() {
     debug!("stopping hooks and posting quit message to shut down the application.");
     if let Some(hook) = KEYBOARD_HOOK.get() {
@@ -188,17 +175,17 @@ fn create_keybindings() -> AnyResult<Vec<KeybindingConfig>> {
         KeybindingConfig::new(
             SystemTrayEvent::OpenConfig.into(),
             config_type_lock.keybindings.open_config.clone().as_str(),
-            Some(UserConfig::open),
+            Some(SystemTrayEvent::OpenConfig),
         ),
         KeybindingConfig::new(
             SystemTrayEvent::ReloadConfig.into(),
             config_type_lock.keybindings.reload.clone().as_str(),
-            Some(restart_application),
+            Some(SystemTrayEvent::ReloadConfig),
         ),
         KeybindingConfig::new(
             SystemTrayEvent::Exit.into(),
             config_type_lock.keybindings.exit.clone().as_str(),
-            Some(exit_application),
+            Some(SystemTrayEvent::Exit),
         ),
     ];
 

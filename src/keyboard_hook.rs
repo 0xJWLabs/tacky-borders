@@ -16,8 +16,21 @@ use windows::Win32::UI::WindowsAndMessaging::WH_KEYBOARD_LL;
 use windows::Win32::UI::WindowsAndMessaging::WM_KEYDOWN;
 use windows::Win32::UI::WindowsAndMessaging::WM_SYSKEYDOWN;
 
+#[macro_export]
+macro_rules! function {
+    () => {{
+        fn f() {}
+        fn type_name_of<T>(_: T) -> &'static str {
+            std::any::type_name::<T>()
+        }
+        let name = type_name_of(f);
+        name.strip_suffix("::f").unwrap()
+    }};
+}
+
 use crate::as_int;
 use crate::as_ptr;
+use crate::sys_tray::SystemTrayEvent;
 
 const MODIFIER_KEYS: [u16; 6] = [
     VK_LSHIFT.0,
@@ -42,33 +55,36 @@ pub struct KeyboardHook {
     keybindings_by_trigger_key: Arc<Mutex<FxHashMap<u16, Vec<ActiveKeybinding>>>>,
 }
 
-type KeyBindingCallback = Arc<Mutex<dyn Fn() + Send + 'static>>;
-
 #[derive(Clone)]
 pub struct KeybindingConfig {
     pub name: String,
     pub keybind: String,
-    pub action: Option<KeyBindingCallback>,
+    pub event: Option<SystemTrayEvent>,
 }
 
 impl KeybindingConfig {
-    pub fn new(name: &str, keybind: &str, action: Option<impl Fn() + Send + 'static>) -> Self {
+    pub fn new(name: &str, keybind: &str, event: Option<SystemTrayEvent>) -> Self {
         Self {
             name: name.to_string(),
             keybind: keybind.to_string(),
-            action: action.map(|cb| Arc::new(Mutex::new(cb)) as KeyBindingCallback),
+            event,
         }
     }
 }
 
-impl std::fmt::Debug for KeybindingConfig {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl core::fmt::Debug for KeybindingConfig {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         // Display the name and keybind
         f.debug_struct("KeybindingConfig")
             .field("name", &self.name)
             .field("keybind", &self.keybind)
-            // Display a placeholder for the callback function
-            .field("callback", &"callback fn")
+            .field(
+                "event_callback",
+                &self
+                    .event
+                    .as_ref()
+                    .map_or("None", |action| action.as_function_name()),
+            )
             .finish()
     }
 }
@@ -168,9 +184,8 @@ impl KeyboardHook {
                     return false;
                 }
 
-                if let Some(action) = longest_keybinding.config.clone().action {
-                    let action = action.lock().unwrap();
-                    action();
+                if let Some(event) = longest_keybinding.config.event {
+                    event.execute();
                 }
 
                 return true;

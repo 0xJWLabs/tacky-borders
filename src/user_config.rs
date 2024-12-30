@@ -1,9 +1,11 @@
 use crate::animations::AnimationsConfig;
+use crate::border_manager::reload_borders;
 use crate::core::dimension::deserialize_dimension;
 use crate::core::dimension::deserialize_optional_dimension;
 use crate::core::keybindings::Keybindings;
+use crate::create_keybindings;
 use crate::error::LogIfErr;
-use crate::restart_application;
+use crate::keyboard_hook::KEYBOARD_HOOK;
 use crate::windows_api::WindowsApi;
 use anyhow::anyhow;
 use anyhow::Context;
@@ -423,11 +425,11 @@ impl UserConfig {
         Ok(config_dir)
     }
 
-    /// Reloads the configuration by reinitializing it from the configuration file.
+    /// Update the configuration by reinitializing it from the configuration file.
     ///
     /// This method replaces the current configuration with a newly loaded one.
     /// If loading fails, it falls back to the default configuration and logs an error.
-    pub fn reload() {
+    pub fn update() {
         let new_config = match Self::new() {
             Ok(config) => config,
             Err(e) => {
@@ -443,6 +445,28 @@ impl UserConfig {
             Err(e) => {
                 error!("RwLock poisoned: {e:#}");
                 // Optionally, handle the failure here
+            }
+        }
+    }
+
+    /// Reloads the application configuration and restarts the borders.
+    ///
+    /// This method calls the `update()` function to reload the configuration and refresh the
+    /// application state. After updating the configuration, it restarts the borders and updates
+    /// the keyboard bindings if they are available.
+    ///
+    /// # Side Effects
+    /// - The configuration is reloaded from the file and written to the shared configuration store.
+    /// - The borders are reloaded, which may involve reinitializing UI components.
+    /// - If a keyboard hook is available, the keybindings are refreshed and applied.
+    pub fn reload() {
+        debug!("reloading application configuration and restarting borders.");
+        Self::update();
+        reload_borders();
+
+        if let Some(hook) = KEYBOARD_HOOK.get() {
+            if let Ok(bindings) = create_keybindings() {
+                hook.update(&bindings);
             }
         }
     }
@@ -519,7 +543,7 @@ impl UserConfigWatcher {
                                     let new_config = UserConfig::new().unwrap_or_default();
                                     if new_config != *CONFIG.read().unwrap() {
                                         debug!("configuration file modified. Restarting...");
-                                        restart_application();
+                                        UserConfig::reload();
                                         break;
                                     }
                                 }

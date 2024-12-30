@@ -468,42 +468,39 @@ impl WindowsApi {
 
         let config = CONFIG.read().unwrap();
 
-        if let Some(window_rules) = &config.window_rules {
-            for rule in window_rules.iter() {
-                let window_name = match rule.match_window.match_kind {
-                    Some(MatchKind::Title) => &title,
-                    Some(MatchKind::Process) => &process,
-                    Some(MatchKind::Class) => &class,
-                    None => {
-                        error!("expected 'kind' for window rule but none found!");
-                        continue;
-                    }
-                };
-
-                let Some(match_value) = &rule.match_window.match_value else {
-                    error!("expected `value` for window rule but non found!");
+        for rule in config.window_rules.iter() {
+            let window_name = match rule.match_window.match_kind {
+                Some(MatchKind::Title) => &title,
+                Some(MatchKind::Process) => &process,
+                Some(MatchKind::Class) => &class,
+                None => {
+                    error!("expected 'kind' for window rule but none found!");
                     continue;
-                };
-
-                let has_match = match rule.match_window.match_strategy {
-                    Some(MatchStrategy::Equals) | None => {
-                        window_name.to_lowercase().eq(&match_value.to_lowercase())
-                    }
-                    Some(MatchStrategy::Contains) => window_name
-                        .to_lowercase()
-                        .contains(&match_value.to_lowercase()),
-                    Some(MatchStrategy::Regex) => Regex::new(match_value)
-                        .unwrap()
-                        .captures(window_name)
-                        .is_some(),
-                };
-
-                if has_match {
-                    return rule.clone();
                 }
+            };
+
+            let Some(match_value) = &rule.match_window.match_value else {
+                error!("expected `value` for window rule but non found!");
+                continue;
+            };
+
+            let has_match = match rule.match_window.match_strategy {
+                Some(MatchStrategy::Equals) | None => {
+                    window_name.to_lowercase().eq(&match_value.to_lowercase())
+                }
+                Some(MatchStrategy::Contains) => window_name
+                    .to_lowercase()
+                    .contains(&match_value.to_lowercase()),
+                Some(MatchStrategy::Regex) => Regex::new(match_value)
+                    .unwrap()
+                    .captures(window_name)
+                    .is_some(),
+            };
+
+            if has_match {
+                return rule.clone();
             }
         }
-        drop(config);
 
         WindowRuleConfig::default()
     }

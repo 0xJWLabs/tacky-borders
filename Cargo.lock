@@ -447,6 +447,8 @@ dependencies = [
  "anyhow",
  "log",
  "notify-win-debouncer-full",
+ "phf",
+ "phf_macros",
  "regex",
  "rustc-hash",
  "serde",

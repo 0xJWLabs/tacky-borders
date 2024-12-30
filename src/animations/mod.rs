@@ -1,12 +1,10 @@
+use crate::core::timer::CustomTimer;
 use animation::AnimationConfig;
 use serde::Deserialize;
-use timer::AnimationTimer;
 pub use wrapper::AnimationsVec;
 
 pub mod animation;
-mod easing;
-mod parser;
-pub mod timer;
+pub mod parser;
 pub mod wrapper;
 
 #[derive(Debug, Deserialize, Clone, Default, PartialEq)]
@@ -23,7 +21,7 @@ pub struct Animations {
     pub fps: i32,
     pub progress: AnimationsProgress,
     pub flags: AnimationsFlags,
-    pub timer: Option<AnimationTimer>,
+    pub timer: Option<CustomTimer>,
 }
 
 #[derive(Debug, Deserialize, Clone, Default, PartialEq)]

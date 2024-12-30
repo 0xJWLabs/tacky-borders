@@ -1,43 +1,22 @@
+use super::parser::parse_duration_str;
 use crate::border_manager::Border;
-use crate::core::duration::DurationValue;
+use crate::core::animation::AnimationEasing;
+use crate::core::animation::AnimationEasingImpl;
+use crate::core::animation::AnimationKind;
+use crate::core::duration::Duration;
 use crate::windows_api::WindowsApi;
 use anyhow::anyhow;
 use anyhow::Error as AnyError;
 use serde::Deserialize;
 use std::str::FromStr;
-use std::time::Duration;
+use std::time::Duration as StdDuration;
 use win_color::ColorImpl;
 use windows::Foundation::Numerics::Matrix3x2;
-
-use super::easing::{AnimationEasing, AnimationEasingImpl};
-use super::parser::parse_duration_str;
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
-pub enum AnimationKind {
-    Spiral,
-    Fade,
-    ReverseSpiral,
-}
-
-impl FromStr for AnimationKind {
-    type Err = &'static str;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "spiral" => Ok(AnimationKind::Spiral),
-            "fade" => Ok(AnimationKind::Fade),
-            "reverse_spiral" | "reversespiral" | "reverse-spiral" => {
-                Ok(AnimationKind::ReverseSpiral)
-            }
-            _ => Err("Unknown animation type"),
-        }
-    }
-}
 
 #[derive(Clone, PartialEq, Debug, Deserialize)]
 pub struct AnimationConfig {
     pub kind: String,
-    pub duration: Option<DurationValue>,
+    pub duration: Option<Duration>,
     pub easing: Option<String>,
 }
 
@@ -59,8 +38,8 @@ impl TryFrom<AnimationConfig> for Animation {
 
         // Parse or default the duration.
         let duration = match value.duration {
-            Some(DurationValue::Number(value)) => value,
-            Some(DurationValue::Text(ref value)) => {
+            Some(Duration::Number(value)) => value,
+            Some(Duration::Text(ref value)) => {
                 parse_duration_str(value).unwrap_or(default_duration)
             } // Default to 1.0 if parsing fails
             None => default_duration, // Default duration
@@ -87,7 +66,7 @@ impl Animation {
     const MAXIMUM_PROGRESS: f32 = 1.0;
 
     /// Plays the animation, updating the border state based on elapsed time.
-    pub fn play(&self, border: &mut Border, elapsed_time: &Duration) {
+    pub fn play(&self, border: &mut Border, elapsed_time: &StdDuration) {
         if self.duration <= 0.0 {
             warn!("animation duration can't be zero or negative.");
             return;
@@ -102,7 +81,7 @@ impl Animation {
     }
 
     /// Animates a spiral effect on the border.
-    fn animate_spiral(&self, border: &mut Border, elapsed_time: &Duration, reverse: bool) {
+    fn animate_spiral(&self, border: &mut Border, elapsed_time: &StdDuration, reverse: bool) {
         let direction: f32 = if reverse { -1.0 } else { 1.0 };
         let delta_x = elapsed_time.as_millis_f32() / self.duration * direction;
         border.animations.progress.spiral += delta_x;
@@ -145,7 +124,7 @@ impl Animation {
         border.inactive_color.set_transform(&transform);
     }
 
-    fn animate_fade(&self, border: &mut Border, elapsed_time: &Duration) {
+    fn animate_fade(&self, border: &mut Border, elapsed_time: &StdDuration) {
         // If both are 0, that means the window has been opened for the first time or has been
         // unminimized. If that is the case, only one of the colors should be visible while fading.
         if border.active_color.get_opacity() == Some(0.0)

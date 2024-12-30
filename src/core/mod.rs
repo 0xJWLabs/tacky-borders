@@ -1,2 +1,5 @@
+pub mod animation;
+pub mod dimension;
 pub mod duration;
-pub mod length;
+pub mod keybindings;
+pub mod timer;

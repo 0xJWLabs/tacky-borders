@@ -1,7 +1,29 @@
-use super::parser::parse_cubic_bezier;
+use crate::animations::parser::parse_cubic_bezier;
 use serde::Deserialize;
 use simple_bezier_easing::bezier;
 use std::{str::FromStr, sync::Arc};
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
+pub enum AnimationKind {
+    Spiral,
+    Fade,
+    ReverseSpiral,
+}
+
+impl FromStr for AnimationKind {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "spiral" => Ok(AnimationKind::Spiral),
+            "fade" => Ok(AnimationKind::Fade),
+            "reverse_spiral" | "reversespiral" | "reverse-spiral" => {
+                Ok(AnimationKind::ReverseSpiral)
+            }
+            _ => Err("Unknown animation type"),
+        }
+    }
+}
 
 #[derive(Debug, Default, Clone, Deserialize, PartialEq)]
 // #[derive(Debug, Default, Clone, Deserialize, PartialEq)]

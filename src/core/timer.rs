@@ -18,21 +18,21 @@ const NUM_SHARDS: usize = 16;
 
 /// Global animation timer manager.
 /// Manages and coordinates timers for animated window borders.
-pub static TIMER_MANAGER: LazyLock<Arc<Mutex<GlobalAnimationTimer>>> =
-    LazyLock::new(|| Arc::new(Mutex::new(GlobalAnimationTimer::new())));
+pub static TIMER_MANAGER: LazyLock<Arc<Mutex<CustomTimerManager>>> =
+    LazyLock::new(|| Arc::new(Mutex::new(CustomTimerManager::new())));
 
 /// A manager for animation timers, ensuring timers are associated with specific windows.
 #[derive(Debug)]
-pub struct GlobalAnimationTimer {
+pub struct CustomTimerManager {
     /// Map of timers keyed by window handle (as `usize`).
-    timers: Vec<Arc<Mutex<FxHashMap<usize, AnimationTimer>>>>,
+    timers: Vec<Arc<Mutex<FxHashMap<usize, CustomTimer>>>>,
 }
 
-impl GlobalAnimationTimer {
-    /// Creates a new instance of the `GlobalAnimationTimer` with an empty set of timers.
+impl CustomTimerManager {
+    /// Creates a new instance of the `CustomTimerManager` with an empty set of timers.
     ///
     /// # Returns
-    /// * A new instance of `GlobalAnimationTimer`.
+    /// * A new instance of `CustomTimerManager`.
     pub fn new() -> Self {
         let mut timers = Vec::with_capacity(NUM_SHARDS);
         for _ in 0..NUM_SHARDS {
@@ -54,12 +54,12 @@ impl GlobalAnimationTimer {
     ///
     /// # Arguments
     /// * `border` - A reference to the `Border`.
-    /// * `timer` - The `AnimationTimer` to be added.
+    /// * `timer` - The `CustomTimer` to be added.
     ///
     /// # Returns
     /// * `Ok(())` if the timer was added successfully.
     /// * `Err` if a timer for the window already exists.
-    pub fn add_timer(&self, border: &Border, timer: AnimationTimer) -> AnyResult<()> {
+    pub fn add_timer(&self, border: &Border, timer: CustomTimer) -> AnyResult<()> {
         let hwnd_u = border.border_window as usize;
         let shard_index = self.get_shard_index(hwnd_u);
         // Attempt to acquire the lock safely
@@ -105,15 +105,15 @@ impl GlobalAnimationTimer {
 
 /// A timer that sends messages at a specified interval to animate window borders.
 #[derive(Debug, Clone)]
-pub struct AnimationTimer(Arc<AtomicBool>);
+pub struct CustomTimer(Arc<AtomicBool>);
 
-impl PartialEq for AnimationTimer {
+impl PartialEq for CustomTimer {
     fn eq(&self, other: &Self) -> bool {
         self.0.load(Ordering::SeqCst) == other.0.load(Ordering::SeqCst)
     }
 }
 
-impl AnimationTimer {
+impl CustomTimer {
     /// Starts a new animation timer for a window.
     ///
     /// # Arguments
@@ -121,8 +121,8 @@ impl AnimationTimer {
     /// * `interval_ms` - The interval in milliseconds between timer ticks.
     ///
     /// # Returns
-    /// * A `Result` containing the `AnimationTimer` on success, or an error otherwise.
-    pub fn start(border: &mut Border, interval_ms: u64) -> AnyResult<AnimationTimer> {
+    /// * A `Result` containing the `CustomTimer` on success, or an error otherwise.
+    pub fn start(border: &mut Border, interval_ms: u64) -> AnyResult<CustomTimer> {
         // Validate the interval
         if interval_ms == 0 {
             return Err(anyhow!("interval must be greater than 0"));
@@ -195,14 +195,14 @@ impl AnimationTimer {
 ///
 /// # Returns
 /// * `Ok(())` if the timer was set successfully, or an error if the timer could not be started.
-pub fn SetAnimationTimer<F>(border: &mut Border, condition: Option<F>) -> AnyResult<()>
+pub fn SetCustomTimer<F>(border: &mut Border, condition: Option<F>) -> AnyResult<()>
 where
     F: Fn(&Border) -> bool,
 {
     // If condition exists, check it; otherwise, proceed directly
     if condition.is_none_or(|cond| cond(border)) && border.animations.timer.is_none() {
         let timer_duration = (1000.0 / border.animations.fps as f32) as u64;
-        AnimationTimer::start(border, timer_duration).log_if_err();
+        CustomTimer::start(border, timer_duration).log_if_err();
     }
     Ok(())
 }
@@ -217,9 +217,9 @@ where
 ///
 /// # Returns
 /// * `Ok(())` if the timer was successfully killed, or an error if stopping the timer failed.
-pub fn KillAnimationTimer(border: &mut Border) -> AnyResult<()> {
+pub fn KillCustomTimer(border: &mut Border) -> AnyResult<()> {
     if border.animations.timer.is_some() {
-        AnimationTimer::stop(border).log_if_err();
+        CustomTimer::stop(border).log_if_err();
     }
     Ok(())
 }

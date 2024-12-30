@@ -1,10 +1,9 @@
-use crate::animations::animation::AnimationKind;
-use crate::animations::timer::KillAnimationTimer;
-use crate::animations::timer::SetAnimationTimer;
 use crate::animations::Animations;
-use crate::animations::AnimationsConfig;
 use crate::animations::AnimationsVec;
 use crate::as_ptr;
+use crate::core::animation::AnimationKind;
+use crate::core::timer::KillCustomTimer;
+use crate::core::timer::SetCustomTimer;
 use crate::error::LogIfErr;
 use crate::user_config::UserConfig;
 use crate::user_config::WindowRuleConfig;
@@ -353,7 +352,7 @@ impl Border {
                 self.render().log_if_err();
             }
 
-            SetAnimationTimer(
+            SetCustomTimer(
                 self,
                 Some(|border: &Border| {
                     !border.animations.active.is_empty() || !border.animations.inactive.is_empty()
@@ -391,6 +390,7 @@ impl Border {
 
     fn load_from_config(&mut self, window_rule: &WindowRuleConfig) -> AnyResult<()> {
         let config = UserConfig::get();
+        let global = &config.global_rule;
 
         let config_width = window_rule
             .match_window
@@ -403,27 +403,26 @@ impl Border {
         let config_radius = window_rule
             .match_window
             .border_style
-            .clone()
-            .unwrap_or(config.global_rule.border_style.clone());
+            .as_ref()
+            .unwrap_or(&global.border_style);
 
         let config_active = window_rule
             .match_window
             .active_color
-            .clone()
-            .unwrap_or(config.global_rule.active_color.clone());
+            .as_ref()
+            .unwrap_or(&global.active_color);
 
         let config_inactive = window_rule
             .match_window
             .inactive_color
-            .clone()
-            .unwrap_or(config.global_rule.inactive_color.clone());
+            .as_ref()
+            .unwrap_or(&global.inactive_color);
 
-        let binding = AnimationsConfig::default();
         let animations_config = window_rule
             .match_window
             .animations
             .as_ref()
-            .unwrap_or(config.global_rule.animations.as_ref().unwrap_or(&binding));
+            .unwrap_or(&global.animations);
 
         self.active_color = config_active.to_color(Some(true))?;
         self.inactive_color = config_inactive.to_color(Some(false))?;
@@ -442,13 +441,16 @@ impl Border {
             false => window_rule
                 .match_window
                 .initialize_delay
-                .unwrap_or(config.global_rule.initialize_delay.unwrap_or(250)),
+                .unwrap_or(global.initialize_delay),
         };
 
         self.unminimize_delay = window_rule
             .match_window
             .unminimize_delay
-            .unwrap_or(config.global_rule.unminimize_delay.unwrap_or(200));
+            .unwrap_or(global.unminimize_delay);
+
+        drop(config);
+        let _ = window_rule;
 
         Ok(())
     }
@@ -705,7 +707,7 @@ impl Border {
 
     fn exit_border_thread(&mut self) {
         self.pause = true;
-        KillAnimationTimer(self).log_if_err();
+        KillCustomTimer(self).log_if_err();
         let mut borders_hashmap = window_borders();
         borders_hashmap.remove(&(self.tracking_window));
 
@@ -784,7 +786,7 @@ impl Border {
                     self.render().log_if_err();
                 }
 
-                SetAnimationTimer(
+                SetCustomTimer(
                     self,
                     Some(|border: &Border| {
                         !border.animations.active.is_empty()
@@ -798,7 +800,7 @@ impl Border {
             // EVENT_OBJECT_HIDE / EVENT_OBJECT_CLOAKED
             WM_APP_HIDECLOAKED => {
                 self.update_position(Some(SWP_HIDEWINDOW)).log_if_err();
-                KillAnimationTimer(self).log_if_err();
+                KillCustomTimer(self).log_if_err();
                 self.pause = true;
             }
             // EVENT_OBJECT_MINIMIZESTART
@@ -808,7 +810,7 @@ impl Border {
                 self.active_color.set_opacity(0.0);
                 self.inactive_color.set_opacity(0.0);
 
-                KillAnimationTimer(self).log_if_err();
+                KillCustomTimer(self).log_if_err();
                 self.pause = true;
             }
             // EVENT_SYSTEM_MINIMIZEEND
@@ -826,7 +828,7 @@ impl Border {
                     self.render().log_if_err();
                 }
 
-                SetAnimationTimer(
+                SetCustomTimer(
                     self,
                     Some(|border: &Border| {
                         !border.animations.active.is_empty()

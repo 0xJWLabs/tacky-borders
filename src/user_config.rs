@@ -1,6 +1,7 @@
 use crate::animations::AnimationsConfig;
-use crate::core::length::deserialize_length;
-use crate::core::length::deserialize_optional_length;
+use crate::core::dimension::deserialize_dimension;
+use crate::core::dimension::deserialize_optional_dimension;
+use crate::core::keybindings::Keybindings;
 use crate::error::LogIfErr;
 use crate::restart_application;
 use crate::windows_api::WindowsApi;
@@ -46,8 +47,8 @@ pub static CONFIG: LazyLock<RwLock<UserConfig>> =
 pub static CONFIG_FORMAT: LazyLock<RwLock<ConfigFormat>> =
     LazyLock::new(|| RwLock::new(ConfigFormat::default()));
 
-pub static CONFIG_WATCHER: LazyLock<RwLock<Option<UserConfigWatcher>>> =
-    LazyLock::new(|| RwLock::new(None));
+pub static CONFIG_WATCHER: LazyLock<Mutex<Option<UserConfigWatcher>>> =
+    LazyLock::new(|| Mutex::new(None));
 
 /// Default configuration content stored as a YAML string.
 const DEFAULT_CONFIG: &str = include_str!("../resources/config.yaml");
@@ -181,11 +182,11 @@ pub struct WindowMatchConfig {
     pub border_style: Option<BorderStyle>,
     /// Width of the border in pixels.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(deserialize_with = "deserialize_optional_length", default)]
+    #[serde(deserialize_with = "deserialize_optional_dimension", default)]
     pub border_width: Option<i32>,
     /// Offset of the border relative to the window.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(deserialize_with = "deserialize_optional_length", default)]
+    #[serde(deserialize_with = "deserialize_optional_dimension", default)]
     pub border_offset: Option<i32>,
     /// Whether borders are enabled for this match.
     #[serde(rename = "enabled")]
@@ -208,68 +209,48 @@ pub struct WindowRuleConfig {
     pub match_window: WindowMatchConfig,
 }
 
-/// Contains global configuration settings applied across all windows.
-#[derive(Debug, Deserialize, Clone, Default, PartialEq)]
-pub struct GlobalRuleConfig {
-    /// Default width of the window borders.
-    #[serde(deserialize_with = "deserialize_length")]
-    pub border_width: i32,
-    /// Default offset for the window borders.
-    #[serde(deserialize_with = "deserialize_length")]
-    pub border_offset: i32,
-    /// Default border radius settings.
-    pub border_style: BorderStyle,
-    /// Default color for active window borders.
-    pub active_color: GlobalColor,
-    /// Default color for inactive window borders.
-    pub inactive_color: GlobalColor,
-    /// Animation settings for borders.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub animations: Option<AnimationsConfig>,
-    /// Delay (in milliseconds) before applying borders after initialization.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(alias = "init_delay")]
-    pub initialize_delay: Option<u64>,
-    /// Delay (in milliseconds) before applying borders after unminimizing.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(alias = "restore_delay")]
-    pub unminimize_delay: Option<u64>,
-}
-
-/// Defines the structure for the application's keybindings.
-#[derive(Debug, Deserialize, Clone, PartialEq)]
-pub struct Keybindings {
-    /// Keybinding to reload the configuration.
-    #[serde(default = "default_reload_keybind")]
-    pub reload: String,
-    /// Keybinding to open the configuration file.
-    #[serde(default = "default_open_config_keybind")]
-    pub open_config: String,
-    /// Keybinding to exit the application.
-    #[serde(default = "default_exit_keybind")]
-    pub exit: String,
-}
-
-impl Default for Keybindings {
-    fn default() -> Self {
-        Self {
-            reload: "f8".to_string(),
-            open_config: "f9".to_string(),
-            exit: "f10".to_string(),
-        }
+fn serde_default_global() -> GlobalRuleConfig {
+    GlobalRuleConfig {
+        border_width: serde_default_i32::<2>(),
+        border_offset: serde_default_i32::<-1>(),
+        ..Default::default()
     }
 }
 
-fn default_reload_keybind() -> String {
-    "f8".to_string()
-}
-
-fn default_open_config_keybind() -> String {
-    "f9".to_string()
-}
-
-fn default_exit_keybind() -> String {
-    "f10".to_string()
+/// Contains global configuration settings applied across all windows.
+#[derive(Debug, Deserialize, Clone, Default, PartialEq)]
+#[serde(default)]
+pub struct GlobalRuleConfig {
+    /// Default width of the window borders.
+    #[serde(
+        deserialize_with = "deserialize_dimension",
+        default = "serde_default_i32::<2>"
+    )]
+    pub border_width: i32,
+    /// Default offset for the window borders.
+    #[serde(
+        deserialize_with = "deserialize_dimension",
+        default = "serde_default_i32::<-1>"
+    )]
+    pub border_offset: i32,
+    /// Default border radius settings.
+    #[serde(default)]
+    pub border_style: BorderStyle,
+    /// Default color for active window borders.
+    #[serde(default)]
+    pub active_color: GlobalColor,
+    /// Default color for inactive window borders.
+    #[serde(default)]
+    pub inactive_color: GlobalColor,
+    /// Animation settings for borders.
+    #[serde(default)]
+    pub animations: AnimationsConfig,
+    /// Delay (in milliseconds) before applying borders after initialization.
+    #[serde(alias = "init_delay", default = "serde_default_u64::<250>")]
+    pub initialize_delay: u64,
+    /// Delay (in milliseconds) before applying borders after unminimizing.
+    #[serde(alias = "restore_delay", default = "serde_default_u64::<200>")]
+    pub unminimize_delay: u64,
 }
 
 /// Stores the complete configuration including global rules, window rules, and keybindings.
@@ -277,12 +258,13 @@ fn default_exit_keybind() -> String {
 #[serde(default)]
 pub struct UserConfig {
     /// Global settings applied across all windows.
-    #[serde(rename = "global")]
+    #[serde(rename = "global", default = "serde_default_global")]
     pub global_rule: GlobalRuleConfig,
     /// Specific rules for individual windows.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub window_rules: Option<Vec<WindowRuleConfig>>,
+    #[serde(default)]
+    pub window_rules: Vec<WindowRuleConfig>,
     /// Application keybindings.
+    #[serde(default)]
     pub keybindings: Keybindings,
     /// Enables monitoring for changes in the configuration file.
     #[serde(default)]
@@ -326,8 +308,8 @@ impl UserConfig {
 
     fn start_config_watcher() -> AnyResult<()> {
         let mut config_watcher = CONFIG_WATCHER
-            .write()
-            .map_err(|e| anyhow!("RwLock Poisoned: {e:?}"))?;
+            .lock()
+            .map_err(|e| anyhow!("Mutex Poisoned: {e:?}"))?;
 
         if config_watcher.is_none() {
             let mut watcher = UserConfigWatcher::new()?;
@@ -336,18 +318,22 @@ impl UserConfig {
             *config_watcher = Some(watcher);
         }
 
+        drop(config_watcher);
+
         Ok(())
     }
 
     pub fn stop_config_watcher() -> AnyResult<()> {
         let mut config_watcher = CONFIG_WATCHER
-            .write()
+            .lock()
             .map_err(|e| anyhow!("Mutex Poisoned: {e:?}"))?;
 
         if let Some(mut watcher) = config_watcher.take() {
             watcher.stop().log_if_err();
             *config_watcher = None;
         }
+
+        drop(config_watcher);
 
         Ok(())
     }
@@ -485,20 +471,20 @@ pub struct UserConfigWatcher {
     stop_tx: Sender<()>,
     stop_rx: Arc<Mutex<Receiver<()>>>,
     thread: Arc<Mutex<Option<std::thread::JoinHandle<AnyResult<()>>>>>,
-    config_file: PathBuf,
+    config_path: PathBuf,
 }
 
 impl UserConfigWatcher {
     pub fn new() -> AnyResult<Self> {
         let (stop_tx, stop_rx) = channel();
         let config_dir = UserConfig::get_config_dir()?;
-        let config_file = UserConfig::detect_config_file(&config_dir)?;
+        let config_path = UserConfig::detect_config_file(&config_dir)?;
 
         Ok(Self {
             stop_tx,
             stop_rx: Arc::new(Mutex::new(stop_rx)),
             thread: Arc::new(Mutex::new(None)),
-            config_file,
+            config_path,
         })
     }
 
@@ -506,7 +492,7 @@ impl UserConfigWatcher {
         debug!("configuration watcher has started.");
 
         let stop_rx = Arc::clone(&self.stop_rx);
-        let config_file = self.config_file.clone();
+        let config_path = self.config_path.clone();
         let handle = std::thread::spawn({
             move || -> AnyResult<()> {
                 let mut debouncer = new_debouncer(
@@ -530,9 +516,9 @@ impl UserConfigWatcher {
 
                 debug!(
                     "watching configuration file: {}",
-                    config_file.display().to_string()
+                    config_path.display().to_string()
                 );
-                debouncer.watch(config_file.as_path(), RecursiveMode::Recursive)?;
+                debouncer.watch(config_path.as_path(), RecursiveMode::Recursive)?;
 
                 loop {
                     let receiver = stop_rx.lock().unwrap();
@@ -544,7 +530,7 @@ impl UserConfigWatcher {
                 }
 
                 debug!("configuration watcher detected stop flag. Preparing to exit.");
-                debouncer.unwatch(config_file.as_path())?;
+                debouncer.unwatch(config_path.as_path())?;
                 Ok(())
             }
         });
@@ -571,4 +557,13 @@ impl Drop for UserConfigWatcher {
     fn drop(&mut self) {
         let _ = self.stop(); // Ensure cleanup on drop
     }
+}
+
+// Helpers
+fn serde_default_u64<const V: u64>() -> u64 {
+    V
+}
+
+fn serde_default_i32<const V: i32>() -> i32 {
+    V
 }

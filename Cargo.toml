@@ -22,6 +22,8 @@ tray-icon-win = "0.1.5"
 win-open = "0.1.2"
 notify-win-debouncer-full = "0.1.2"
 time = "0.3.37"
+phf_macros = "0.11.2"
+phf = "0.11.2"
 
 [dependencies.windows]
 version = "0.58.0"

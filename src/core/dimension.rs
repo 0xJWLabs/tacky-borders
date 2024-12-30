@@ -9,7 +9,7 @@ use serde::de::Error;
 use serde::Deserialize;
 use serde::Deserializer;
 
-pub enum LengthValue {
+pub enum Dimension {
     JsonNumber(JsonNumber),
     YamlNumber(YamlNumber),
     String(String),
@@ -31,14 +31,14 @@ impl AsI64 for YamlNumber {
     }
 }
 
-fn parse_value<E>(value: LengthValue) -> Result<i32, E>
+fn parse_value<E>(value: Dimension) -> Result<i32, E>
 where
     E: Error,
 {
     match value {
-        LengthValue::JsonNumber(num) => num.as_i64(),
-        LengthValue::YamlNumber(num) => num.as_i64(),
-        LengthValue::String(s) => {
+        Dimension::JsonNumber(num) => num.as_i64(),
+        Dimension::YamlNumber(num) => num.as_i64(),
+        Dimension::String(s) => {
             let trimmed = s.strip_suffix("px").unwrap_or(&s);
             trimmed.parse::<i64>().ok()
         }
@@ -47,14 +47,14 @@ where
     .ok_or_else(|| E::custom("Invalid value"))
 }
 
-fn parse_optional_value<E>(value: LengthValue) -> Result<Option<i32>, E>
+fn parse_optional_value<E>(value: Dimension) -> Result<Option<i32>, E>
 where
     E: Error,
 {
     let val = match value {
-        LengthValue::JsonNumber(num) => num.as_i64(),
-        LengthValue::YamlNumber(num) => num.as_i64(),
-        LengthValue::String(s) => {
+        Dimension::JsonNumber(num) => num.as_i64(),
+        Dimension::YamlNumber(num) => num.as_i64(),
+        Dimension::String(s) => {
             let trimmed = s.strip_suffix("px").unwrap_or(&s);
             trimmed.parse::<i64>().ok()
         }
@@ -64,7 +64,7 @@ where
     Ok(val)
 }
 
-pub fn deserialize_length<'de, D>(deserializer: D) -> Result<i32, D::Error>
+pub fn deserialize_dimension<'de, D>(deserializer: D) -> Result<i32, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -72,16 +72,16 @@ where
         ConfigFormat::Json | ConfigFormat::Jsonc => {
             let value: JsonValue = Deserialize::deserialize(deserializer)?;
             match value {
-                JsonValue::Number(num) => parse_value(LengthValue::JsonNumber(num)),
-                JsonValue::String(s) => parse_value(LengthValue::String(s)),
+                JsonValue::Number(num) => parse_value(Dimension::JsonNumber(num)),
+                JsonValue::String(s) => parse_value(Dimension::String(s)),
                 _ => Err(D::Error::custom("Expected a number or a string")),
             }
         }
         ConfigFormat::Yaml => {
             let value: YamlValue = Deserialize::deserialize(deserializer)?;
             match value {
-                YamlValue::Number(num) => parse_value(LengthValue::YamlNumber(num)),
-                YamlValue::String(s) => parse_value(LengthValue::String(s)),
+                YamlValue::Number(num) => parse_value(Dimension::YamlNumber(num)),
+                YamlValue::String(s) => parse_value(Dimension::String(s)),
                 _ => Err(D::Error::custom("Expected a number or a string")),
             }
         }
@@ -89,7 +89,7 @@ where
     }
 }
 
-pub fn deserialize_optional_length<'de, D>(deserializer: D) -> Result<Option<i32>, D::Error>
+pub fn deserialize_optional_dimension<'de, D>(deserializer: D) -> Result<Option<i32>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -99,8 +99,8 @@ where
             let value: Option<JsonValue> = Option::deserialize(deserializer)?;
             match value {
                 Some(value) => match value {
-                    JsonValue::Number(num) => parse_optional_value(LengthValue::JsonNumber(num)),
-                    JsonValue::String(s) => parse_optional_value(LengthValue::String(s)),
+                    JsonValue::Number(num) => parse_optional_value(Dimension::JsonNumber(num)),
+                    JsonValue::String(s) => parse_optional_value(Dimension::String(s)),
                     JsonValue::Null => Ok(None),
                     _ => Err(D::Error::custom("Expected a number or string")),
                 },
@@ -111,8 +111,8 @@ where
             let value: Option<YamlValue> = Option::deserialize(deserializer)?;
             match value {
                 Some(value) => match value {
-                    YamlValue::Number(num) => parse_optional_value(LengthValue::YamlNumber(num)),
-                    YamlValue::String(s) => parse_optional_value(LengthValue::String(s)),
+                    YamlValue::Number(num) => parse_optional_value(Dimension::YamlNumber(num)),
+                    YamlValue::String(s) => parse_optional_value(Dimension::String(s)),
                     YamlValue::Null => Ok(None),
                     _ => Err(D::Error::custom("Expected a number or string")),
                 },

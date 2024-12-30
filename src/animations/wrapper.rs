@@ -1,6 +1,9 @@
 #![allow(dead_code)]
-use super::animation::{Animation, AnimationConfig, AnimationKind};
-use std::ops::{Deref, DerefMut};
+use super::animation::Animation;
+use super::animation::AnimationConfig;
+use crate::core::animation::AnimationKind;
+use std::ops::Deref;
+use std::ops::DerefMut;
 
 #[derive(Debug)]
 pub struct AnimationsVecOccupiedError {

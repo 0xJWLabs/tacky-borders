@@ -2,7 +2,9 @@ use crate::animation::manager::AnimationManager;
 use crate::animation::wrapper::AnimationEngineVec;
 use crate::as_ptr;
 use crate::core::animation::AnimationKind;
+use crate::core::rect::Rect;
 use crate::error::LogIfErr;
+use crate::user_config::BorderStyle;
 use crate::user_config::UserConfig;
 use crate::user_config::WindowRuleConfig;
 use crate::user_config::CONFIG;
@@ -127,10 +129,10 @@ pub struct Border {
     pub border_window: isize,
     pub tracking_window: isize,
     pub is_window_active: bool,
-    pub window_rect: RECT,
-    pub border_width: i32,
-    pub border_offset: i32,
-    pub border_radius: f32,
+    pub window_rect: Rect,
+    pub width: i32,
+    pub offset: i32,
+    pub style: BorderStyle,
     pub render_target: Option<ID2D1HwndRenderTarget>,
     pub rounded_rect: D2D1_ROUNDED_RECT,
     pub active_color: Color,
@@ -257,6 +259,7 @@ impl Border {
 
             let mut border = Self {
                 tracking_window,
+                window_rect: Rect(RECT::default()),
                 ..Default::default()
             };
 
@@ -286,7 +289,6 @@ impl Border {
         .as_raw_pcwstr();
 
         self.border_window = WindowsApi::create_border_window(title, self)?;
-
         self.load_from_config(window_rule)?;
 
         Ok(())
@@ -405,11 +407,6 @@ impl Border {
             .match_window
             .border_offset
             .unwrap_or(config.global_rule.border_offset);
-        let config_radius = window_rule
-            .match_window
-            .border_style
-            .as_ref()
-            .unwrap_or(&global.border_style);
 
         let config_active = window_rule
             .match_window
@@ -429,6 +426,12 @@ impl Border {
             .as_ref()
             .unwrap_or(&global.animations);
 
+        let config_style = window_rule
+            .match_window
+            .border_style
+            .as_ref()
+            .unwrap_or(&global.border_style);
+
         self.active_color = config_active.to_color(Some(true))?;
         self.inactive_color = config_inactive.to_color(Some(false))?;
 
@@ -440,10 +443,11 @@ impl Border {
             valid_dpi => valid_dpi,
         };
 
-        self.border_width = (config_width as f32 * self.current_dpi / 96.0).round() as i32;
-        self.border_radius =
-            config_radius.to_radius(self.border_width, self.current_dpi, self.tracking_window);
-        self.border_offset = config_offset;
+        self.width = (config_width as f32 * self.current_dpi / 96.0).round() as i32;
+        self.style = config_style.clone();
+        // self.border_radius =
+        //     config_radius.to_radius(self.border_width, self.current_dpi, self.tracking_window);
+        self.offset = config_offset;
 
         self.animation_manager = AnimationManager::try_from(animations_config.clone())?;
 
@@ -487,10 +491,14 @@ impl Border {
             transform: Matrix3x2::identity(),
         };
 
+        let border_radius =
+            self.style
+                .to_radius(self.width, self.current_dpi, self.tracking_window);
+
         self.rounded_rect = D2D1_ROUNDED_RECT {
             rect: Default::default(),
-            radiusX: self.border_radius,
-            radiusY: self.border_radius,
+            radiusX: border_radius,
+            radiusY: border_radius,
         };
 
         // Initialize the actual border color assuming it is in focus
@@ -503,10 +511,10 @@ impl Border {
             render_target.SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
 
             self.active_color
-                .to_d2d1_brush(&render_target, &self.window_rect, &brush_properties)
+                .to_d2d1_brush(&render_target, &self.window_rect.into(), &brush_properties)
                 .log_if_err();
             self.inactive_color
-                .to_d2d1_brush(&render_target, &self.window_rect, &brush_properties)
+                .to_d2d1_brush(&render_target, &self.window_rect.into(), &brush_properties)
                 .log_if_err();
 
             self.render_target = Some(render_target);
@@ -530,10 +538,7 @@ impl Border {
             return Err(e);
         }
 
-        self.window_rect.top -= self.border_width;
-        self.window_rect.left -= self.border_width;
-        self.window_rect.right += self.border_width;
-        self.window_rect.bottom += self.border_width;
+        self.window_rect.add_margin(self.width);
 
         Ok(())
     }
@@ -557,8 +562,8 @@ impl Border {
                 hwnd_above_tracking.unwrap_or(HWND_TOP),
                 self.window_rect.left,
                 self.window_rect.top,
-                WindowsApi::get_rect_width(self.window_rect),
-                WindowsApi::get_rect_height(self.window_rect),
+                self.window_rect.width(),
+                self.window_rect.height(),
                 swp_flags,
             )
             .context(format!(
@@ -613,15 +618,14 @@ impl Border {
             .match_window
             .border_width
             .unwrap_or(global.border_width);
-        let radius_config = window_rule
+        let style_config = window_rule
             .match_window
             .border_style
             .as_ref()
             .unwrap_or(&global.border_style);
 
-        self.border_width = (width_config as f32 * self.current_dpi / 96.0).round() as i32;
-        self.border_radius =
-            radius_config.to_radius(self.border_width, self.current_dpi, self.tracking_window);
+        self.width = (width_config as f32 * self.current_dpi / 96.0).round() as i32;
+        self.style = style_config.clone();
     }
 
     fn current_animations(&self) -> &AnimationEngineVec {
@@ -639,11 +643,11 @@ impl Border {
             return Err(anyhow!("render_target has not been set yet"));
         };
 
-        let rect_width = WindowsApi::get_rect_width(self.window_rect) as f32;
-        let rect_height = WindowsApi::get_rect_height(self.window_rect) as f32;
+        let rect_width = self.window_rect.width() as f32;
+        let rect_height = self.window_rect.height() as f32;
 
-        let border_width = self.border_width as f32;
-        let border_offset = self.border_offset as f32;
+        let border_width = self.width as f32;
+        let border_offset = self.offset as f32;
 
         self.rounded_rect.rect = D2D_RECT_F {
             left: border_width / 2.0 - border_offset,
@@ -670,7 +674,7 @@ impl Border {
 
             if bottom_color.get_opacity() > Some(0.0) {
                 if let Color::Gradient(gradient) = bottom_color {
-                    gradient.update_start_end_points(&self.window_rect);
+                    gradient.update_start_end_points(&self.window_rect.into());
                 }
 
                 match bottom_color.get_brush() {
@@ -681,7 +685,7 @@ impl Border {
 
             if top_color.get_opacity() > Some(0.0) {
                 if let Color::Gradient(gradient) = top_color {
-                    gradient.update_start_end_points(&self.window_rect);
+                    gradient.update_start_end_points(&self.window_rect.into());
                 }
 
                 match top_color.get_brush() {
@@ -717,18 +721,21 @@ impl Border {
     }
 
     fn draw_rectangle(&self, render_target: &ID2D1HwndRenderTarget, brush: &ID2D1Brush) {
+        let border_radius =
+            self.style
+                .to_radius(self.width, self.current_dpi, self.tracking_window);
         unsafe {
-            match self.border_radius {
+            match border_radius {
                 0.0 => render_target.DrawRectangle(
                     &self.rounded_rect.rect,
                     brush,
-                    self.border_width as f32,
+                    self.width as f32,
                     None,
                 ),
                 _ => render_target.DrawRoundedRectangle(
                     &self.rounded_rect,
                     brush,
-                    self.border_width as f32,
+                    self.width as f32,
                     None,
                 ),
             }
@@ -771,12 +778,12 @@ impl Border {
                 let old_rect = self.window_rect;
                 self.update_window_rect().log_if_err();
 
-                if !WindowsApi::is_rect_visible(&self.window_rect) {
+                if !self.window_rect.is_visible() {
                     self.window_rect = old_rect;
                     return LRESULT(0);
                 }
 
-                if !WindowsApi::are_rects_same_size(&self.window_rect, &old_rect) {
+                if !self.window_rect.is_same_size_as(&old_rect) {
                     should_render |= true;
                 }
 
@@ -824,7 +831,7 @@ impl Border {
                 let old_rect = self.window_rect;
                 self.update_window_rect().log_if_err();
 
-                if !WindowsApi::is_rect_visible(&self.window_rect) {
+                if !self.window_rect.is_visible() {
                     self.window_rect = old_rect;
                     return LRESULT(0);
                 }

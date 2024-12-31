@@ -1,5 +1,7 @@
+#![allow(dead_code)]
 extern crate windows;
 use crate::border_manager::Border;
+use crate::core::rect::Rect;
 use crate::error::LogIfErr;
 use crate::user_config::MatchKind;
 use crate::user_config::MatchStrategy;
@@ -39,10 +41,10 @@ use windows::Win32::Foundation::HMODULE;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Foundation::LPARAM;
 use windows::Win32::Foundation::LRESULT;
-use windows::Win32::Foundation::RECT;
 use windows::Win32::Foundation::WPARAM;
 use windows::Win32::Graphics::Dwm::DwmGetWindowAttribute;
 use windows::Win32::Graphics::Dwm::DWMWA_CLOAKED;
+use windows::Win32::Graphics::Dwm::DWMWA_EXTENDED_FRAME_BOUNDS;
 use windows::Win32::Graphics::Dwm::DWMWA_WINDOW_CORNER_PREFERENCE;
 use windows::Win32::Graphics::Dwm::DWMWINDOWATTRIBUTE;
 use windows::Win32::Graphics::Dwm::DWM_CLOAKED_APP;
@@ -69,6 +71,7 @@ use windows::Win32::UI::WindowsAndMessaging::EnumWindows;
 use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
 use windows::Win32::UI::WindowsAndMessaging::GetMessageW;
 use windows::Win32::UI::WindowsAndMessaging::GetWindowLongW;
+use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
 use windows::Win32::UI::WindowsAndMessaging::GetWindowTextW;
 use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
 use windows::Win32::UI::WindowsAndMessaging::IsWindowVisible;
@@ -190,23 +193,6 @@ impl WindowsApi {
         unsafe { PostQuitMessage(nexitcode) }
     }
 
-    pub fn get_rect_width(rect: RECT) -> i32 {
-        rect.right - rect.left
-    }
-
-    pub fn get_rect_height(rect: RECT) -> i32 {
-        rect.bottom - rect.top
-    }
-
-    pub fn is_rect_visible(rect: &RECT) -> bool {
-        rect.top >= 0 || rect.left >= 0 || rect.bottom >= 0 || rect.right >= 0
-    }
-
-    pub fn are_rects_same_size(rect1: &RECT, rect2: &RECT) -> bool {
-        rect1.right - rect1.left == rect2.right - rect2.left
-            && rect1.bottom - rect1.top == rect2.bottom - rect2.top
-    }
-
     #[allow(clippy::too_many_arguments)]
     pub fn create_window_ex_w<P0, P1, P2, P3, P4>(
         dwexstyle: WINDOW_EX_STYLE,
@@ -305,6 +291,17 @@ impl WindowsApi {
             is_cloaked,
             DWM_CLOAKED_APP | DWM_CLOAKED_SHELL | DWM_CLOAKED_INHERITED
         )
+    }
+
+    pub fn window_rect(hwnd: isize) -> WinResult<Rect> {
+        let mut rect = unsafe { std::mem::zeroed() };
+
+        if Self::dwm_get_window_attribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &mut rect).is_ok() {
+            Ok(Rect::from(rect))
+        } else {
+            unsafe { GetWindowRect(HWND(as_ptr!(hwnd)), &mut rect) }?;
+            Ok(Rect::from(rect))
+        }
     }
 
     pub fn is_window_visible(hwnd: isize) -> bool {

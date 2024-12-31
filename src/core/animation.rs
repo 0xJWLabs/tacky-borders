@@ -156,7 +156,7 @@ impl FromStr for AnimationEasing {
             // Pascal Case
             "linear" => Ok(AnimationEasing::Linear),
 
-            // EaseIn variants (PascalCase | camelCase | snake_case | kebab-case)
+            // EaseIn variants
             "easein" | "ease_in" | "ease-in" => Ok(AnimationEasing::EaseIn),
             "easeinsine" | "ease_in_sine" | "ease-in-sine" => Ok(AnimationEasing::EaseInSine),
             "easeinquad" | "ease_in_quad" | "ease-in-quad" => Ok(AnimationEasing::EaseInQuad),

@@ -5,7 +5,6 @@ use crate::core::animation::AnimationEasing;
 use crate::core::animation::AnimationEasingImpl;
 use crate::core::animation::AnimationKind;
 use crate::core::duration::Duration;
-use crate::windows_api::WindowsApi;
 use anyhow::anyhow;
 use std::str::FromStr;
 use std::time::Duration as StdDuration;
@@ -70,8 +69,8 @@ impl AnimationEngine {
         border.animation_manager.progress.angle = 360.0 * y_coord;
 
         // Calculate the center point of the window
-        let center_x = WindowsApi::get_rect_width(border.window_rect) / 2;
-        let center_y = WindowsApi::get_rect_height(border.window_rect) / 2;
+        let center_x = border.window_rect.width() / 2;
+        let center_y = border.window_rect.height() / 2;
 
         let transform = Matrix3x2::rotation(
             border.animation_manager.progress.angle,

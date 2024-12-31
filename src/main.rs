@@ -35,7 +35,7 @@ use windows::Win32::UI::WindowsAndMessaging::MSG;
 use windows::Win32::UI::WindowsAndMessaging::WM_QUIT;
 use windows_api::WindowsApi;
 
-mod animations;
+mod animation;
 mod border_manager;
 mod core;
 mod error;

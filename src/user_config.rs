@@ -1,4 +1,4 @@
-use crate::animations::AnimationsConfig;
+use crate::animation::AnimationsConfig;
 use crate::border_manager::reload_borders;
 use crate::core::dimension::deserialize_dimension;
 use crate::core::dimension::deserialize_optional_dimension;

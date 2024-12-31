@@ -1,30 +1,30 @@
 #![allow(dead_code)]
-use super::animation::Animation;
-use super::animation::AnimationConfig;
+use super::engine::AnimationEngine;
+use super::AnimationConfig;
 use crate::core::animation::AnimationKind;
 use std::ops::Deref;
 use std::ops::DerefMut;
 
 #[derive(Debug)]
-pub struct AnimationsVecOccupiedError {
-    existing: Animation,
-    attempted: Animation,
+pub struct AnimationEngineVecOccupiedError {
+    existing: AnimationEngine,
+    attempted: AnimationEngine,
 }
 
-impl AnimationsVecOccupiedError {
-    fn existing(&self) -> &Animation {
+impl AnimationEngineVecOccupiedError {
+    fn existing(&self) -> &AnimationEngine {
         &self.existing
     }
 
-    fn attempted(&self) -> &Animation {
+    fn attempted(&self) -> &AnimationEngine {
         &self.attempted
     }
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
-pub struct AnimationsVec(Vec<Animation>);
+pub struct AnimationEngineVec(Vec<AnimationEngine>);
 
-impl AnimationsVec {
+impl AnimationEngineVec {
     pub fn new() -> Self {
         Self(Vec::new())
     }
@@ -37,7 +37,7 @@ impl AnimationsVec {
         self.0.iter().any(|a| a.kind == kind)
     }
 
-    pub fn insert(&mut self, item: Animation) -> Option<Animation> {
+    pub fn insert(&mut self, item: AnimationEngine) -> Option<AnimationEngine> {
         for animation in self.0.iter_mut() {
             if animation.kind == item.kind {
                 return Some(std::mem::replace(animation, item));
@@ -49,10 +49,10 @@ impl AnimationsVec {
 
     pub fn try_insert(
         &mut self,
-        item: Animation,
-    ) -> Result<&mut Animation, AnimationsVecOccupiedError> {
+        item: AnimationEngine,
+    ) -> Result<&mut AnimationEngine, AnimationEngineVecOccupiedError> {
         if let Some(pos) = self.0.iter().position(|a| a.kind == item.kind) {
-            return Err(AnimationsVecOccupiedError {
+            return Err(AnimationEngineVecOccupiedError {
                 existing: self.0[pos].clone(),
                 attempted: item,
             });
@@ -62,11 +62,11 @@ impl AnimationsVec {
         Ok(self.0.last_mut().unwrap())
     }
 
-    pub fn get(&self, k: &AnimationKind) -> Option<&Animation> {
+    pub fn get(&self, k: &AnimationKind) -> Option<&AnimationEngine> {
         self.0.iter().find(|a| a.kind == *k)
     }
 
-    pub fn remove(&mut self, k: &AnimationKind) -> Option<Animation> {
+    pub fn remove(&mut self, k: &AnimationKind) -> Option<AnimationEngine> {
         if let Some(pos) = self.0.iter().position(|a| a.kind == *k) {
             Some(self.0.remove(pos))
         } else {
@@ -74,54 +74,54 @@ impl AnimationsVec {
         }
     }
 
-    pub fn get_mut(&mut self, k: &AnimationKind) -> Option<&mut Animation> {
+    pub fn get_mut(&mut self, k: &AnimationKind) -> Option<&mut AnimationEngine> {
         self.0.iter_mut().find(|a| a.kind == *k)
     }
 
-    pub fn kinds(&self) -> Kinds<Animation> {
+    pub fn kinds(&self) -> Kinds<AnimationEngine> {
         Kinds(self.0.iter())
     }
 
-    pub fn into_kinds(self) -> IntoKinds<Animation> {
+    pub fn into_kinds(self) -> IntoKinds<AnimationEngine> {
         IntoKinds(self.0.into_iter())
     }
 }
 
-impl Deref for AnimationsVec {
-    type Target = Vec<Animation>;
+impl Deref for AnimationEngineVec {
+    type Target = Vec<AnimationEngine>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl DerefMut for AnimationsVec {
+impl DerefMut for AnimationEngineVec {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
-impl IntoIterator for AnimationsVec {
-    type Item = Animation;
-    type IntoIter = std::vec::IntoIter<Animation>;
+impl IntoIterator for AnimationEngineVec {
+    type Item = AnimationEngine;
+    type IntoIter = std::vec::IntoIter<AnimationEngine>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
     }
 }
 
-impl<'a> IntoIterator for &'a AnimationsVec {
-    type Item = &'a Animation;
-    type IntoIter = std::slice::Iter<'a, Animation>;
+impl<'a> IntoIterator for &'a AnimationEngineVec {
+    type Item = &'a AnimationEngine;
+    type IntoIter = std::slice::Iter<'a, AnimationEngine>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
     }
 }
 
-impl<'a> IntoIterator for &'a mut AnimationsVec {
-    type Item = &'a mut Animation;
-    type IntoIter = std::slice::IterMut<'a, Animation>;
+impl<'a> IntoIterator for &'a mut AnimationEngineVec {
+    type Item = &'a mut AnimationEngine;
+    type IntoIter = std::slice::IterMut<'a, AnimationEngine>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter_mut()
@@ -130,7 +130,7 @@ impl<'a> IntoIterator for &'a mut AnimationsVec {
 
 pub struct Kinds<'a, V>(std::slice::Iter<'a, V>);
 
-impl<'a> Iterator for Kinds<'a, Animation> {
+impl<'a> Iterator for Kinds<'a, AnimationEngine> {
     type Item = &'a AnimationKind;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -140,7 +140,7 @@ impl<'a> Iterator for Kinds<'a, Animation> {
 
 pub struct IntoKinds<V>(std::vec::IntoIter<V>);
 
-impl Iterator for IntoKinds<Animation> {
+impl Iterator for IntoKinds<AnimationEngine> {
     type Item = AnimationKind;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -148,14 +148,14 @@ impl Iterator for IntoKinds<Animation> {
     }
 }
 
-impl TryFrom<Vec<AnimationConfig>> for AnimationsVec {
+impl TryFrom<Vec<AnimationConfig>> for AnimationEngineVec {
     type Error = anyhow::Error;
-    fn try_from(value: Vec<AnimationConfig>) -> Result<AnimationsVec, Self::Error> {
+    fn try_from(value: Vec<AnimationConfig>) -> Result<AnimationEngineVec, Self::Error> {
         value
             .into_iter()
-            .try_fold(AnimationsVec::new(), |mut acc, animation_value| {
-                let animation = Animation::try_from(animation_value)?; // Assuming `transform` returns `Result<Animation, anyhow::Error>`
-                acc.insert(animation); // Assuming `insert` is defined for AnimationsVec
+            .try_fold(AnimationEngineVec::new(), |mut acc, animation_value| {
+                let animation = AnimationEngine::try_from(animation_value)?; // Assuming `transform` returns `Result<Animation, anyhow::Error>`
+                acc.insert(animation); // Assuming `insert` is defined for AnimationEngineVec
                 Ok(acc)
             })
     }

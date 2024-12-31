@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 
 use crate::as_ptr;
-use crate::border_manager::Border;
 use crate::error::LogIfErr;
 use crate::windows_api::WindowsApi;
 use crate::windows_api::WM_APP_TIMER;
@@ -14,27 +13,27 @@ use std::thread::{sleep, spawn};
 use std::time::{Duration, Instant};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 
-const NUM_SHARDS: usize = 16;
+const NUM_SHARDS: isize = 16;
 
-/// Global animation timer manager.
-/// Manages and coordinates timers for animated window borders.
+/// Global custom timer manager.
+/// Manages and coordinates timers for windows.
 pub static TIMER_MANAGER: LazyLock<Arc<Mutex<CustomTimerManager>>> =
     LazyLock::new(|| Arc::new(Mutex::new(CustomTimerManager::new())));
 
-/// A manager for animation timers, ensuring timers are associated with specific windows.
+/// A manager for custom timers, ensuring timers are associated with specific windows.
 #[derive(Debug)]
 pub struct CustomTimerManager {
     /// Map of timers keyed by window handle (as `usize`).
-    timers: Vec<Arc<Mutex<FxHashMap<usize, CustomTimer>>>>,
+    timers: Vec<Arc<Mutex<FxHashMap<isize, CustomTimer>>>>,
 }
 
 impl CustomTimerManager {
-    /// Creates a new instance of the `CustomTimerManager` with an empty set of timers.
+    /// Creates a new instance of `CustomTimerManager` with empty timers.
     ///
     /// # Returns
-    /// * A new instance of `CustomTimerManager`.
+    /// * A new instance of `CustomTimerManager` with initialized timer shards.
     pub fn new() -> Self {
-        let mut timers = Vec::with_capacity(NUM_SHARDS);
+        let mut timers = Vec::with_capacity(NUM_SHARDS as usize);
         for _ in 0..NUM_SHARDS {
             timers.push(Arc::new(Mutex::new(FxHashMap::default())));
         }
@@ -42,32 +41,34 @@ impl CustomTimerManager {
         Self { timers }
     }
 
-    /// Gets the shard index based on the window handle.
+    /// Determines the shard index for a given window handle.
+    ///
+    /// # Arguments
+    /// * `hwnd` - The window handle.
     ///
     /// # Returns
-    /// * Index of shard
-    fn get_shard_index(&self, hwnd: usize) -> usize {
-        hwnd % NUM_SHARDS
+    /// * The index of the shard.
+    fn get_shard_index(&self, hwnd: isize) -> usize {
+        (hwnd % NUM_SHARDS) as usize
     }
 
     /// Adds a new timer for a specific window.
     ///
     /// # Arguments
-    /// * `border` - A reference to the `Border`.
+    /// * `hwnd` - The window handle to associate with the timer.
     /// * `timer` - The `CustomTimer` to be added.
     ///
     /// # Returns
-    /// * `Ok(())` if the timer was added successfully.
-    /// * `Err` if a timer for the window already exists.
-    pub fn add_timer(&self, border: &Border, timer: CustomTimer) -> AnyResult<()> {
-        let hwnd_u = border.border_window as usize;
-        let shard_index = self.get_shard_index(hwnd_u);
+    /// * `Ok(())` if the timer was successfully added.
+    /// * `Err` if a timer already exists for the specified window.
+    pub fn add_timer(&self, hwnd: isize, timer: CustomTimer) -> AnyResult<()> {
+        let shard_index = self.get_shard_index(hwnd);
         // Attempt to acquire the lock safely
         let mut timers = self.timers[shard_index]
             .lock()
             .map_err(|e| anyhow!("failed to acquire lock for timers: {e}"))?;
 
-        if let Entry::Vacant(e) = timers.entry(hwnd_u) {
+        if let Entry::Vacant(e) = timers.entry(hwnd) {
             e.insert(timer.clone());
             Ok(())
         } else {
@@ -78,27 +79,26 @@ impl CustomTimerManager {
     /// Removes the timer associated with a specific window.
     ///
     /// # Arguments
-    /// * `border` - A reference to the `Border`.
+    /// * `hwnd` - The window handle to disassociate from the timer.
     ///
     /// # Returns
     /// * `Ok(())` if the timer was removed successfully.
     /// * `Err` if no timer was found for the specified window.
-    pub fn remove_timer(&self, border: &Border) -> AnyResult<()> {
-        let hwnd_u = border.border_window as usize;
-        let shard_index = self.get_shard_index(hwnd_u);
+    pub fn remove_timer(&self, hwnd: isize) -> AnyResult<()> {
+        let shard_index = self.get_shard_index(hwnd);
 
         // Attempt to acquire the lock safely
         let mut timers = self.timers[shard_index]
             .lock()
             .map_err(|e| anyhow!("failed to acquire lock for timers: {e}"))?;
 
-        if let Some(timer) = timers.remove(&hwnd_u) {
+        if let Some(timer) = timers.remove(&hwnd) {
             if timer.0.load(Ordering::SeqCst) {
                 timer.0.store(false, Ordering::SeqCst);
             }
             Ok(())
         } else {
-            Err(anyhow!("no timer found for hwnd: {}", hwnd_u))
+            Err(anyhow!("no timer found for hwnd: {}", hwnd))
         }
     }
 }
@@ -114,15 +114,16 @@ impl PartialEq for CustomTimer {
 }
 
 impl CustomTimer {
-    /// Starts a new animation timer for a window.
+    /// Starts a new custom timer for a window.
     ///
     /// # Arguments
-    /// * `border` - The `Border` to associate the timer with.
+    /// * `hwnd` - The window handle to associate with the timer.
     /// * `interval_ms` - The interval in milliseconds between timer ticks.
     ///
     /// # Returns
-    /// * A `Result` containing the `CustomTimer` on success, or an error otherwise.
-    pub fn start(border: &mut Border, interval_ms: u64) -> AnyResult<CustomTimer> {
+    /// * `Ok(CustomTimer)` if the timer was successfully started.
+    /// * `Err` if the interval is invalid (i.e., 0) or there was an error during timer setup.
+    pub fn start(hwnd: isize, interval_ms: u64) -> AnyResult<CustomTimer> {
         // Validate the interval
         if interval_ms == 0 {
             return Err(anyhow!("interval must be greater than 0"));
@@ -130,9 +131,8 @@ impl CustomTimer {
 
         let running = Arc::new(AtomicBool::new(true));
         let running_clone = running.clone();
-        let border_clone = border.clone();
         spawn(move || {
-            let window_sent = HWND(as_ptr!(border_clone.border_window));
+            let window_sent = HWND(as_ptr!(hwnd));
             let mut next_tick = Instant::now() + Duration::from_millis(interval_ms);
             while running_clone.load(Ordering::SeqCst) {
                 // Send the timer message and schedule next tick
@@ -140,7 +140,7 @@ impl CustomTimer {
                     if let Err(e) =
                         WindowsApi::post_message_w(window_sent, WM_APP_TIMER, WPARAM(0), LPARAM(0))
                     {
-                        error!("could not send animation timer message: {e}");
+                        error!("could not send timer message: {e}");
                         break;
                     }
 
@@ -158,68 +158,27 @@ impl CustomTimer {
         TIMER_MANAGER
             .lock()
             .map_err(|e| anyhow!("failed to lock the TIMER_MANAGER: {e}"))?
-            .add_timer(border, timer.clone())
+            .add_timer(hwnd, timer.clone())
             .log_if_err();
-
-        border.animations.timer = Some(timer.clone());
-        border.last_animation_time = Some(Instant::now());
 
         Ok(timer)
     }
 
     /// Stops the timer of a window from sending further messages.
     ///
+    /// # Arguments
+    /// * `hwnd` - The window handle whose timer should be stopped.
+    ///
     /// # Returns
-    /// * `Ok(())` if the timer was stopped successfully.
-    pub fn stop(border: &mut Border) -> AnyResult<()> {
+    /// * `Ok(())` if the timer was successfully stopped.
+    /// * `Err` if an error occurred during the stopping process.
+    pub fn stop(hwnd: isize) -> AnyResult<()> {
         TIMER_MANAGER
             .lock()
             .map_err(|e| anyhow!("failed to lock the TIMER_MANAGER: {e}"))?
-            .remove_timer(border)
+            .remove_timer(hwnd)
             .log_if_err();
 
-        border.animations.timer = None;
         Ok(())
     }
-}
-
-#[allow(non_snake_case)]
-/// Sets an animation timer for the provided `Border` if needed.
-///
-/// This function checks an optional condition, and if the condition is met or not provided,
-/// it starts the animation timer if one is not already running.
-///
-/// # Arguments
-/// * `border` - A mutable reference to the `Border` to set the timer for.
-/// * `condition` - An optional condition function that must return `true` for the timer to be set.
-///
-/// # Returns
-/// * `Ok(())` if the timer was set successfully, or an error if the timer could not be started.
-pub fn SetCustomTimer<F>(border: &mut Border, condition: Option<F>) -> AnyResult<()>
-where
-    F: Fn(&Border) -> bool,
-{
-    // If condition exists, check it; otherwise, proceed directly
-    if condition.is_none_or(|cond| cond(border)) && border.animations.timer.is_none() {
-        let timer_duration = (1000.0 / border.animations.fps as f32) as u64;
-        CustomTimer::start(border, timer_duration).log_if_err();
-    }
-    Ok(())
-}
-
-#[allow(non_snake_case)]
-/// Kills the animation timer for the provided `Border`.
-///
-/// This function stops and removes the animation timer for the specified window border.
-///
-/// # Arguments
-/// * `border` - A mutable reference to the `Border` to remove the timer from.
-///
-/// # Returns
-/// * `Ok(())` if the timer was successfully killed, or an error if stopping the timer failed.
-pub fn KillCustomTimer(border: &mut Border) -> AnyResult<()> {
-    if border.animations.timer.is_some() {
-        CustomTimer::stop(border).log_if_err();
-    }
-    Ok(())
 }

@@ -1,9 +1,7 @@
-use crate::animations::Animations;
-use crate::animations::AnimationsVec;
+use crate::animation::manager::AnimationManager;
+use crate::animation::wrapper::AnimationEngineVec;
 use crate::as_ptr;
 use crate::core::animation::AnimationKind;
-use crate::core::timer::KillCustomTimer;
-use crate::core::timer::SetCustomTimer;
 use crate::error::LogIfErr;
 use crate::user_config::UserConfig;
 use crate::user_config::WindowRuleConfig;
@@ -137,8 +135,7 @@ pub struct Border {
     pub rounded_rect: D2D1_ROUNDED_RECT,
     pub active_color: Color,
     pub inactive_color: Color,
-    pub animations: Animations,
-    pub last_animation_time: Option<Instant>,
+    pub animation_manager: AnimationManager,
     pub last_render_time: Option<Instant>,
     pub initialize_delay: u64,
     pub unminimize_delay: u64,
@@ -353,13 +350,9 @@ impl Border {
                 self.render().log_if_err();
             }
 
-            SetCustomTimer(
-                self,
-                Some(|border: &Border| {
-                    !border.animations.active.is_empty() || !border.animations.inactive.is_empty()
-                }),
-            )
-            .log_if_err();
+            self.animation_manager
+                .set_timer(self.border_window)
+                .log_if_err();
 
             if WindowsApi::is_window_minimized(self.tracking_window) {
                 WindowsApi::post_message_w(
@@ -452,7 +445,7 @@ impl Border {
             config_radius.to_radius(self.border_width, self.current_dpi, self.tracking_window);
         self.border_offset = config_offset;
 
-        self.animations = Animations::try_from(animations_config.clone())?;
+        self.animation_manager = AnimationManager::try_from(animations_config.clone())?;
 
         let available_windows = WindowsApi::collect_window_handles().unwrap_or_default();
 
@@ -588,7 +581,7 @@ impl Border {
                 self.update_brush_opacities();
                 self.refresh_fade_progress();
             } else {
-                self.animations.flags.should_fade = true;
+                self.animation_manager.flags.should_fade = true;
             }
         } else {
             self.update_brush_opacities();
@@ -598,7 +591,7 @@ impl Border {
     }
 
     fn refresh_fade_progress(&mut self) {
-        self.animations.progress.fade = if self.is_window_active { 1.0 } else { 0.0 };
+        self.animation_manager.progress.fade = if self.is_window_active { 1.0 } else { 0.0 };
     }
 
     fn update_brush_opacities(&mut self) {
@@ -631,11 +624,11 @@ impl Border {
             radius_config.to_radius(self.border_width, self.current_dpi, self.tracking_window);
     }
 
-    fn current_animations(&self) -> &AnimationsVec {
+    fn current_animations(&self) -> &AnimationEngineVec {
         if self.is_window_active {
-            &self.animations.active
+            self.animation_manager.get_active_animation()
         } else {
-            &self.animations.inactive
+            self.animation_manager.get_inactive_animation()
         }
     }
 
@@ -744,7 +737,9 @@ impl Border {
 
     fn exit_border_thread(&mut self) {
         self.pause = true;
-        KillCustomTimer(self).log_if_err();
+        self.animation_manager
+            .kill_timer(self.border_window)
+            .log_if_err();
         let mut borders_hashmap = window_borders();
         borders_hashmap.remove(&(self.tracking_window));
 
@@ -839,21 +834,18 @@ impl Border {
                     self.render().log_if_err();
                 }
 
-                SetCustomTimer(
-                    self,
-                    Some(|border: &Border| {
-                        !border.animations.active.is_empty()
-                            || !border.animations.inactive.is_empty()
-                    }),
-                )
-                .log_if_err();
+                self.animation_manager
+                    .set_timer(self.border_window)
+                    .log_if_err();
 
                 self.pause = false;
             }
             // EVENT_OBJECT_HIDE / EVENT_OBJECT_CLOAKED
             WM_APP_HIDECLOAKED => {
                 self.update_position(Some(SWP_HIDEWINDOW)).log_if_err();
-                KillCustomTimer(self).log_if_err();
+                self.animation_manager
+                    .kill_timer(self.border_window)
+                    .log_if_err();
                 self.pause = true;
             }
             // EVENT_OBJECT_MINIMIZESTART
@@ -863,7 +855,10 @@ impl Border {
                 self.active_color.set_opacity(0.0);
                 self.inactive_color.set_opacity(0.0);
 
-                KillCustomTimer(self).log_if_err();
+                self.animation_manager
+                    .kill_timer(self.border_window)
+                    .log_if_err();
+
                 self.pause = true;
             }
             // EVENT_SYSTEM_MINIMIZEEND
@@ -872,7 +867,7 @@ impl Border {
             WM_APP_MINIMIZEEND => {
                 thread::sleep(time::Duration::from_millis(self.unminimize_delay));
 
-                self.last_animation_time = Some(time::Instant::now());
+                self.animation_manager.set_last_animation_time(None);
 
                 if WindowsApi::has_native_border(self.tracking_window) {
                     self.update_color(Some(self.unminimize_delay)).log_if_err();
@@ -881,14 +876,9 @@ impl Border {
                     self.render().log_if_err();
                 }
 
-                SetCustomTimer(
-                    self,
-                    Some(|border: &Border| {
-                        !border.animations.active.is_empty()
-                            || !border.animations.inactive.is_empty()
-                    }),
-                )
-                .log_if_err();
+                self.animation_manager
+                    .set_timer(self.border_window)
+                    .log_if_err();
 
                 self.pause = false;
             }
@@ -897,16 +887,13 @@ impl Border {
                     return LRESULT(0);
                 }
 
-                let animation_elapsed = self
-                    .last_animation_time
-                    .unwrap_or(time::Instant::now())
-                    .elapsed();
+                let animation_elapsed = self.animation_manager.last_animation_time().elapsed();
                 let render_elapsed = self
                     .last_render_time
                     .unwrap_or(time::Instant::now())
                     .elapsed();
 
-                self.last_animation_time = Some(time::Instant::now());
+                self.animation_manager.set_last_animation_time(None);
 
                 let mut animations_updated = false;
 
@@ -924,7 +911,7 @@ impl Border {
                                 animations_updated = true;
                             }
                             AnimationKind::Fade => {
-                                if self.animations.flags.should_fade {
+                                if self.animation_manager.flags.should_fade {
                                     animation.play(self, &animation_elapsed);
                                     animations_updated = true;
                                 }
@@ -935,7 +922,7 @@ impl Border {
 
                 // println!("time since last anim: {}", render_elapsed.as_secs_f32());
 
-                let interval = 1.0 / self.animations.fps as f32;
+                let interval = 1.0 / self.animation_manager.fps();
                 let diff = render_elapsed.as_secs_f32() - interval;
                 if animations_updated && (diff.abs() <= 0.001 || diff >= 0.0) {
                     self.render().log_if_err();

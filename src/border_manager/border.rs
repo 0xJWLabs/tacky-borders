@@ -361,6 +361,17 @@ impl Border {
             )
             .log_if_err();
 
+            if WindowsApi::is_window_minimized(self.tracking_window) {
+                WindowsApi::post_message_w(
+                    HWND(as_ptr!(self.border_window)),
+                    WM_APP_MINIMIZESTART,
+                    WPARAM(0),
+                    LPARAM(0),
+                )
+                .context("could not post WM_APP_MINIMIZESTART message in init()")
+                .log_if_err();
+            }
+
             debug!("border window event started");
 
             let mut message = MSG::default();
@@ -429,7 +440,10 @@ impl Border {
         self.inactive_color = config_inactive.to_color(Some(false))?;
 
         self.current_dpi = match WindowsApi::get_dpi_for_window(self.tracking_window) as f32 {
-            0.0 => return Err(anyhow!("received invalid dpi of 0 from GetDpiForWindow")),
+            0.0 => {
+                self.exit_border_thread();
+                return Err(anyhow!("received invalid dpi of 0 from GetDpiForWindow"));
+            }
             valid_dpi => valid_dpi,
         };
 
@@ -454,9 +468,6 @@ impl Border {
             .match_window
             .unminimize_delay
             .unwrap_or(global.unminimize_delay);
-
-        drop(config);
-        let _ = window_rule;
 
         Ok(())
     }

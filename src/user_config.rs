@@ -582,13 +582,17 @@ impl UserConfigWatcher {
     }
 
     pub fn stop(&mut self) -> AnyResult<()> {
-        debug!("stopping configuration watcher...");
-        self.running.store(false, Ordering::SeqCst);
-        let mut thread_guard = self.thread.lock().unwrap();
-        if let Some(handle) = thread_guard.take() {
-            handle
-                .join()
-                .map_err(|e| anyhow::anyhow!("thread join failed: {:?}", e))??;
+        if !self.running.load(Ordering::SeqCst) {
+            debug!("config watcher is not running; skipping cleanup");
+        } else {
+            debug!("stopping configuration watcher...");
+            self.running.store(false, Ordering::SeqCst);
+            let mut thread_guard = self.thread.lock().unwrap();
+            if let Some(handle) = thread_guard.take() {
+                handle
+                    .join()
+                    .map_err(|e| anyhow::anyhow!("thread join failed: {:?}", e))??;
+            }
         }
         Ok(())
     }

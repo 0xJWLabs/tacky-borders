@@ -47,7 +47,7 @@ mod windows_api;
 mod windows_callback;
 
 fn main() -> AnyResult<()> {
-    let res = start_app();
+    let res = start_application();
 
     if let Err(err) = &res {
         error!("{err:?}");
@@ -59,7 +59,7 @@ fn main() -> AnyResult<()> {
     res
 }
 
-fn start_app() -> AnyResult<()> {
+fn start_application() -> AnyResult<()> {
     if let Err(e) = &initialize_logger() {
         error!("logger initialization failed: {e}");
     };

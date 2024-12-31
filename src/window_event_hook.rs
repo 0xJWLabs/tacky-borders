@@ -152,18 +152,11 @@ impl WindowEventHook {
                 }
             }
             EVENT_SYSTEM_FOREGROUND => {
-                let target_handle = as_int!(handle.0);
+                let potential_active_hwnd = WindowsApi::get_foreground_window();
 
-                let new_active_window = match WindowsApi::is_window_visible(target_handle) {
-                    true => target_handle,
-                    false => {
-                        let foreground_window = WindowsApi::get_foreground_window();
-
-                        match !foreground_window.is_invalid() {
-                            true => as_int!(foreground_window.0),
-                            false => target_handle,
-                        }
-                    }
+                let new_active_window = match !potential_active_hwnd.is_invalid() {
+                    true => as_int!(potential_active_hwnd.0),
+                    false => as_int!(handle.0),
                 };
 
                 set_active_window(new_active_window);

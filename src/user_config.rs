@@ -3,6 +3,7 @@ use crate::border_manager::reload_borders;
 use crate::core::dimension::deserialize_dimension;
 use crate::core::dimension::deserialize_optional_dimension;
 use crate::core::keybindings::Keybindings;
+use crate::core::thread::ThreadHandle;
 use crate::create_keybindings;
 use crate::error::LogIfErr;
 use crate::keyboard_hook::KEYBOARD_HOOK;
@@ -497,9 +498,9 @@ impl UserConfig {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct UserConfigWatcher {
-    thread: Arc<Mutex<Option<std::thread::JoinHandle<AnyResult<()>>>>>,
+    thread: ThreadHandle<AnyResult<()>>,
     config_path: PathBuf,
     running: Arc<AtomicBool>,
     timeout: Duration,
@@ -511,7 +512,7 @@ impl UserConfigWatcher {
         let running = AtomicBool::new(false);
 
         Self {
-            thread: Arc::new(Mutex::new(None)),
+            thread: ThreadHandle::new(None),
             config_path,
             running: Arc::new(running),
             timeout,
@@ -519,38 +520,45 @@ impl UserConfigWatcher {
         }
     }
 
-    pub fn start(&mut self) -> AnyResult<()> {
-        debug!("configuration watcher has started.");
+    fn handle_events(result: Result<Vec<DebouncedEvent>, Vec<NotifyError>>) {
+        if let Ok(events) = result {
+            for event in events {
+                if event.kind.is_modify() {
+                    let new_config = UserConfig::new().unwrap_or_default();
+                    if new_config != *CONFIG.read().unwrap() {
+                        debug!("configuration file modified. Restarting...");
+                        UserConfig::reload();
+                        break;
+                    }
+                }
+            }
+        } else {
+            error!("failed to handle events: {:?}", result.err());
+        }
+    }
 
-        if self.running.load(Ordering::SeqCst) {
+    pub fn start(&mut self) -> AnyResult<()> {
+        if !self.config_path.exists() {
+            return Err(anyhow!(
+                "configuration file does not exist: {}",
+                self.config_path.display()
+            ));
+        }
+
+        if self.running.swap(true, Ordering::SeqCst) {
             return Err(anyhow!("config watcher is already running"));
         }
 
-        self.running.store(true, Ordering::SeqCst);
+        debug!("configuration watcher has started.");
+
         let running = Arc::clone(&self.running);
         let config_path = self.config_path.clone();
         let timeout = self.timeout;
         let debounce = self.debounce;
+
         let handle = std::thread::spawn({
             move || -> AnyResult<()> {
-                let mut debouncer = new_debouncer(
-                    timeout,
-                    None,
-                    move |result: Result<Vec<DebouncedEvent>, Vec<NotifyError>>| {
-                        if let Ok(events) = result {
-                            for event in events {
-                                if event.kind.is_modify() {
-                                    let new_config = UserConfig::new().unwrap_or_default();
-                                    if new_config != *CONFIG.read().unwrap() {
-                                        debug!("configuration file modified. Restarting...");
-                                        UserConfig::reload();
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    },
-                )?;
+                let mut debouncer = new_debouncer(timeout, None, Self::handle_events)?;
 
                 debug!(
                     "watching configuration file: {}",
@@ -576,7 +584,7 @@ impl UserConfigWatcher {
             }
         });
 
-        self.thread = Arc::new(Mutex::new(Some(handle)));
+        self.thread.cast(handle);
 
         Ok(())
     }
@@ -587,12 +595,7 @@ impl UserConfigWatcher {
         } else {
             debug!("stopping configuration watcher...");
             self.running.store(false, Ordering::SeqCst);
-            let mut thread_guard = self.thread.lock().unwrap();
-            if let Some(handle) = thread_guard.take() {
-                handle
-                    .join()
-                    .map_err(|e| anyhow::anyhow!("thread join failed: {:?}", e))??;
-            }
+            self.thread.join()??;
         }
         Ok(())
     }

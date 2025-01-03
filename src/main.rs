@@ -6,28 +6,29 @@
 )]
 #[macro_use]
 extern crate log;
-extern crate sp_log;
+extern crate sp_log2;
+
+use core::app_state::APP_STATE;
+use core::keybindings::create_keybindings;
 
 use anyhow::anyhow;
 use anyhow::Result as AnyResult;
 use border_manager::register_border_class;
 use border_manager::Border;
 use error::LogIfErr;
-use keyboard_hook::KeybindingConfig;
 use keyboard_hook::KeyboardHook;
 use keyboard_hook::KEYBOARD_HOOK;
-use sp_log::format_description;
-use sp_log::ColorChoice;
-use sp_log::CombinedLogger;
-use sp_log::ConfigBuilder;
-use sp_log::FileLogger;
-use sp_log::LevelFilter;
-use sp_log::TermLogger;
-use sp_log::TerminalMode;
+use sp_log2::format_description;
+use sp_log2::ColorChoice;
+use sp_log2::CombinedLogger;
+use sp_log2::ConfigBuilder;
+use sp_log2::FileLogger;
+use sp_log2::Format;
+use sp_log2::LevelFilter;
+use sp_log2::TermLogger;
+use sp_log2::TerminalMode;
 use sys_tray::SystemTray;
-use sys_tray::SystemTrayEvent;
 use user_config::UserConfig;
-use user_config::CONFIG;
 use window_event_hook::WindowEventHook;
 use window_event_hook::WIN_EVENT_HOOK;
 use windows::Win32::Foundation::GetLastError;
@@ -117,7 +118,9 @@ fn exit_application() {
         hook.stop().log_if_err();
     }
 
-    UserConfig::stop_config_watcher().log_if_err();
+    (*APP_STATE.config_watcher.write().unwrap())
+        .stop()
+        .log_if_err();
 
     WindowsApi::post_quit_message(0);
 }
@@ -132,6 +135,14 @@ fn initialize_logger() -> AnyResult<()> {
 
     let mut config_builder = ConfigBuilder::new();
 
+    config_builder.set_format(
+        Format::LevelFlag | Format::Time | Format::Thread | Format::Target | Format::FileLocation,
+    );
+
+    config_builder.set_formatter(Some(
+        "{time:#89dceb} {level} ({thread}) {target:rgb(137, 180, 250)}: {message} [{file:#6c7086}]\n",
+    ));
+
     config_builder.set_time_format_custom(format_description!(
         "[day]/[month]/[year] [hour]:[minute]:[second],[subsecond digits:3]"
     ));
@@ -143,12 +154,6 @@ fn initialize_logger() -> AnyResult<()> {
     let config = config_builder.build();
 
     CombinedLogger::init(vec![
-        TermLogger::new(
-            LevelFilter::Warn,
-            config.clone(),
-            TerminalMode::Mixed,
-            ColorChoice::Auto,
-        ),
         TermLogger::new(
             LevelFilter::Debug,
             config.clone(),
@@ -164,32 +169,4 @@ fn initialize_logger() -> AnyResult<()> {
     ])?;
 
     Ok(())
-}
-
-fn create_keybindings() -> AnyResult<Vec<KeybindingConfig>> {
-    let config_type_lock = CONFIG
-        .read()
-        .map_err(|e| anyhow!("failed to acquire read lock for CONFIG_TYPE: {}", e))?;
-
-    let bindings = vec![
-        KeybindingConfig::new(
-            SystemTrayEvent::OpenConfig.into(),
-            config_type_lock.keybindings.open_config.clone().as_str(),
-            Some(SystemTrayEvent::OpenConfig),
-        ),
-        KeybindingConfig::new(
-            SystemTrayEvent::ReloadConfig.into(),
-            config_type_lock.keybindings.reload.clone().as_str(),
-            Some(SystemTrayEvent::ReloadConfig),
-        ),
-        KeybindingConfig::new(
-            SystemTrayEvent::Exit.into(),
-            config_type_lock.keybindings.exit.clone().as_str(),
-            Some(SystemTrayEvent::Exit),
-        ),
-    ];
-
-    debug!("keybindings created: {bindings:#?}");
-
-    Ok(bindings)
 }

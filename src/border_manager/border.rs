@@ -2,12 +2,11 @@ use crate::animation::manager::AnimationManager;
 use crate::animation::wrapper::AnimationEngineVec;
 use crate::as_ptr;
 use crate::core::animation::AnimationKind;
+use crate::core::app_state::APP_STATE;
 use crate::core::rect::Rect;
 use crate::error::LogIfErr;
 use crate::user_config::BorderStyle;
-use crate::user_config::UserConfig;
 use crate::user_config::WindowRuleConfig;
-use crate::user_config::CONFIG;
 use crate::windows_api::ToWideString;
 use crate::windows_api::WindowsApi;
 use crate::windows_api::WM_APP_FOREGROUND;
@@ -21,7 +20,6 @@ use crate::windows_api::WM_APP_TIMER;
 use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result as AnyResult;
-use std::sync::LazyLock;
 use std::thread;
 use std::time;
 use std::time::Instant;
@@ -46,13 +44,10 @@ use windows::Win32::Graphics::Direct2D::Common::D2D1_ALPHA_MODE_PREMULTIPLIED;
 use windows::Win32::Graphics::Direct2D::Common::D2D1_PIXEL_FORMAT;
 use windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F;
 use windows::Win32::Graphics::Direct2D::Common::D2D_SIZE_U;
-use windows::Win32::Graphics::Direct2D::D2D1CreateFactory;
 use windows::Win32::Graphics::Direct2D::ID2D1Brush;
-use windows::Win32::Graphics::Direct2D::ID2D1Factory8;
 use windows::Win32::Graphics::Direct2D::ID2D1HwndRenderTarget;
 use windows::Win32::Graphics::Direct2D::D2D1_ANTIALIAS_MODE_PER_PRIMITIVE;
 use windows::Win32::Graphics::Direct2D::D2D1_BRUSH_PROPERTIES;
-use windows::Win32::Graphics::Direct2D::D2D1_FACTORY_TYPE_MULTI_THREADED;
 use windows::Win32::Graphics::Direct2D::D2D1_HWND_RENDER_TARGET_PROPERTIES;
 use windows::Win32::Graphics::Direct2D::D2D1_PRESENT_OPTIONS_IMMEDIATELY;
 use windows::Win32::Graphics::Direct2D::D2D1_PRESENT_OPTIONS_RETAIN_CONTENTS;
@@ -98,19 +93,6 @@ use windows::Win32::UI::WindowsAndMessaging::WM_WINDOWPOSCHANGING;
 use super::get_active_window;
 use super::window_border;
 use super::window_borders;
-
-static RENDER_FACTORY: LazyLock<ID2D1Factory8> = unsafe {
-    LazyLock::new(|| {
-        match D2D1CreateFactory::<ID2D1Factory8>(D2D1_FACTORY_TYPE_MULTI_THREADED, None) {
-            Ok(factory) => factory,
-            Err(err) => {
-                // Not sure how I can recover from this error so I'm just going to panic
-                error!("Critical Error: failed to create ID2D1Factory, {}", err);
-                panic!("Failed to create ID2D1Factory, {}", err);
-            }
-        }
-    })
-};
 
 impl TypeKind for Border {
     type TypeKind = CloneType;
@@ -396,7 +378,7 @@ impl Border {
     }
 
     fn load_from_config(&mut self, window_rule: &WindowRuleConfig) -> AnyResult<()> {
-        let config = UserConfig::get();
+        let config = (*APP_STATE.config.read().unwrap()).clone();
         let global = &config.global_rule;
 
         let config_width = window_rule
@@ -503,7 +485,7 @@ impl Border {
 
         // Initialize the actual border color assuming it is in focus
         unsafe {
-            let render_target = RENDER_FACTORY.CreateHwndRenderTarget(
+            let render_target = APP_STATE.render_factory.CreateHwndRenderTarget(
                 &render_target_properties,
                 &hwnd_render_target_properties,
             )?;
@@ -611,7 +593,7 @@ impl Border {
 
     fn update_width_radius(&mut self) {
         let window_rule = WindowsApi::get_window_rule(self.tracking_window);
-        let config = CONFIG.read().unwrap();
+        let config = (*APP_STATE.config.read().unwrap()).clone();
         let global = &config.global_rule;
 
         let width_config = window_rule

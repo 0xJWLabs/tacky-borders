@@ -1,5 +1,6 @@
 use crate::animation::AnimationsConfig;
 use crate::border_manager::reload_borders;
+use crate::core::app_state::APP_STATE;
 use crate::core::dimension::deserialize_dimension;
 use crate::core::dimension::deserialize_optional_dimension;
 use crate::core::keybindings::Keybindings;
@@ -29,9 +30,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::LazyLock;
-use std::sync::Mutex;
 use std::sync::RwLock;
-use std::sync::RwLockReadGuard;
 use std::time::Duration;
 use std::time::Instant;
 use win_color::GlobalColor;
@@ -40,30 +39,11 @@ use windows::Win32::Graphics::Dwm::DWMWCP_DONOTROUND;
 use windows::Win32::Graphics::Dwm::DWMWCP_ROUND;
 use windows::Win32::Graphics::Dwm::DWMWCP_ROUNDSMALL;
 
-/// Global configuration instance, accessible throughout the application.
-/// It uses `LazyLock` to initialize only when first accessed and wraps the config in an `RwLock` for thread-safe access.
-pub static CONFIG: LazyLock<RwLock<UserConfig>> =
-    LazyLock::new(|| RwLock::new(UserConfig::load_or_default()));
-
-/// Tracks the current configuration format (e.g., YAML, JSON).
-/// Useful for loading or saving configuration files in the correct format.
-pub static CONFIG_FORMAT: LazyLock<RwLock<ConfigFormat>> =
-    LazyLock::new(|| RwLock::new(ConfigFormat::default()));
-
-pub static CONFIG_WATCHER: LazyLock<Mutex<UserConfigWatcher>> = LazyLock::new(|| {
-    let config_dir = UserConfig::get_config_dir().unwrap_or_default();
-    let config_file = UserConfig::detect_config_file(&config_dir).unwrap_or_default();
-    Mutex::new(UserConfigWatcher::new(
-        config_file,
-        Duration::from_millis(200),
-    ))
-});
-
-// pub static CONFIG_WATCHER: LazyLock<Mutex<UserConfigWatcher>> =
-//     LazyLock::new(|| Mutex::new(UserConfigWatcher::new()));
-
 /// Default configuration content stored as a YAML string.
 const DEFAULT_CONFIG: &str = include_str!("../resources/config.yaml");
+
+pub static CONFIG_FORMAT: LazyLock<RwLock<ConfigFormat>> =
+    LazyLock::new(|| RwLock::new(ConfigFormat::default()));
 
 /// Represents the supported configuration file formats.
 #[derive(Debug, Clone, Default)]
@@ -285,76 +265,23 @@ pub struct UserConfig {
 
 /// Methods for managing the configuration, including loading, saving, and reloading.
 impl UserConfig {
-    /// Loads the configuration from a file or returns the default configuration if loading fails.
-    fn load_or_default() -> Self {
-        Self::new().unwrap_or_else(|e| {
-            error!("could not load config: {e}");
-            Self::default()
-        })
-    }
-
-    pub fn get() -> RwLockReadGuard<'static, Self> {
-        CONFIG.read().unwrap()
-    }
-
     /// Attempts to create a new configuration instance by reading from the config file.
-    pub fn new() -> AnyResult<Self> {
-        let config_dir = Self::get_config_dir()?;
-
-        let config_file = Self::detect_config_file(&config_dir)?;
-
-        // Read the contents of the chosen config file
+    pub fn create() -> AnyResult<Self> {
+        let config_dir = UserConfig::get_config_dir().unwrap_or_default();
+        let config_file = UserConfig::detect_config_file(&config_dir).unwrap_or_default();
+        let config_format = UserConfig::detect_config_format(&config_dir).unwrap_or_default();
         let contents = read_to_string(&config_file)
             .with_context(|| format!("failed to read config file: {}", config_file.display()))?;
 
+        *CONFIG_FORMAT.write().unwrap() = config_format.clone();
         let config = Self::deserialize(contents)?;
-
-        if config.monitor_config_changes {
-            Self::start_config_watcher().log_if_err();
-        } else if !config.monitor_config_changes {
-            Self::stop_config_watcher().log_if_err();
-        }
 
         Ok(config)
     }
 
-    fn start_config_watcher() -> AnyResult<()> {
-        let mut config_watcher = CONFIG_WATCHER
-            .lock()
-            .map_err(|e| anyhow!("Mutex Poisoned: {e:?}"))?;
-
-        if !config_watcher.running.load(Ordering::SeqCst) {
-            config_watcher.start().log_if_err();
-            config_watcher.running.store(true, Ordering::SeqCst)
-        }
-
-        drop(config_watcher);
-
-        Ok(())
-    }
-
-    pub fn stop_config_watcher() -> AnyResult<()> {
-        let mut config_watcher = CONFIG_WATCHER
-            .lock()
-            .map_err(|e| anyhow!("Mutex Poisoned: {e:?}"))?;
-
-        if config_watcher.running.load(Ordering::SeqCst) {
-            config_watcher.stop().log_if_err();
-            config_watcher.running.store(false, Ordering::SeqCst)
-        }
-
-        drop(config_watcher);
-
-        Ok(())
-    }
-
     /// Deserializes configuration content into a `Config` instance based on the file format.
     fn deserialize(contents: String) -> AnyResult<Self> {
-        let config_format = CONFIG_FORMAT
-            .read()
-            .map_err(|e| anyhow!("failed to acquire read lock for CONFIG_FORMAT: {}", e))?;
-
-        match *config_format {
+        match *CONFIG_FORMAT.read().unwrap() {
             ConfigFormat::Yaml => {
                 serde_yml::from_str(&contents).with_context(|| "failed to deserialize YAML")
             }
@@ -367,20 +294,11 @@ impl UserConfig {
 
     /// Detects the configuration file in the given directory or creates a default config file if none exists.
     pub fn detect_config_file(config_dir: &Path) -> AnyResult<PathBuf> {
-        let candidates = [
-            ("yaml", ConfigFormat::Yaml),
-            ("json", ConfigFormat::Json),
-            ("jsonc", ConfigFormat::Jsonc),
-        ];
+        let candidates = ["yaml", "json", "jsonc"];
 
-        let mut config_type_lock = CONFIG_FORMAT
-            .write()
-            .map_err(|e| anyhow!("failed to acquire write lock for CONFIG_FORMAT: {}", e))?;
-
-        for (ext, config_type) in candidates {
+        for ext in candidates {
             let file_path = config_dir.join("config").with_extension(ext);
             if exists(file_path.clone())? {
-                *config_type_lock = config_type;
                 return Ok(file_path);
             }
         }
@@ -394,12 +312,25 @@ impl UserConfig {
         let path = config_dir.join("config.yaml");
         write(path.clone(), DEFAULT_CONFIG.as_bytes())
             .with_context(|| format!("failed to write default config to {}", path.display()))?;
-        let mut config_type_lock = CONFIG_FORMAT
-            .write()
-            .map_err(|e| anyhow!("failed to acquire write lock for CONFIG_FORMAT: {}", e))?;
 
-        *config_type_lock = ConfigFormat::Yaml;
         Ok(path.clone())
+    }
+
+    pub fn detect_config_format(config_dir: &Path) -> AnyResult<ConfigFormat> {
+        let candidates = [
+            ("yaml", ConfigFormat::Yaml),
+            ("json", ConfigFormat::Json),
+            ("jsonc", ConfigFormat::Jsonc),
+        ];
+
+        for (ext, config_type) in candidates {
+            let file_path = config_dir.join("config").with_extension(ext);
+            if exists(file_path.clone())? {
+                return Ok(config_type);
+            }
+        }
+
+        Ok(ConfigFormat::Yaml)
     }
 
     /// Retrieves the configuration directory, creating it if necessary.
@@ -431,23 +362,24 @@ impl UserConfig {
     /// This method replaces the current configuration with a newly loaded one.
     /// If loading fails, it falls back to the default configuration and logs an error.
     pub fn update() {
-        let new_config = match Self::new() {
-            Ok(config) => config,
+        let new_config = match Self::create() {
+            Ok(config) => {
+                let mut config_watcher = APP_STATE.config_watcher.write().unwrap();
+
+                if config.monitor_config_changes && !config_watcher.is_running() {
+                    config_watcher.start().log_if_err();
+                } else if !config.monitor_config_changes && config_watcher.is_running() {
+                    config_watcher.stop().log_if_err();
+                }
+                config
+            }
             Err(e) => {
                 error!("could not reload config: {e}");
-                UserConfig::default() // Consider whether this default state is acceptable
+                UserConfig::default()
             }
         };
 
-        match CONFIG.write() {
-            Ok(mut config_lock) => {
-                *config_lock = new_config;
-            }
-            Err(e) => {
-                error!("RwLock poisoned: {e:#}");
-                // Optionally, handle the failure here
-            }
-        }
+        *APP_STATE.config.write().unwrap() = new_config;
     }
 
     /// Reloads the application configuration and restarts the borders.
@@ -460,16 +392,22 @@ impl UserConfig {
     /// - The configuration is reloaded from the file and written to the shared configuration store.
     /// - The borders are reloaded, which may involve reinitializing UI components.
     /// - If a keyboard hook is available, the keybindings are refreshed and applied.
-    pub fn reload() {
+    pub fn reload() -> bool {
         debug!("reloading application configuration and restarting borders.");
+        let old_config = (*APP_STATE.config.read().unwrap()).clone();
         Self::update();
-        reload_borders();
+        let new_config = APP_STATE.config.read().unwrap();
 
-        if let Some(hook) = KEYBOARD_HOOK.get() {
-            if let Ok(bindings) = create_keybindings() {
-                hook.update(&bindings);
+        if old_config != *new_config {
+            reload_borders();
+            if let Some(hook) = KEYBOARD_HOOK.get() {
+                if let Ok(bindings) = create_keybindings() {
+                    hook.update(&bindings);
+                }
             }
+            return true;
         }
+        false
     }
 
     /// Opens the configuration file in the default editor.
@@ -524,10 +462,8 @@ impl UserConfigWatcher {
         if let Ok(events) = result {
             for event in events {
                 if event.kind.is_modify() {
-                    let new_config = UserConfig::new().unwrap_or_default();
-                    if new_config != *CONFIG.read().unwrap() {
-                        debug!("configuration file modified. Restarting...");
-                        UserConfig::reload();
+                    let is_reloaded = UserConfig::reload();
+                    if is_reloaded {
                         break;
                     }
                 }
@@ -598,6 +534,10 @@ impl UserConfigWatcher {
             self.thread.join()??;
         }
         Ok(())
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.running.load(Ordering::SeqCst)
     }
 }
 

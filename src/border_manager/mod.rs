@@ -1,13 +1,12 @@
 mod border;
 
+use crate::core::app_state::APP_STATE;
 use crate::error::LogIfErr;
 use crate::windows_api::WindowsApi;
 use anyhow::Context;
 use anyhow::Result as AnyResult;
 pub use border::Border;
 use rustc_hash::FxHashMap;
-use std::sync::LazyLock;
-use std::sync::Mutex;
 use std::sync::MutexGuard;
 use windows::core::w;
 use windows::Win32::Foundation::GetLastError;
@@ -16,14 +15,8 @@ use windows::Win32::UI::WindowsAndMessaging::RegisterClassW;
 use windows::Win32::UI::WindowsAndMessaging::IDC_ARROW;
 use windows::Win32::UI::WindowsAndMessaging::WNDCLASSW;
 
-static WINDOW_BORDERS: LazyLock<Mutex<FxHashMap<isize, Border>>> =
-    LazyLock::new(|| Mutex::new(FxHashMap::default()));
-
-static ACTIVE_WINDOW: LazyLock<Mutex<isize>> =
-    LazyLock::new(|| Mutex::new(WindowsApi::get_foreground_window().0 as isize));
-
 pub fn window_borders() -> MutexGuard<'static, FxHashMap<isize, Border>> {
-    WINDOW_BORDERS.lock().unwrap()
+    APP_STATE.borders.lock().unwrap()
 }
 
 pub fn window_border(hwnd: isize) -> Option<Border> {
@@ -31,11 +24,11 @@ pub fn window_border(hwnd: isize) -> Option<Border> {
 }
 
 pub fn get_active_window() -> MutexGuard<'static, isize> {
-    ACTIVE_WINDOW.lock().unwrap()
+    APP_STATE.active_window.lock().unwrap()
 }
 
 pub fn set_active_window(handle: isize) {
-    *ACTIVE_WINDOW.lock().unwrap() = handle;
+    *APP_STATE.active_window.lock().unwrap() = handle;
 }
 
 pub fn register_border_class() -> AnyResult<()> {

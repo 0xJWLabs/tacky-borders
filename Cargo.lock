@@ -419,10 +419,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "38b58827f4464d87d377d175e90bf58eb00fd8716ff0a62f80356b5e61555d0d"
 
 [[package]]
-name = "sp_log"
-version = "0.2.1"
+name = "sp_log2"
+version = "0.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13c76184bea34353eb7732874aebfa65b23a6053ab342dc0a53abcb842f85be8"
+checksum = "0df986bc474fa35565ef462f928d446415c26f9b33c2901f65e14a181065610b"
 dependencies = [
  "log",
  "termcolor",
@@ -455,7 +455,7 @@ dependencies = [
  "serde_jsonc2",
  "serde_yml",
  "simple-bezier-easing",
- "sp_log",
+ "sp_log2",
  "time",
  "tray-icon-win",
  "win-color",

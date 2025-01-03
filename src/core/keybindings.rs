@@ -1,5 +1,9 @@
 use serde::Deserialize;
 
+use crate::{
+    core::app_state::APP_STATE, keyboard_hook::KeybindingConfig, sys_tray::SystemTrayEvent,
+};
+
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct Keybindings {
@@ -31,4 +35,30 @@ impl Default for Keybindings {
             exit: default_exit_key(),
         }
     }
+}
+
+pub fn create_keybindings() -> anyhow::Result<Vec<KeybindingConfig>> {
+    let config = (*APP_STATE.config.read().unwrap()).clone();
+
+    let bindings = vec![
+        KeybindingConfig::new(
+            SystemTrayEvent::OpenConfig.into(),
+            config.keybindings.open_config.clone().as_str(),
+            Some(SystemTrayEvent::OpenConfig),
+        ),
+        KeybindingConfig::new(
+            SystemTrayEvent::ReloadConfig.into(),
+            config.keybindings.reload.clone().as_str(),
+            Some(SystemTrayEvent::ReloadConfig),
+        ),
+        KeybindingConfig::new(
+            SystemTrayEvent::Exit.into(),
+            config.keybindings.exit.clone().as_str(),
+            Some(SystemTrayEvent::Exit),
+        ),
+    ];
+
+    debug!("keybindings created: {bindings:#?}");
+
+    Ok(bindings)
 }

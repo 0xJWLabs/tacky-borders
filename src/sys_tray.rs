@@ -25,7 +25,9 @@ impl SystemTrayEvent {
         match self {
             SystemTrayEvent::OpenConfig => UserConfig::open(),
             SystemTrayEvent::Exit => exit_application(),
-            SystemTrayEvent::ReloadConfig => UserConfig::reload(),
+            SystemTrayEvent::ReloadConfig => {
+                let _ = UserConfig::reload();
+            }
         }
     }
 

@@ -4,6 +4,7 @@ use crate::border_manager::set_active_window;
 use crate::border_manager::window_border;
 use crate::border_manager::window_borders;
 use crate::border_manager::Border;
+use crate::core::app_state::APP_STATE;
 use crate::error::LogIfErr;
 use crate::windows_api::WindowsApi;
 use crate::windows_api::WM_APP_FOREGROUND;
@@ -154,35 +155,10 @@ impl WindowEventHook {
             EVENT_SYSTEM_FOREGROUND => {
                 let potential_active_hwnd = WindowsApi::get_foreground_window();
 
-                let new_active_window = match !potential_active_hwnd.is_invalid() {
-                    true => as_int!(potential_active_hwnd.0),
-                    false => as_int!(handle.0),
-                };
-
-                set_active_window(new_active_window);
-
-                let visible_windows: Vec<HWND> = window_borders()
-                    .iter()
-                    .filter_map(|(&key, hwnd)| {
-                        let border_window = hwnd.border_window;
-                        if WindowsApi::is_window_visible(border_window) || key == as_int!(handle.0)
-                        {
-                            Some(HWND(as_ptr!(border_window)))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-
-                for border_window in visible_windows {
-                    WindowsApi::post_message_w(
-                        border_window,
-                        WM_APP_FOREGROUND,
-                        WPARAM(0),
-                        LPARAM(0),
-                    )
-                    .with_context(|| "EVENT_OBJECT_FOCUS")
-                    .log_if_err();
+                if potential_active_hwnd != handle && !APP_STATE.is_polling_active_window() {
+                    poll_active_window_with_limit(3);
+                } else {
+                    handle_foreground_event(potential_active_hwnd, handle);
                 }
             }
             EVENT_OBJECT_SHOW | EVENT_OBJECT_UNCLOAKED => {
@@ -253,5 +229,51 @@ extern "system" fn window_event_hook_proc(
 
     if let Some(hook) = WIN_EVENT_HOOK.get() {
         hook.handle_event(event_type, handle, id_child);
+    }
+}
+
+fn poll_active_window_with_limit(max_polls: u32) {
+    APP_STATE.set_polling_active_window(true);
+
+    let _ = std::thread::spawn(move || {
+        for _ in 0..max_polls {
+            let current_active_hwnd = HWND(*APP_STATE.active_window.lock().unwrap() as _);
+            let new_active_hwnd = WindowsApi::get_foreground_window();
+
+            if new_active_hwnd != current_active_hwnd && !new_active_hwnd.is_invalid() {
+                handle_foreground_event(new_active_hwnd, current_active_hwnd);
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+
+        APP_STATE.set_polling_active_window(false);
+    });
+}
+
+fn handle_foreground_event(potential_active_hwnd: HWND, event_hwnd: HWND) {
+    let new_active_window = match !potential_active_hwnd.is_invalid() {
+        true => as_int!(potential_active_hwnd.0),
+        false => as_int!(event_hwnd.0),
+    };
+
+    set_active_window(new_active_window);
+
+    let visible_windows: Vec<HWND> = window_borders()
+        .iter()
+        .filter_map(|(&key, hwnd)| {
+            let border_window = hwnd.border_window;
+            if WindowsApi::is_window_visible(border_window) || key == new_active_window {
+                Some(HWND(as_ptr!(border_window)))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    for border_window in visible_windows {
+        WindowsApi::post_message_w(border_window, WM_APP_FOREGROUND, WPARAM(0), LPARAM(0))
+            .with_context(|| "EVENT_OBJECT_FOCUS")
+            .log_if_err();
     }
 }

@@ -1,5 +1,6 @@
 #![allow(dead_code)]
-use crate::user_config::{ConfigFormat, CONFIG_FORMAT};
+use crate::user_config::ConfigFormat;
+use crate::user_config::CONFIG_FORMAT;
 use serde_jsonc2::Number as JsonNumber;
 use serde_jsonc2::Value as JsonValue;
 use serde_yml::Number as YamlNumber;

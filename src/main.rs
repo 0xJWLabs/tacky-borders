@@ -140,7 +140,7 @@ fn initialize_logger() -> AnyResult<()> {
     );
 
     config_builder.set_formatter(Some(
-        "{time:#89dceb} {level} ({thread}) {target:rgb(137, 180, 250)}: {message} [{file:#6c7086}]\n",
+        "{time:#89dceb} {level} ({thread}) {target:rgb(137, 180, 250):bold}: {message} [{file:#6c7086}]\n",
     ));
 
     config_builder.set_time_format_custom(format_description!(

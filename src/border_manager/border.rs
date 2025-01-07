@@ -414,8 +414,8 @@ impl Border {
             .as_ref()
             .unwrap_or(&global.border_style);
 
-        self.active_color = config_active.to_color(Some(true))?;
-        self.inactive_color = config_inactive.to_color(Some(false))?;
+        self.active_color = config_active.to_color()?;
+        self.inactive_color = config_inactive.to_color()?;
 
         self.current_dpi = match WindowsApi::get_dpi_for_window(self.tracking_window) as f32 {
             0.0 => {

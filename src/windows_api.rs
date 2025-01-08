@@ -70,6 +70,7 @@ use windows::Win32::UI::WindowsAndMessaging::DispatchMessageW;
 use windows::Win32::UI::WindowsAndMessaging::EnumWindows;
 use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
 use windows::Win32::UI::WindowsAndMessaging::GetMessageW;
+use windows::Win32::UI::WindowsAndMessaging::GetWindow;
 use windows::Win32::UI::WindowsAndMessaging::GetWindowLongW;
 use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
 use windows::Win32::UI::WindowsAndMessaging::GetWindowTextW;
@@ -82,16 +83,24 @@ use windows::Win32::UI::WindowsAndMessaging::PostThreadMessageW;
 use windows::Win32::UI::WindowsAndMessaging::RealGetWindowClassW;
 use windows::Win32::UI::WindowsAndMessaging::SendNotifyMessageW;
 use windows::Win32::UI::WindowsAndMessaging::SetLayeredWindowAttributes;
+use windows::Win32::UI::WindowsAndMessaging::SetWindowPos;
 use windows::Win32::UI::WindowsAndMessaging::TranslateMessage;
 use windows::Win32::UI::WindowsAndMessaging::CW_USEDEFAULT;
 use windows::Win32::UI::WindowsAndMessaging::GWL_EXSTYLE;
 use windows::Win32::UI::WindowsAndMessaging::GWL_STYLE;
+use windows::Win32::UI::WindowsAndMessaging::GW_HWNDPREV;
 use windows::Win32::UI::WindowsAndMessaging::HMENU;
+use windows::Win32::UI::WindowsAndMessaging::HWND_TOP;
 use windows::Win32::UI::WindowsAndMessaging::LAYERED_WINDOW_ATTRIBUTES_FLAGS;
 use windows::Win32::UI::WindowsAndMessaging::MB_ICONERROR;
 use windows::Win32::UI::WindowsAndMessaging::MB_OK;
 use windows::Win32::UI::WindowsAndMessaging::MB_SYSTEMMODAL;
 use windows::Win32::UI::WindowsAndMessaging::MSG;
+use windows::Win32::UI::WindowsAndMessaging::SET_WINDOW_POS_FLAGS;
+use windows::Win32::UI::WindowsAndMessaging::SWP_NOACTIVATE;
+use windows::Win32::UI::WindowsAndMessaging::SWP_NOREDRAW;
+use windows::Win32::UI::WindowsAndMessaging::SWP_NOSENDCHANGING;
+use windows::Win32::UI::WindowsAndMessaging::SWP_NOZORDER;
 use windows::Win32::UI::WindowsAndMessaging::WINDOW_EX_STYLE;
 use windows::Win32::UI::WindowsAndMessaging::WINDOW_STYLE;
 use windows::Win32::UI::WindowsAndMessaging::WM_APP;
@@ -558,6 +567,48 @@ impl WindowsApi {
         .log_if_err();
 
         corner_preference
+    }
+
+    pub fn set_border_pos(
+        hwnd: isize,
+        layout: &Rect,
+        position: isize,
+        other_flags: Option<SET_WINDOW_POS_FLAGS>,
+    ) -> WinResult<()> {
+        let hwnd_above_tracking = unsafe { GetWindow(position.as_hwnd(), GW_HWNDPREV) };
+
+        let mut flags =
+            SWP_NOSENDCHANGING | SWP_NOACTIVATE | SWP_NOREDRAW | other_flags.unwrap_or_default();
+
+        if hwnd_above_tracking == Ok(hwnd.as_hwnd()) {
+            flags |= SWP_NOZORDER;
+        }
+
+        Self::set_window_pos(
+            hwnd.as_hwnd(),
+            layout,
+            Some(hwnd_above_tracking.unwrap_or(HWND_TOP)),
+            flags,
+        )
+    }
+
+    pub fn set_window_pos(
+        hwnd: HWND,
+        layout: &Rect,
+        position: Option<HWND>,
+        flags: SET_WINDOW_POS_FLAGS,
+    ) -> WinResult<()> {
+        unsafe {
+            SetWindowPos(
+                hwnd,
+                position,
+                layout.left,
+                layout.top,
+                layout.width(),
+                layout.height(),
+                flags,
+            )
+        }
     }
 
     pub fn create_border_window(name: PCWSTR, border: &mut Border) -> WinResult<isize> {

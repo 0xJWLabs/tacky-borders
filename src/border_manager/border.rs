@@ -1,5 +1,8 @@
 use crate::animation::manager::AnimationManager;
 use crate::animation::wrapper::AnimationEngineVec;
+use crate::colors::Color;
+use crate::colors::ColorImpl;
+use crate::colors::GlobalColorImpl;
 use crate::core::animation::AnimationKind;
 use crate::core::app_state::APP_STATE;
 use crate::core::rect::Rect;
@@ -23,10 +26,6 @@ use anyhow::Result as AnyResult;
 use std::thread;
 use std::time;
 use std::time::Instant;
-use win_color::Color;
-use win_color::ColorImpl;
-use win_color::GlobalColorImpl;
-use win_color::GradientImpl;
 use windows::core::CloneType;
 use windows::core::TypeKind;
 use windows::Foundation::Numerics::Matrix3x2;
@@ -64,24 +63,16 @@ use windows::Win32::Graphics::Gdi::CreateRectRgn;
 use windows::Win32::Graphics::Gdi::ValidateRect;
 use windows::Win32::UI::WindowsAndMessaging::DefWindowProcW;
 use windows::Win32::UI::WindowsAndMessaging::GetSystemMetrics;
-use windows::Win32::UI::WindowsAndMessaging::GetWindow;
 use windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW;
 use windows::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW;
-use windows::Win32::UI::WindowsAndMessaging::SetWindowPos;
 use windows::Win32::UI::WindowsAndMessaging::CREATESTRUCTW;
 use windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA;
-use windows::Win32::UI::WindowsAndMessaging::GW_HWNDPREV;
-use windows::Win32::UI::WindowsAndMessaging::HWND_TOP;
 use windows::Win32::UI::WindowsAndMessaging::LWA_ALPHA;
 use windows::Win32::UI::WindowsAndMessaging::LWA_COLORKEY;
 use windows::Win32::UI::WindowsAndMessaging::MSG;
 use windows::Win32::UI::WindowsAndMessaging::SET_WINDOW_POS_FLAGS;
 use windows::Win32::UI::WindowsAndMessaging::SM_CXVIRTUALSCREEN;
 use windows::Win32::UI::WindowsAndMessaging::SWP_HIDEWINDOW;
-use windows::Win32::UI::WindowsAndMessaging::SWP_NOACTIVATE;
-use windows::Win32::UI::WindowsAndMessaging::SWP_NOREDRAW;
-use windows::Win32::UI::WindowsAndMessaging::SWP_NOSENDCHANGING;
-use windows::Win32::UI::WindowsAndMessaging::SWP_NOZORDER;
 use windows::Win32::UI::WindowsAndMessaging::SWP_SHOWWINDOW;
 use windows::Win32::UI::WindowsAndMessaging::WM_CREATE;
 use windows::Win32::UI::WindowsAndMessaging::WM_NCDESTROY;
@@ -526,35 +517,18 @@ impl Border {
     }
 
     fn update_position(&mut self, other_flags: Option<SET_WINDOW_POS_FLAGS>) -> AnyResult<()> {
-        unsafe {
-            // Place the window border above the tracking window
-            let hwnd_above_tracking = GetWindow(self.tracking_window(), GW_HWNDPREV);
-
-            let mut swp_flags = SWP_NOSENDCHANGING
-                | SWP_NOACTIVATE
-                | SWP_NOREDRAW
-                | other_flags.unwrap_or_default();
-
-            if hwnd_above_tracking == Ok(self.border_window()) {
-                swp_flags |= SWP_NOZORDER;
-            }
-
-            if let Err(e) = SetWindowPos(
-                self.border_window(),
-                Some(hwnd_above_tracking.unwrap_or(HWND_TOP)),
-                self.window_rect.left,
-                self.window_rect.top,
-                self.window_rect.width(),
-                self.window_rect.height(),
-                swp_flags,
-            )
-            .context(format!(
-                "could not set window position for {:?}",
-                self.tracking_window
-            )) {
-                self.exit_border_thread();
-                return Err(e);
-            }
+        if let Err(e) = WindowsApi::set_border_pos(
+            self.border_window,
+            &self.window_rect,
+            self.tracking_window,
+            other_flags,
+        )
+        .context(format!(
+            "could not set window position for {:?}",
+            self.tracking_window()
+        )) {
+            self.exit_border_thread();
+            return Err(e);
         }
         Ok(())
     }

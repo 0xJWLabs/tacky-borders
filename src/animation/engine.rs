@@ -1,5 +1,6 @@
 use super::AnimationConfig;
 use crate::border_manager::Border;
+use crate::colors::ColorImpl;
 use crate::core::animation::parse_duration_str;
 use crate::core::animation::AnimationEasing;
 use crate::core::animation::AnimationEasingImpl;
@@ -8,7 +9,6 @@ use crate::core::duration::Duration;
 use anyhow::anyhow;
 use std::str::FromStr;
 use std::time::Duration as StdDuration;
-use win_color::ColorImpl;
 use windows::Foundation::Numerics::Matrix3x2;
 
 #[derive(Clone, PartialEq, Debug)]

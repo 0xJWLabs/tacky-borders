@@ -1,10 +1,10 @@
 use crate::animation::AnimationsConfig;
 use crate::border_manager::reload_borders;
+use crate::colors::GlobalColor;
 use crate::core::app_state::APP_STATE;
 use crate::core::dimension::deserialize_dimension;
 use crate::core::dimension::deserialize_optional_dimension;
 use crate::core::keybindings::Keybindings;
-use crate::core::thread::ThreadHandle;
 use crate::create_keybindings;
 use crate::error::LogIfErr;
 use crate::keyboard_hook::KEYBOARD_HOOK;
@@ -12,10 +12,6 @@ use crate::windows_api::WindowsApi;
 use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result as AnyResult;
-use notify_win_debouncer_full::new_debouncer;
-use notify_win_debouncer_full::notify_win::Error as NotifyError;
-use notify_win_debouncer_full::notify_win::RecursiveMode;
-use notify_win_debouncer_full::DebouncedEvent;
 use serde::de;
 use serde::Deserialize;
 use serde::Deserializer;
@@ -26,14 +22,8 @@ use std::fs::write;
 use std::fs::DirBuilder;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::sync::LazyLock;
 use std::sync::RwLock;
-use std::time::Duration;
-use std::time::Instant;
-use win_color::GlobalColor;
 use windows::Win32::Graphics::Dwm::DWMWCP_DEFAULT;
 use windows::Win32::Graphics::Dwm::DWMWCP_DONOTROUND;
 use windows::Win32::Graphics::Dwm::DWMWCP_ROUND;
@@ -433,117 +423,6 @@ impl UserConfig {
             }
             Err(err) => error!("{err}"),
         }
-    }
-}
-
-#[derive(Debug)]
-pub struct UserConfigWatcher {
-    thread: ThreadHandle<AnyResult<()>>,
-    config_path: PathBuf,
-    running: Arc<AtomicBool>,
-    timeout: Duration,
-    debounce: Duration,
-}
-
-impl UserConfigWatcher {
-    pub fn new(config_path: PathBuf, timeout: Duration) -> Self {
-        let running = AtomicBool::new(false);
-
-        Self {
-            thread: ThreadHandle::new(None),
-            config_path,
-            running: Arc::new(running),
-            timeout,
-            debounce: Duration::from_millis(500),
-        }
-    }
-
-    fn handle_events(result: Result<Vec<DebouncedEvent>, Vec<NotifyError>>) {
-        if let Ok(events) = result {
-            for event in events {
-                if event.kind.is_modify() {
-                    let is_reloaded = UserConfig::reload();
-                    if is_reloaded {
-                        break;
-                    }
-                }
-            }
-        } else {
-            error!("failed to handle events: {:?}", result.err());
-        }
-    }
-
-    pub fn start(&mut self) -> AnyResult<()> {
-        if !self.config_path.exists() {
-            return Err(anyhow!(
-                "configuration file does not exist: {}",
-                self.config_path.display()
-            ));
-        }
-
-        if self.running.swap(true, Ordering::SeqCst) {
-            return Err(anyhow!("config watcher is already running"));
-        }
-
-        debug!("configuration watcher has started.");
-
-        let running = Arc::clone(&self.running);
-        let config_path = self.config_path.clone();
-        let timeout = self.timeout;
-        let debounce = self.debounce;
-
-        let handle = std::thread::spawn({
-            move || -> AnyResult<()> {
-                let mut debouncer = new_debouncer(timeout, None, Self::handle_events)?;
-
-                debug!(
-                    "watching configuration file: {}",
-                    config_path.display().to_string()
-                );
-                debouncer.watch(config_path.as_path(), RecursiveMode::Recursive)?;
-
-                let mut now = Instant::now();
-                loop {
-                    if !running.load(Ordering::SeqCst) {
-                        break;
-                    }
-
-                    if now.elapsed() < debounce {
-                        std::thread::sleep(debounce - now.elapsed());
-                    }
-                    now = Instant::now();
-                }
-
-                debug!("configuration watcher detected stop flag. Preparing to exit.");
-                debouncer.unwatch(config_path.as_path())?;
-                Ok(())
-            }
-        });
-
-        self.thread.cast(handle);
-
-        Ok(())
-    }
-
-    pub fn stop(&mut self) -> AnyResult<()> {
-        if !self.running.load(Ordering::SeqCst) {
-            debug!("config watcher is not running; skipping cleanup");
-        } else {
-            debug!("stopping configuration watcher...");
-            self.running.store(false, Ordering::SeqCst);
-            self.thread.join()??;
-        }
-        Ok(())
-    }
-
-    pub fn is_running(&self) -> bool {
-        self.running.load(Ordering::SeqCst)
-    }
-}
-
-impl Drop for UserConfigWatcher {
-    fn drop(&mut self) {
-        let _ = self.stop(); // Ensure cleanup on drop
     }
 }
 

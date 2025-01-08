@@ -1,7 +1,7 @@
 use crate::border_manager::Border;
+use crate::config_watcher::ConfigWatcher;
 use crate::error::LogIfErr;
 use crate::user_config::UserConfig;
-use crate::user_config::UserConfigWatcher;
 use crate::windows_api::WindowsApi;
 use rustc_hash::FxHashMap;
 use std::sync::atomic::AtomicBool;
@@ -20,7 +20,7 @@ pub struct AppState {
     pub borders: Mutex<FxHashMap<isize, Border>>,
     pub active_window: Mutex<isize>,
     pub config: RwLock<UserConfig>,
-    pub config_watcher: RwLock<UserConfigWatcher>,
+    pub config_watcher: RwLock<ConfigWatcher>,
     pub render_factory: ID2D1Factory8,
     pub is_polling_active_window: AtomicBool,
 }
@@ -34,7 +34,7 @@ impl AppState {
 
         let config_dir = UserConfig::get_config_dir().unwrap_or_default();
         let config_file = UserConfig::detect_config_file(&config_dir).unwrap_or_default();
-        let mut config_watcher = UserConfigWatcher::new(config_file, Duration::from_millis(200));
+        let mut config_watcher = ConfigWatcher::new(config_file, Duration::from_millis(200));
 
         let config = match UserConfig::create() {
             Ok(config) => {

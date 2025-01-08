@@ -475,6 +475,7 @@ name = "tacky-borders"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "colorparser-css",
  "log",
  "notify-win-debouncer-full",
  "regex",
@@ -485,7 +486,6 @@ dependencies = [
  "simple-bezier-easing",
  "sp_log2",
  "tray-icon-win",
- "win-color",
  "win-open",
  "windows",
  "winresource",
@@ -626,17 +626,6 @@ name = "wasm-bindgen-shared"
 version = "0.2.99"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "943aab3fdaaa029a6e0271b35ea10b72b943135afe9bffca82384098ad0e06a6"
-
-[[package]]
-name = "win-color"
-version = "0.1.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23dfbd121f870e98ae473ab6ef8c8baa980e8d1685a926aadd9c5bd9bca74042"
-dependencies = [
- "colorparser-css",
- "serde",
- "windows",
-]
 
 [[package]]
 name = "win-file-id"

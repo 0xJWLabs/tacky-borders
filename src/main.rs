@@ -37,6 +37,8 @@ use windows_api::WindowsApi;
 
 mod animation;
 mod border_manager;
+mod colors;
+mod config_watcher;
 mod core;
 mod error;
 mod keyboard_hook;

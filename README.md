@@ -2,11 +2,9 @@
 
 Bring sleek, customizable borders to your Windows desktop.
 
-Use the original [tacky-borders](https://github.com/lukeyou05/tacky-borders) please!
+Use the original [tacky-borders](https://github.com/lukeyou05/tacky-borders) please!## Installation
 
-https://github.com/user-attachments/assets/5f3185c0-25f7-425c-8160-3b05ce8dbbea
-
-## Installation
+https://github.com/user-attachments/assets/6520880d-b831-4652-b19d-34aa9b07f7cb
 
 ### Download Prebuilt Release
 1. Visit the [Releases](https://github.com/GlazeBar/tacky-borders/releases) page.
@@ -68,17 +66,20 @@ Upon running `tacky-borders`, a configuration file is auto-generated with the fo
         `direction` is defined by the start and `end` coordinates for a custom directional gradient.
 - `inactive_color`: Defines the color of the inactive window. Acceptable formats are the same as `active_color`
 - `animations`: Defines the animations for the borders.
-    - `active`: Defines the animation for active window borders. 
-        - Format: `{ animation_type: speed (optional), ... }`
-        - `animation_type`: Type of the animations (e.g., `Fade`, `Spiral`, etc.).
-        - `speed` (optional): Speed of the animation
-    - `inactive`: Defines the animation for inactive window borders. Format is the same as `animations.active`
+    - `active`: Defines the animation for active window borders.
+        - Format: `{ kind: AnimationKind, speed (optional): DurationValue, easing (optional): EasingStyle }`
+        - `AnimationKind`: Type of the animatuons (e.g., `Fade`, `Spiral`, etc.).
+        - `DurationValue`: Duration format (e.g., `1000ms`, `1000`, `1s`, etc.).
+        - `EasingStyle`: Animation easing style (e.g., `EaseInOut`, `cubic-bezier(0.42, 0.0, 0.58, 1.0)`, etc.).
+    - `inactive`: Defines the animation for 
+Uploading border.mp4…
+ window borders. Format is the same as `animations.active`
     - `fps`: The number of frames per second for the animation 
 
 Additionally, there are some optional config options that are not included in the auto-generated config file:
 
 - `initialize_delay`: Delay (in milliseconds) between when a new window opens and when the border is displayed.
-- `unminimize_delay`: Delay (in milliseconds) between when a window is restored/unminimized and when the border appears.
+- `restore_delay`: Delay (in milliseconds) between when a window is restored/unminimized and when the border appears.
 
 **Recommendation**: Set to 0 if Windows animations are disabled.
 

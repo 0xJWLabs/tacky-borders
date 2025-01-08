@@ -1,23 +1,18 @@
-use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        LazyLock, Mutex, RwLock,
-    },
-    time::Duration,
-};
-
+use crate::border_manager::Border;
+use crate::error::LogIfErr;
+use crate::user_config::UserConfig;
+use crate::user_config::UserConfigWatcher;
+use crate::windows_api::WindowsApi;
 use rustc_hash::FxHashMap;
-use windows::Win32::Graphics::Direct2D::{
-    D2D1CreateFactory, ID2D1Factory8, D2D1_FACTORY_TYPE_MULTI_THREADED,
-};
-
-use crate::{
-    as_int,
-    border_manager::Border,
-    error::LogIfErr,
-    user_config::{UserConfig, UserConfigWatcher},
-    windows_api::WindowsApi,
-};
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::LazyLock;
+use std::sync::Mutex;
+use std::sync::RwLock;
+use std::time::Duration;
+use windows::Win32::Graphics::Direct2D::D2D1CreateFactory;
+use windows::Win32::Graphics::Direct2D::ID2D1Factory8;
+use windows::Win32::Graphics::Direct2D::D2D1_FACTORY_TYPE_MULTI_THREADED;
 
 pub static APP_STATE: LazyLock<AppState> = LazyLock::new(AppState::new);
 
@@ -35,7 +30,7 @@ unsafe impl Sync for AppState {}
 
 impl AppState {
     pub fn new() -> Self {
-        let active_window = as_int!(WindowsApi::get_foreground_window().0);
+        let active_window = WindowsApi::get_foreground_window();
 
         let config_dir = UserConfig::get_config_dir().unwrap_or_default();
         let config_file = UserConfig::detect_config_file(&config_dir).unwrap_or_default();

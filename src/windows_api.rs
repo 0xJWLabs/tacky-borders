@@ -120,19 +120,36 @@ pub const WM_APP_MINIMIZESTART: u32 = WM_APP + 5;
 pub const WM_APP_MINIMIZEEND: u32 = WM_APP + 6;
 pub const WM_APP_TIMER: u32 = WM_APP + 7;
 
-#[macro_export]
-macro_rules! as_ptr {
-    ($value:expr) => {
-        $value as *mut core::ffi::c_void
+pub trait PointerConversion {
+    fn as_int(&self) -> isize;
+    fn as_ptr(&self) -> *mut c_void;
+    fn as_uint(&self) -> usize;
+    fn as_hwnd(&self) -> HWND;
+}
+
+macro_rules! impl_pointer_conversion {
+    ($($t:ty),*) => {
+        $(
+            impl PointerConversion for $t {
+                fn as_int(&self) -> isize {
+                    *self as isize
+                }
+                fn as_ptr(&self) -> *mut c_void {
+                    *self as *mut c_void
+                }
+                fn as_uint(&self) -> usize {
+                    *self as usize
+                }
+                fn as_hwnd(&self) -> HWND {
+                    HWND(self.as_ptr())
+                }
+            }
+        )*
     };
 }
 
-#[macro_export]
-macro_rules! as_int {
-    ($value:expr) => {
-        $value as isize
-    };
-}
+// Use the macro for multiple types
+impl_pointer_conversion!(isize, usize, *mut c_void);
 
 pub struct WindowsApi;
 
@@ -150,7 +167,7 @@ impl WindowsApi {
     }
 
     pub fn get_dpi_for_window(hwnd: isize) -> u32 {
-        unsafe { GetDpiForWindow(HWND(as_ptr!(hwnd))) }
+        unsafe { GetDpiForWindow(hwnd.as_hwnd()) }
     }
 
     pub fn post_message_w(
@@ -235,7 +252,7 @@ impl WindowsApi {
         alpha: u8,
         flags: LAYERED_WINDOW_ATTRIBUTES_FLAGS,
     ) -> WinResult<()> {
-        unsafe { SetLayeredWindowAttributes(HWND(as_ptr!(hwnd)), crkey, alpha, flags) }
+        unsafe { SetLayeredWindowAttributes(hwnd.as_hwnd(), crkey, alpha, flags) }
     }
 
     pub fn dwm_get_window_attribute<T>(
@@ -245,7 +262,7 @@ impl WindowsApi {
     ) -> WinResult<()> {
         unsafe {
             DwmGetWindowAttribute(
-                HWND(as_ptr!(hwnd)),
+                hwnd.as_hwnd(),
                 attribute,
                 (value as *mut T).cast(),
                 u32::try_from(std::mem::size_of::<T>())?,
@@ -254,12 +271,7 @@ impl WindowsApi {
     }
 
     pub fn destroy_window(hwnd: isize) -> AnyResult<()> {
-        match Self::post_message_w(
-            Some(HWND(as_ptr!(hwnd))),
-            WM_NCDESTROY,
-            WPARAM(0),
-            LPARAM(0),
-        ) {
+        match Self::post_message_w(Some(hwnd.as_hwnd()), WM_NCDESTROY, WPARAM(0), LPARAM(0)) {
             Ok(()) => Ok(()),
             Err(_) => Err(anyhow!("could not destroy window")),
         }
@@ -270,15 +282,15 @@ impl WindowsApi {
     }
 
     pub fn get_window_style(hwnd: isize) -> WINDOW_STYLE {
-        unsafe { WINDOW_STYLE(GetWindowLongW(HWND(as_ptr!(hwnd)), GWL_STYLE) as u32) }
+        unsafe { WINDOW_STYLE(GetWindowLongW(hwnd.as_hwnd(), GWL_STYLE) as u32) }
     }
 
     pub fn get_window_ex_style(hwnd: isize) -> WINDOW_EX_STYLE {
-        unsafe { WINDOW_EX_STYLE(GetWindowLongW(HWND(as_ptr!(hwnd)), GWL_EXSTYLE) as u32) }
+        unsafe { WINDOW_EX_STYLE(GetWindowLongW(hwnd.as_hwnd(), GWL_EXSTYLE) as u32) }
     }
 
-    pub fn get_foreground_window() -> HWND {
-        unsafe { GetForegroundWindow() }
+    pub fn get_foreground_window() -> isize {
+        unsafe { GetForegroundWindow().0.as_int() }
     }
 
     pub fn is_window_cloaked(hwnd: isize) -> bool {
@@ -300,17 +312,17 @@ impl WindowsApi {
         if Self::dwm_get_window_attribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &mut rect).is_ok() {
             Ok(Rect::from(rect))
         } else {
-            unsafe { GetWindowRect(HWND(as_ptr!(hwnd)), &mut rect) }?;
+            unsafe { GetWindowRect(hwnd.as_hwnd(), &mut rect) }?;
             Ok(Rect::from(rect))
         }
     }
 
     pub fn is_window_visible(hwnd: isize) -> bool {
-        unsafe { IsWindowVisible(HWND(as_ptr!(hwnd))) }.into()
+        unsafe { IsWindowVisible(hwnd.as_hwnd()) }.into()
     }
 
     pub fn is_window_active(hwnd: isize) -> bool {
-        Self::get_foreground_window() == HWND(as_ptr!(hwnd))
+        Self::get_foreground_window() == hwnd
     }
 
     #[allow(dead_code)]
@@ -344,11 +356,11 @@ impl WindowsApi {
     }
 
     pub fn get_window_text_w(hwnd: isize, lpstring: &mut [u16]) -> i32 {
-        unsafe { GetWindowTextW(HWND(as_ptr!(hwnd)), lpstring) }
+        unsafe { GetWindowTextW(hwnd.as_hwnd(), lpstring) }
     }
 
     pub fn get_window_class_w(hwnd: isize, lpstring: &mut [u16]) -> u32 {
-        unsafe { RealGetWindowClassW(HWND(as_ptr!(hwnd)), lpstring) }
+        unsafe { RealGetWindowClassW(hwnd.as_hwnd(), lpstring) }
     }
 
     pub fn get_window_title(hwnd: isize) -> AnyResult<String> {
@@ -395,7 +407,7 @@ impl WindowsApi {
     pub fn get_process_name(hwnd: isize) -> AnyResult<String> {
         let mut process_id = 0u32;
         unsafe {
-            GetWindowThreadProcessId(HWND(as_ptr!(hwnd)), Some(&mut process_id));
+            GetWindowThreadProcessId(hwnd.as_hwnd(), Some(&mut process_id));
         }
 
         let process_handle =
@@ -522,7 +534,7 @@ impl WindowsApi {
                 let window_rule = Self::get_window_rule(hwnd);
 
                 if window_rule.match_window.enabled == Some(false) {
-                    info!("border is disabled for {:?}", HWND(as_ptr!(hwnd)));
+                    info!("border is disabled for {:?}", hwnd.as_hwnd());
                 } else if window_rule.match_window.enabled == Some(true)
                     || !Self::has_filtered_style(hwnd)
                 {

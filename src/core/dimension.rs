@@ -1,14 +1,13 @@
 #![allow(dead_code)]
 use crate::user_config::ConfigFormat;
 use crate::user_config::CONFIG_FORMAT;
+use serde::de::Error;
+use serde::Deserialize;
+use serde::Deserializer;
 use serde_jsonc2::Number as JsonNumber;
 use serde_jsonc2::Value as JsonValue;
 use serde_yml::Number as YamlNumber;
 use serde_yml::Value as YamlValue;
-
-use serde::de::Error;
-use serde::Deserialize;
-use serde::Deserializer;
 
 pub enum Dimension {
     JsonNumber(JsonNumber),

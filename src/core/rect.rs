@@ -1,5 +1,5 @@
-use std::ops::{Deref, DerefMut};
-
+use std::ops::Deref;
+use std::ops::DerefMut;
 use windows::Win32::Foundation::RECT;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq)]

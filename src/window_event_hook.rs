@@ -1,11 +1,10 @@
-use crate::as_int;
-use crate::as_ptr;
 use crate::border_manager::set_active_window;
 use crate::border_manager::window_border;
 use crate::border_manager::window_borders;
 use crate::border_manager::Border;
 use crate::core::app_state::APP_STATE;
 use crate::error::LogIfErr;
+use crate::windows_api::PointerConversion;
 use crate::windows_api::WindowsApi;
 use crate::windows_api::WM_APP_FOREGROUND;
 use crate::windows_api::WM_APP_LOCATIONCHANGE;
@@ -14,6 +13,7 @@ use crate::windows_api::WM_APP_MINIMIZESTART;
 use crate::windows_api::WM_APP_REORDER;
 use anyhow::Context;
 use anyhow::Result as AnyResult;
+use std::ffi::c_void;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -128,9 +128,9 @@ impl WindowEventHook {
                     return;
                 }
 
-                if let Some(border) = window_border(as_int!(handle.0)) {
+                if let Some(border) = window_border(handle.0.as_int()) {
                     WindowsApi::send_notify_message_w(
-                        HWND(as_ptr!(border.border_window)),
+                        border.border_window.as_hwnd(),
                         WM_APP_LOCATIONCHANGE,
                         WPARAM(0),
                         LPARAM(0),
@@ -143,7 +143,7 @@ impl WindowEventHook {
                 let visible_windows: Vec<_> = window_borders()
                     .values()
                     .filter(|&border| WindowsApi::is_window_visible(border.border_window))
-                    .map(|border| HWND(as_ptr!(border.border_window)))
+                    .map(|border| border.border_window.as_hwnd())
                     .collect();
 
                 for border_window in visible_windows {
@@ -160,22 +160,24 @@ impl WindowEventHook {
             EVENT_SYSTEM_FOREGROUND => {
                 let potential_active_hwnd = WindowsApi::get_foreground_window();
 
-                if potential_active_hwnd != handle && !APP_STATE.is_polling_active_window() {
+                if potential_active_hwnd != handle.0.as_int()
+                    && !APP_STATE.is_polling_active_window()
+                {
                     poll_active_window_with_limit(3);
                 } else {
-                    handle_foreground_event(potential_active_hwnd, handle);
+                    handle_foreground_event(potential_active_hwnd, handle.0.as_int());
                 }
             }
             EVENT_OBJECT_SHOW | EVENT_OBJECT_UNCLOAKED => {
-                Border::show(as_int!(handle.0));
+                Border::show(handle.0.as_int());
             }
             EVENT_OBJECT_HIDE | EVENT_OBJECT_CLOAKED => {
-                Border::hide(as_int!(handle.0));
+                Border::hide(handle.0.as_int());
             }
             EVENT_SYSTEM_MINIMIZESTART => {
-                if let Some(border) = window_border(as_int!(handle.0)) {
+                if let Some(border) = window_border(handle.0.as_int()) {
                     WindowsApi::post_message_w(
-                        Some(HWND(as_ptr!(border.border_window))),
+                        Some(border.border_window.as_hwnd()),
                         WM_APP_MINIMIZESTART,
                         WPARAM(0),
                         LPARAM(0),
@@ -185,9 +187,9 @@ impl WindowEventHook {
                 }
             }
             EVENT_SYSTEM_MINIMIZEEND => {
-                if let Some(border) = window_border(as_int!(handle.0)) {
+                if let Some(border) = window_border(handle.0.as_int()) {
                     WindowsApi::post_message_w(
-                        Some(HWND(as_ptr!(border.border_window))),
+                        Some(border.border_window.as_hwnd()),
                         WM_APP_MINIMIZEEND,
                         WPARAM(0),
                         LPARAM(0),
@@ -199,7 +201,7 @@ impl WindowEventHook {
             // TODO this is called an unnecessary number of times which may hurt performance?
             EVENT_OBJECT_DESTROY => {
                 if id_child == CHILDID_SELF as i32 {
-                    if let Some(border) = window_border(as_int!(handle.0)) {
+                    if let Some(border) = window_border(handle.0.as_int()) {
                         border.destroy();
                     }
                 }
@@ -224,7 +226,7 @@ extern "system" fn window_event_hook_proc(
 
     let is_window_event = (id_object == OBJID_WINDOW.0 || id_object == OBJID_CLIENT.0)
         && id_child == 0
-        && handle != HWND(std::ptr::null_mut());
+        && handle != std::ptr::null_mut::<c_void>().as_hwnd();
 
     // Check whether the event is associated with a window object instead
     // of a UI control.
@@ -242,10 +244,10 @@ fn poll_active_window_with_limit(max_polls: u32) {
 
     let _ = std::thread::spawn(move || {
         for _ in 0..max_polls {
-            let current_active_hwnd = HWND(*APP_STATE.active_window.lock().unwrap() as _);
+            let current_active_hwnd = *APP_STATE.active_window.lock().unwrap();
             let new_active_hwnd = WindowsApi::get_foreground_window();
 
-            if new_active_hwnd != current_active_hwnd && !new_active_hwnd.is_invalid() {
+            if new_active_hwnd != current_active_hwnd && !new_active_hwnd.as_hwnd().is_invalid() {
                 handle_foreground_event(new_active_hwnd, current_active_hwnd);
             }
 
@@ -256,10 +258,10 @@ fn poll_active_window_with_limit(max_polls: u32) {
     });
 }
 
-fn handle_foreground_event(potential_active_hwnd: HWND, event_hwnd: HWND) {
-    let new_active_window = match !potential_active_hwnd.is_invalid() {
-        true => as_int!(potential_active_hwnd.0),
-        false => as_int!(event_hwnd.0),
+fn handle_foreground_event(potential_active_hwnd: isize, event_hwnd: isize) {
+    let new_active_window = match !potential_active_hwnd.as_hwnd().is_invalid() {
+        true => potential_active_hwnd,
+        false => event_hwnd,
     };
 
     set_active_window(new_active_window);
@@ -269,7 +271,7 @@ fn handle_foreground_event(potential_active_hwnd: HWND, event_hwnd: HWND) {
         .filter_map(|(&key, hwnd)| {
             let border_window = hwnd.border_window;
             if WindowsApi::is_window_visible(border_window) || key == new_active_window {
-                Some(HWND(as_ptr!(border_window)))
+                Some(border_window.as_hwnd())
             } else {
                 None
             }

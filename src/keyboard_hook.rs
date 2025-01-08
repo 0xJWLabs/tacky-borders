@@ -28,9 +28,8 @@ macro_rules! function {
     }};
 }
 
-use crate::as_int;
-use crate::as_ptr;
 use crate::sys_tray::SystemTrayEvent;
+use crate::windows_api::PointerConversion;
 
 const MODIFIER_KEYS: [u16; 6] = [
     VK_LSHIFT.0,
@@ -110,9 +109,10 @@ impl KeyboardHook {
     ///
     /// Assumes that a message loop is currently running.
     pub fn start(&self) -> AnyResult<()> {
-        *self.hook.lock().unwrap() = as_int!(
-            unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook_proc), None, 0) }?.0
-        );
+        *self.hook.lock().unwrap() =
+            unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook_proc), None, 0) }?
+                .0
+                .as_int();
 
         Ok(())
     }
@@ -124,7 +124,7 @@ impl KeyboardHook {
 
     /// Stops the low-level keyboard hook.
     pub fn stop(&self) -> AnyResult<()> {
-        unsafe { UnhookWindowsHookEx(HHOOK(as_ptr!(*self.hook.lock().unwrap()))) }?;
+        unsafe { UnhookWindowsHookEx(HHOOK(self.hook.lock().unwrap().as_ptr())) }?;
         Ok(())
     }
 

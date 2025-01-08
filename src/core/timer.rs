@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
-use crate::as_ptr;
 use crate::error::LogIfErr;
+use crate::windows_api::PointerConversion;
 use crate::windows_api::WindowsApi;
 use crate::windows_api::WM_APP_TIMER;
 use anyhow::{anyhow, Result as AnyResult};
@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::thread::{sleep, spawn};
 use std::time::{Duration, Instant};
-use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+use windows::Win32::Foundation::{LPARAM, WPARAM};
 
 const NUM_SHARDS: isize = 16;
 
@@ -132,7 +132,7 @@ impl CustomTimer {
         let running = Arc::new(AtomicBool::new(true));
         let running_clone = running.clone();
         spawn(move || {
-            let window_sent = HWND(as_ptr!(hwnd));
+            let window_sent = hwnd.as_hwnd();
             let mut next_tick = Instant::now() + Duration::from_millis(interval_ms);
             while running_clone.load(Ordering::SeqCst) {
                 // Send the timer message and schedule next tick

@@ -1,12 +1,12 @@
 use crate::animation::manager::AnimationManager;
 use crate::animation::wrapper::AnimationEngineVec;
-use crate::as_ptr;
 use crate::core::animation::AnimationKind;
 use crate::core::app_state::APP_STATE;
 use crate::core::rect::Rect;
 use crate::error::LogIfErr;
 use crate::user_config::BorderStyle;
 use crate::user_config::WindowRuleConfig;
+use crate::windows_api::PointerConversion;
 use crate::windows_api::ToWideString;
 use crate::windows_api::WindowsApi;
 use crate::windows_api::WM_APP_FOREGROUND;
@@ -128,12 +128,12 @@ pub struct Border {
 }
 
 impl Border {
-    pub const fn border_window(&self) -> HWND {
-        HWND(as_ptr!(self.border_window))
+    pub fn border_window(&self) -> HWND {
+        self.border_window.as_hwnd()
     }
 
-    pub const fn tracking_window(&self) -> HWND {
-        HWND(as_ptr!(self.tracking_window))
+    pub fn tracking_window(&self) -> HWND {
+        self.tracking_window.as_hwnd()
     }
 
     pub fn from_optional(handle: isize) -> Option<Border> {
@@ -157,7 +157,7 @@ impl Border {
             Some(false) => {
                 info!(
                     "Border creation is disabled for window: {:?}",
-                    HWND(as_ptr!(handle))
+                    handle.as_hwnd()
                 );
                 None
             }
@@ -174,7 +174,7 @@ impl Border {
         if let Some(existing_border) = window_border(handle) {
             // Post a 'SHOW' message to make the existing border visible.
             if let Err(e) = WindowsApi::post_message_w(
-                Some(HWND(as_ptr!(existing_border.border_window))),
+                Some(existing_border.border_window.as_hwnd()),
                 WM_APP_SHOWUNCLOAKED,
                 WPARAM(0),
                 LPARAM(0),
@@ -200,7 +200,7 @@ impl Border {
             Some(false) => {
                 info!(
                     "border creation is disabled for window: {:?}",
-                    HWND(as_ptr!(handle))
+                    handle.as_hwnd()
                 );
             }
             // If border creation is enabled or the rule doesn't specify, check for filtered styles.
@@ -216,7 +216,7 @@ impl Border {
         let _ = std::thread::spawn(move || {
             if let Some(border) = window_border(handle) {
                 WindowsApi::post_message_w(
-                    Some(HWND(as_ptr!(border.border_window))),
+                    Some(border.border_window.as_hwnd()),
                     WM_APP_HIDECLOAKED,
                     WPARAM(0),
                     LPARAM(0),
@@ -229,7 +229,7 @@ impl Border {
     }
 
     pub fn create(tracking_window: isize, window_rule: WindowRuleConfig) {
-        debug!("creating border for: {:?}", HWND(as_ptr!(tracking_window)));
+        debug!("creating border for: {:?}", tracking_window.as_hwnd());
 
         std::thread::spawn(move || {
             let mut borders_hashmap = window_borders();
@@ -293,7 +293,7 @@ impl Border {
                 };
             }
 
-            DwmEnableBlurBehindWindow(HWND(as_ptr!(self.border_window)), &bh)
+            DwmEnableBlurBehindWindow(self.border_window.as_hwnd(), &bh)
                 .context("could not make window transparent")?;
 
             WindowsApi::set_layered_window_attributes(
@@ -340,7 +340,7 @@ impl Border {
 
             if WindowsApi::is_window_minimized(self.tracking_window) {
                 WindowsApi::post_message_w(
-                    Some(HWND(as_ptr!(self.border_window))),
+                    Some(self.border_window.as_hwnd()),
                     WM_APP_MINIMIZESTART,
                     WPARAM(0),
                     LPARAM(0),
@@ -370,7 +370,7 @@ impl Border {
 
             debug!(
                 "exiting border thread for {:?}!",
-                HWND(as_ptr!(self.tracking_window))
+                self.tracking_window.as_hwnd()
             );
         }
 

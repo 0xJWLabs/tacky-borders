@@ -2,10 +2,9 @@ use anyhow::anyhow;
 use regex::Regex;
 use serde::Deserialize;
 use simple_bezier_easing::bezier;
-use std::{
-    str::FromStr,
-    sync::{Arc, LazyLock},
-};
+use std::str::FromStr;
+use std::sync::Arc;
+use std::sync::LazyLock;
 
 const CUBIC_BEZIER_PATTERN: &str = r"(?i)^cubic[-_]?bezier\(([-+]?[0-9]*\.?[0-9]+),\s*([-+]?[0-9]*\.?[0-9]+),\s*([-+]?[0-9]*\.?[0-9]+),\s*([-+]?[0-9]*\.?[0-9]+)\)$";
 const DURATION_PATTERN: &str = r"(?i)^([\d.]+)(ms|s)$";

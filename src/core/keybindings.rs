@@ -1,8 +1,7 @@
+use crate::core::app_state::APP_STATE;
+use crate::keyboard_hook::KeybindingConfig;
+use crate::sys_tray::SystemTrayEvent;
 use serde::Deserialize;
-
-use crate::{
-    core::app_state::APP_STATE, keyboard_hook::KeybindingConfig, sys_tray::SystemTrayEvent,
-};
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default)]

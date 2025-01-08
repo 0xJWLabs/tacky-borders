@@ -2,7 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use windows::Win32::Foundation::RECT;
 
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct Rect(pub RECT);
 
 impl From<RECT> for Rect {

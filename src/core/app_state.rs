@@ -30,6 +30,9 @@ pub struct AppState {
     pub is_polling_active_window: AtomicBool,
 }
 
+unsafe impl Send for AppState {}
+unsafe impl Sync for AppState {}
+
 impl AppState {
     pub fn new() -> Self {
         let active_window = as_int!(WindowsApi::get_foreground_window().0);

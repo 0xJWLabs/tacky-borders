@@ -147,9 +147,14 @@ impl WindowEventHook {
                     .collect();
 
                 for border_window in visible_windows {
-                    WindowsApi::post_message_w(border_window, WM_APP_REORDER, WPARAM(0), LPARAM(0))
-                        .with_context(|| "EVENT_OBJECT_REORDER")
-                        .log_if_err();
+                    WindowsApi::post_message_w(
+                        Some(border_window),
+                        WM_APP_REORDER,
+                        WPARAM(0),
+                        LPARAM(0),
+                    )
+                    .with_context(|| "EVENT_OBJECT_REORDER")
+                    .log_if_err();
                 }
             }
             EVENT_SYSTEM_FOREGROUND => {
@@ -170,7 +175,7 @@ impl WindowEventHook {
             EVENT_SYSTEM_MINIMIZESTART => {
                 if let Some(border) = window_border(as_int!(handle.0)) {
                     WindowsApi::post_message_w(
-                        HWND(as_ptr!(border.border_window)),
+                        Some(HWND(as_ptr!(border.border_window))),
                         WM_APP_MINIMIZESTART,
                         WPARAM(0),
                         LPARAM(0),
@@ -182,7 +187,7 @@ impl WindowEventHook {
             EVENT_SYSTEM_MINIMIZEEND => {
                 if let Some(border) = window_border(as_int!(handle.0)) {
                     WindowsApi::post_message_w(
-                        HWND(as_ptr!(border.border_window)),
+                        Some(HWND(as_ptr!(border.border_window))),
                         WM_APP_MINIMIZEEND,
                         WPARAM(0),
                         LPARAM(0),
@@ -272,7 +277,7 @@ fn handle_foreground_event(potential_active_hwnd: HWND, event_hwnd: HWND) {
         .collect();
 
     for border_window in visible_windows {
-        WindowsApi::post_message_w(border_window, WM_APP_FOREGROUND, WPARAM(0), LPARAM(0))
+        WindowsApi::post_message_w(Some(border_window), WM_APP_FOREGROUND, WPARAM(0), LPARAM(0))
             .with_context(|| "EVENT_OBJECT_FOCUS")
             .log_if_err();
     }

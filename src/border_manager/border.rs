@@ -174,7 +174,7 @@ impl Border {
         if let Some(existing_border) = window_border(handle) {
             // Post a 'SHOW' message to make the existing border visible.
             if let Err(e) = WindowsApi::post_message_w(
-                HWND(as_ptr!(existing_border.border_window)),
+                Some(HWND(as_ptr!(existing_border.border_window))),
                 WM_APP_SHOWUNCLOAKED,
                 WPARAM(0),
                 LPARAM(0),
@@ -216,7 +216,7 @@ impl Border {
         let _ = std::thread::spawn(move || {
             if let Some(border) = window_border(handle) {
                 WindowsApi::post_message_w(
-                    HWND(as_ptr!(border.border_window)),
+                    Some(HWND(as_ptr!(border.border_window))),
                     WM_APP_HIDECLOAKED,
                     WPARAM(0),
                     LPARAM(0),
@@ -340,7 +340,7 @@ impl Border {
 
             if WindowsApi::is_window_minimized(self.tracking_window) {
                 WindowsApi::post_message_w(
-                    HWND(as_ptr!(self.border_window)),
+                    Some(HWND(as_ptr!(self.border_window))),
                     WM_APP_MINIMIZESTART,
                     WPARAM(0),
                     LPARAM(0),
@@ -541,7 +541,7 @@ impl Border {
 
             if let Err(e) = SetWindowPos(
                 self.border_window(),
-                hwnd_above_tracking.unwrap_or(HWND_TOP),
+                Some(hwnd_above_tracking.unwrap_or(HWND_TOP)),
                 self.window_rect.left,
                 self.window_rect.top,
                 self.window_rect.width(),
@@ -918,7 +918,7 @@ impl Border {
                 }
             }
             WM_PAINT => {
-                let _ = unsafe { ValidateRect(window, None) };
+                let _ = unsafe { ValidateRect(Some(window), None) };
             }
             WM_NCDESTROY => {
                 unsafe { SetWindowLongPtrW(window, GWLP_USERDATA, 0) };

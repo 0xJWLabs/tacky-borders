@@ -137,9 +137,12 @@ impl CustomTimer {
             while running_clone.load(Ordering::SeqCst) {
                 // Send the timer message and schedule next tick
                 if Instant::now() >= next_tick {
-                    if let Err(e) =
-                        WindowsApi::post_message_w(window_sent, WM_APP_TIMER, WPARAM(0), LPARAM(0))
-                    {
+                    if let Err(e) = WindowsApi::post_message_w(
+                        Some(window_sent),
+                        WM_APP_TIMER,
+                        WPARAM(0),
+                        LPARAM(0),
+                    ) {
                         error!("could not send timer message: {e}");
                         break;
                     }

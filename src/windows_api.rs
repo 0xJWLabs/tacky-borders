@@ -153,10 +153,12 @@ impl WindowsApi {
         unsafe { GetDpiForWindow(HWND(as_ptr!(hwnd))) }
     }
 
-    pub fn post_message_w<P>(hwnd: P, msg: u32, wparam: WPARAM, lparam: LPARAM) -> WinResult<()>
-    where
-        P: Param<HWND>,
-    {
+    pub fn post_message_w(
+        hwnd: Option<HWND>,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> WinResult<()> {
         unsafe { PostMessageW(hwnd, msg, wparam, lparam) }
     }
 
@@ -169,15 +171,12 @@ impl WindowsApi {
         unsafe { SendNotifyMessageW(hwnd, msg, wparam, lparam) }
     }
 
-    pub fn get_message_w<P0>(
+    pub fn get_message_w(
         lpmsg: *mut MSG,
-        hwnd: P0,
+        hwnd: Option<HWND>,
         wmsgfiltermin: u32,
         wmsgfiltermax: u32,
-    ) -> BOOL
-    where
-        P0: Param<HWND>,
-    {
+    ) -> BOOL {
         unsafe { GetMessageW(lpmsg, hwnd, wmsgfiltermin, wmsgfiltermax) }
     }
 
@@ -194,26 +193,23 @@ impl WindowsApi {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn create_window_ex_w<P0, P1, P2, P3, P4>(
+    pub fn create_window_ex_w<P1, P2>(
         dwexstyle: WINDOW_EX_STYLE,
-        lpclassname: P0,
-        lpwindowname: P1,
+        lpclassname: P1,
+        lpwindowname: P2,
         dwstyle: WINDOW_STYLE,
         x: i32,
         y: i32,
         nwidth: i32,
         nheight: i32,
-        hwndparent: P2,
-        hmenu: P3,
-        hinstance: P4,
+        hwndparent: Option<HWND>,
+        hmenu: Option<HMENU>,
+        hinstance: Option<HINSTANCE>,
         lpparam: Option<*const c_void>,
     ) -> WinResult<HWND>
     where
-        P0: Param<PCWSTR>,
         P1: Param<PCWSTR>,
-        P2: Param<HWND>,
-        P3: Param<HMENU>,
-        P4: Param<HINSTANCE>,
+        P2: Param<PCWSTR>,
     {
         unsafe {
             CreateWindowExW(
@@ -258,7 +254,12 @@ impl WindowsApi {
     }
 
     pub fn destroy_window(hwnd: isize) -> AnyResult<()> {
-        match Self::post_message_w(HWND(as_ptr!(hwnd)), WM_NCDESTROY, WPARAM(0), LPARAM(0)) {
+        match Self::post_message_w(
+            Some(HWND(as_ptr!(hwnd))),
+            WM_NCDESTROY,
+            WPARAM(0),
+            LPARAM(0),
+        ) {
             Ok(()) => Ok(()),
             Err(_) => Err(anyhow!("could not destroy window")),
         }
@@ -559,7 +560,7 @@ impl WindowsApi {
             CW_USEDEFAULT,
             None,
             None,
-            Self::module_handle_w()?,
+            Some(Self::module_handle_w()?.into()),
             Some(ptr::addr_of!(*border) as _),
         ) {
             Ok(window) => Ok(window.0 as isize),
@@ -570,9 +571,12 @@ impl WindowsApi {
     pub fn home_dir() -> AnyResult<PathBuf> {
         unsafe {
             // Call SHGetKnownFolderPath with NULL token (default user)
-            let path_ptr =
-                SHGetKnownFolderPath(&FOLDERID_Profile, KNOWN_FOLDER_FLAG(0), HANDLE::default())
-                    .unwrap();
+            let path_ptr = SHGetKnownFolderPath(
+                &FOLDERID_Profile,
+                KNOWN_FOLDER_FLAG(0),
+                Some(HANDLE::default()),
+            )
+            .unwrap();
 
             if path_ptr.0.is_null() {
                 anyhow::bail!("SHGetKnownFolderPath returned a null pointer");

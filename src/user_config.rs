@@ -251,6 +251,8 @@ pub struct UserConfig {
     /// Enables monitoring for changes in the configuration file.
     #[serde(default)]
     pub monitor_config_changes: bool,
+    /// Enable custom predefined theme
+    pub theme: Option<String>,
 }
 
 /// Methods for managing the configuration, including loading, saving, and reloading.

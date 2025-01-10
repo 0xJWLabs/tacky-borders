@@ -84,13 +84,14 @@ dependencies = [
 
 [[package]]
 name = "colorparser-css"
-version = "0.0.7"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a74d5cdcaf86ed5d58f6ca8c1fe2687edd379ea0ab850e0d19327da645cdc639"
+checksum = "b3c4d17ff150c97d185dd9a991a0a12b21166c86d270c1d83073de14f13661d1"
 dependencies = [
  "regex",
  "rustc-hash",
  "serde",
+ "serde_jsonc2",
  "windows-sys",
 ]
 

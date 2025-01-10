@@ -68,7 +68,10 @@ pub fn deserialize_dimension<'de, D>(deserializer: D) -> Result<i32, D::Error>
 where
     D: Deserializer<'de>,
 {
-    match *CONFIG_FORMAT.read().unwrap() {
+    let config_format = &*CONFIG_FORMAT
+        .read()
+        .map_err(|_| D::Error::custom("config format lock poisoned"))?;
+    match config_format {
         ConfigFormat::Json | ConfigFormat::Jsonc => {
             let value: JsonValue = Deserialize::deserialize(deserializer)?;
             match value {
@@ -93,8 +96,11 @@ pub fn deserialize_optional_dimension<'de, D>(deserializer: D) -> Result<Option<
 where
     D: Deserializer<'de>,
 {
+    let config_format = &*CONFIG_FORMAT
+        .read()
+        .map_err(|_| D::Error::custom("config format lock poisoned"))?;
     // Deserialize into Option<JsonValue> (for Json) or Option<YamlValue> (for Yaml)
-    match *CONFIG_FORMAT.read().unwrap() {
+    match config_format {
         ConfigFormat::Json | ConfigFormat::Jsonc => {
             let value: Option<JsonValue> = Option::deserialize(deserializer)?;
             match value {

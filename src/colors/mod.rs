@@ -4,7 +4,6 @@ pub mod gradient;
 pub mod parser;
 pub mod solid;
 
-use error::Result;
 use gradient::ColorMapping;
 use gradient::Gradient;
 use parser::parse_color_mapping;
@@ -92,7 +91,7 @@ pub trait ColorImpl {
     ///
     /// # Returns
     /// A `Result` containing either the fetched `Color` or a `WinColorError` if the operation fails.
-    fn from_global_color(color: &GlobalColor) -> Result<Color>;
+    fn from_global_color(color: &GlobalColor) -> anyhow::Result<Color>;
 
     /// Sets the opacity of the color.
     ///
@@ -149,11 +148,11 @@ pub trait ColorImpl {
 }
 
 pub trait GlobalColorImpl {
-    fn to_color(&self) -> Result<Color>;
+    fn to_color(&self) -> anyhow::Result<Color>;
 }
 
 impl GlobalColorImpl for GlobalColor {
-    fn to_color(&self) -> Result<Color> {
+    fn to_color(&self) -> anyhow::Result<Color> {
         match self {
             GlobalColor::String(s) => parse_color_string(s.as_str()),
             GlobalColor::Mapping(gradient_def) => parse_color_mapping(gradient_def.clone()),
@@ -162,7 +161,7 @@ impl GlobalColorImpl for GlobalColor {
 }
 
 impl ColorImpl for Color {
-    fn from_global_color(global_color: &GlobalColor) -> Result<Self> {
+    fn from_global_color(global_color: &GlobalColor) -> anyhow::Result<Self> {
         global_color.to_color()
     }
 

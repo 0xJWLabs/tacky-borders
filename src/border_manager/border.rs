@@ -189,8 +189,11 @@ impl Border {
         match window_rule.match_window.enabled {
             // If border creation is explicitly disabled, log and exit.
             Some(false) => {
+                let window_title =
+                    WindowsApi::get_process_name(handle).unwrap_or("unknown".to_string());
                 info!(
-                    "border creation is disabled for window: {:?}",
+                    "border creation is disabled for window: {} ({:?})",
+                    window_title,
                     handle.as_hwnd()
                 );
             }
@@ -220,7 +223,11 @@ impl Border {
     }
 
     pub fn create(tracking_window: isize, window_rule: WindowRuleConfig) {
-        debug!("creating border for: {:?}", tracking_window.as_hwnd());
+        debug!(
+            "creating border for: {} ({:?})",
+            WindowsApi::get_process_name(tracking_window).unwrap_or("unknown".to_string()),
+            tracking_window.as_hwnd()
+        );
 
         std::thread::spawn(move || {
             let mut borders_hashmap = window_borders();
@@ -343,6 +350,7 @@ impl Border {
             debug!("border window event started");
 
             let mut message = MSG::default();
+
             loop {
                 // Get the next message from the message queue
                 if WindowsApi::get_message_w(&mut message, None, 0, 0).as_bool() {
@@ -517,19 +525,26 @@ impl Border {
     }
 
     fn update_position(&mut self, other_flags: Option<SET_WINDOW_POS_FLAGS>) -> AnyResult<()> {
-        if let Err(e) = WindowsApi::set_border_pos(
+        // Attempt to set the window position with the provided flags
+        WindowsApi::set_border_pos(
             self.border_window,
             &self.window_rect,
             self.tracking_window,
             other_flags,
         )
-        .context(format!(
-            "could not set window position for {:?}",
-            self.tracking_window()
-        )) {
+        .with_context(|| {
+            format!(
+                "Failed to set position for window: {} ({:?})",
+                WindowsApi::get_process_name(self.tracking_window)
+                    .unwrap_or_else(|_| "unknown".to_string()),
+                self.tracking_window
+            )
+        })
+        .inspect_err(|_| {
+            // Side-effect for error handling: Clean up on error
             self.exit_border_thread();
-            return Err(e);
-        }
+        })?;
+
         Ok(())
     }
 

@@ -1,9 +1,13 @@
 //! This module handles named colors and related utilities for parsing and managing colors.
 //! It supports solid colors, gradients, and their mapping to Direct2D structures.
 
+use anyhow::anyhow;
 use colorparser_css::Color as CssColor;
 use windows::Win32::Graphics::Direct2D::Common::D2D1_COLOR_F;
 use windows::Win32::Graphics::Direct2D::Common::D2D1_GRADIENT_STOP;
+
+use crate::core::app_state::APP_STATE;
+use crate::user_config::UserConfig;
 
 use super::error::Error;
 use super::error::ErrorKind;
@@ -36,7 +40,7 @@ use colorparser_css::GradientCoordinates;
 /// };
 /// let color = parse_color_mapping(mapping, Some(false))?;
 /// ```
-pub fn parse_color_mapping(s: ColorMapping) -> Result<Color> {
+pub fn parse_color_mapping(s: ColorMapping) -> anyhow::Result<Color> {
     match s.colors.len() {
         0 => Ok(Color::Solid(Solid {
             color: D2D1_COLOR_F::default(),
@@ -50,7 +54,7 @@ pub fn parse_color_mapping(s: ColorMapping) -> Result<Color> {
             let gradient_stops = generate_gradient_stops(&s.colors)?;
 
             if gradient_stops.is_empty() {
-                return Err(Error::new(ErrorKind::InvalidData, "No valid colors found"));
+                return Err(anyhow!("invalid color mapping: no valid colors found"));
             }
 
             let direction = parse_gradient_direction(&s.direction)?;
@@ -148,22 +152,38 @@ fn parse_gradient_direction(direction: &GradientDirection) -> Result<GradientCoo
 /// ```rust
 /// let color = parse_color_string("#FF0000")?;
 /// ```
-pub fn parse_color_string(s: &str) -> Result<Color> {
-    let css_color = CssColor::from_html(s).map_err(|e| {
-        Error::new(
-            ErrorKind::InvalidInput,
-            format!("CSS parsing failed: {}", e),
-        )
-    })?;
+pub fn parse_color_string(s: &str) -> anyhow::Result<Color> {
+    let theme = match APP_STATE.config.read() {
+        Ok(config) => config.theme.clone(),
+        Err(_) => None,
+    };
+
+    let css_color = match theme {
+        Some(theme) => {
+            let config_dir = UserConfig::get_config_dir().unwrap().join("themes");
+            let theme_file = config_dir
+                .join(theme)
+                .with_extension("jsonc")
+                .to_string_lossy()
+                .to_string();
+            CssColor::from_html_with_theme(s, &theme_file).map_err(|e| {
+                Error::new(
+                    ErrorKind::InvalidInput,
+                    format!("CSS parsing failed: {}", e),
+                )
+            })?
+        }
+        None => CssColor::from_html(s).map_err(|e| {
+            Error::new(
+                ErrorKind::InvalidInput,
+                format!("CSS parsing failed: {}", e),
+            )
+        })?,
+    };
 
     parse_solid_color(&css_color)
         .or_else(|_| parse_gradient(&css_color))
-        .map_err(|_| {
-            Error::new(
-                ErrorKind::InvalidInput,
-                "Input does not represent a valid solid color or gradient",
-            )
-        })
+        .map_err(|_| anyhow!("input does not represent a valid solid color or gradient: {s}"))
 }
 
 /// Parses a `CssColor` into a solid `Color`.
@@ -182,10 +202,10 @@ pub fn parse_color_string(s: &str) -> Result<Color> {
 /// ```rust
 /// let color = parse_solid_color(&CssColor::from_html("#FF0000")?)?;
 /// ```
-fn parse_solid_color(css_color: &CssColor) -> Result<Color> {
+fn parse_solid_color(css_color: &CssColor) -> anyhow::Result<Color> {
     let solid = css_color
         .to_solid()
-        .map_err(|_| Error::new(ErrorKind::InvalidInput, "Not a solid color"))?;
+        .map_err(|_| anyhow!("not a solid color"))?;
     let normalized_rgba = solid.to_normalized_rgba();
     let color = D2D1_COLOR_F {
         r: normalized_rgba.r,
@@ -212,10 +232,11 @@ fn parse_solid_color(css_color: &CssColor) -> Result<Color> {
 /// ```rust
 /// let color = parse_gradient(&CssColor::from_html("linear-gradient(to right, #FF0000, #00FF00)")?)?;
 /// ```
-fn parse_gradient(css_color: &CssColor) -> Result<Color> {
+fn parse_gradient(css_color: &CssColor) -> anyhow::Result<Color> {
     let gradient = css_color
         .to_gradient()
-        .map_err(|_| Error::new(ErrorKind::InvalidInput, "Not a gradient"))?;
+        .map_err(|_| anyhow!("not a gradient"))?;
+
     let num_colors = gradient.colors.len();
     let step = 1.0 / (num_colors - 1) as f32;
 

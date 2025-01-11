@@ -1,0 +1,155 @@
+{
+  "$schema": "https://raw.githubusercontent.com/GlazeBar/tacky-borders/refs/heads/main/schema.json",
+  // allow auto reload on config changes
+  "monitor_config_changes": true,
+  "keybindings": {
+    // reload: Binds the reload action to the specified key (default: f8).
+    // - Pressing this key will trigger the reloading process, typically refreshing content or settings.
+    "reload": "f8",
+    // open_config: Binds the action to open the configuration/settings to the specified key (default: f9).
+    // - Pressing this key will open the configuration menu or editor settings for customization.
+    "open_config": "f9",
+    // exit: Binds the exit or quit action to the specified key (default: f10).
+    // - Pressing this key will close the application or exit the current session.
+    "exit": "f10"
+  },
+  "global": {
+    // border_width: Specifies the thickness of the window border in pixels.
+    //   - Example: 2 sets the border to 2 pixels wide.
+    //   - You can also use string values like "2px".
+    "border_width": 2, // Also accepts "2px"
+    // border_offset: Adjusts the position of the border relative to the window.
+    //   - Negative values shrink the border inward (reducing the visible area).
+    //   - Positive values expand the border outward (increasing its coverage).
+    //   - You can also use string values ike "2px"
+    // Example: -1 shrinks the border slightly inside the window.
+    "border_offset": -1, // Also accepts "-1px"
+    // border_style: Controls the shape of the window's border corners.
+    //   - Use numeric values for custom corner rounding in pixels (e.g., 5 applies a 5-pixel radius).
+    //   - Use predefined styles for consistent results:
+    //     - "Auto": Automatically calculates a suitable radius based on the window's dimensions.
+    //     - "Round": Fully rounded corners using a default radius.
+    //     - "SmallRound": Smaller rounded corners with a default radius.
+    //     - "Square": No rounding, resulting in square corners.
+    //     - "Radius(num)": Applies a custom radius where "num" is a positive number defining the pixel radius of the corners.
+    "border_style": "Auto", // or "Radius(10)" for custom 10px radius, or "Round", "SmallRound", etc.
+    // active_color: Defines the color properties for the active window border.
+    //   - Can be specified as either a string (e.g., "#RRGGBB") or a map format.
+    //   - If using a map, provide colors in various formats: #RRGGBB, #RRGGBBAA, rgb(...), or rgba(...).
+    //     - colors: A list of color values to define the active border colors.
+    //     - direction: Specifies the start and end points of a linear gradient for the border.
+    //       - Format:
+    //         start: [x, y]  // Start point of the gradient (normalized coordinates).
+    //         end: [x, y] // End point of the gradient (normalized coordinates).
+    //   - Example of a string: active_color: "#ff0000"
+    //   - Example of a gradient map:
+    //     active_color:
+    //       colors: ["#89b4fa", "#cba6f7"]
+    //       direction:
+    //         start: [0.0, 0.0]
+    //         end: [1.0, 0.0]
+    "active_color": {
+      "colors": [
+        "#000000",
+        "#ffffff"
+      ],
+      "direction": {
+        "start": [
+          0.0,
+          0.0
+        ],
+        "end": [
+          1.0,
+          0.0
+        ]
+      }
+    },
+    //   - This can also be specified as a string or a gradient map, similar to active_color.
+    "inactive_color": "#d2d2d2",
+    // animations: Configures the animations applied to window borders.
+    //   - active: Defines animations for active window transitions.
+    //     - Each animation specifies its type (kind), duration, and easing function.
+    //   - inactive: Defines animations for inactive window transitions.
+    //     - Uses the same format as active animations.
+    //   - fps: Sets the frame rate for animations (default: 60 FPS).
+    // Example of an animation: { kind: "fade", duration: "450ms", easing: "EaseInOut" }
+    "animations": {
+      "active": [
+        {
+          "kind": "fade",
+          "duration": "450ms",
+          "easing": "EaseInOut"
+        },
+        {
+          "kind": "spiral",
+          "duration": "1800ms",
+          "easing": "cubic-bezier(0.42, 0.0, 0.58, 1.0)"
+        }
+      ],
+      "inactive": [
+        {
+          "kind": "fade",
+          "duration": "450ms",
+          "easing": "ease-in-out"
+        },
+        {
+          "kind": "reverse_spiral",
+          "duration": "1800ms",
+          "easing": "cubic-bezier(0.42, 0.0, 0.58, 1.0)"
+        }
+      ],
+      "fps": 60
+    },
+    // initialize_delay: The initial delay (in milliseconds) before applying animations when the window is first rendered. 
+    //             A reduced delay can be used to account for animations like fade, which take additional time.
+    // unminimize_delay: The delay (in milliseconds) before applying animations when a minimized window is restored.
+    "initialize_delay": 150,
+    "unminimize_delay": 100
+  },
+  // window_rules: Defines specific window matching rules for borders.
+  // Each rule can define custom properties for how borders are applied to matching windows.
+  // The properties defined in window_rules can either inherit from the global settings or be overridden by the rule.
+  "window_rules": [
+    {
+      // Match Strategies:
+      // kind: Specifies the type of property to match.
+      // - Process: Matches based on the process name.
+      // - Title: Matches based on the window title.
+      // - Class: Matches based on the window's class name.
+      // strategy (default: Equals):
+      // - "Equals": The match value must be exactly equal to the specified value.
+      // - "Regex": The match value must match the specified regular expression.
+      // - "Contains": The match value must be a substring of the specified string.
+      // value:
+      // - Specifies the value against which the window's properties are matched.
+      // - Can be a string that must either match exactly, be a substring, or conform to a regex pattern
+      //   depending on the specified match strategy.
+      // enabled (default: true):
+      // - A boolean value indicating whether the border is enabled for this particular rule.
+      // - If true, the defined border properties (such as color and thickness) will apply to matching windows.
+      // - If false, no border will be applied, effectively disabling it for that rule.
+      "match": {
+        "kind": "Class",
+        "value": "Windows.UI.Core.CoreWindow",
+        "strategy": "Contains",
+        "enabled": false
+      }
+    },
+    {
+      "match": {
+        "kind": "Process",
+        "value": "(?i)^Flow.*",
+        "strategy": "Regex",
+        "enabled": false
+      }
+    },
+    {
+      "match": {
+        "kind": "Title",
+        "value": "Zebar",
+        "strategy": "Equals",
+        "enabled": false
+      }
+    }
+  ]
+}

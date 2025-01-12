@@ -37,35 +37,16 @@
       ],
       "properties": {
         "border_width": {
-          "description": "Thickness of the window borders in pixels. This can be specified as an integer (e.g., 2) or a string with a 'px' suffix (e.g., '10px'). Default is 2.",
           "$ref": "#/definitions/borderWidthProperties"
         },
         "border_offset": {
-          "description": "Adjusts the border size relative to the window in pixels. Positive values expand the border, and negative values shrink it. This can be specified as an integer (e.g., -1) or a string with a 'px' suffix (e.g., '-5px'). Default is -1.",
           "$ref": "#/definitions/borderOffsetProperties"
         },
         "border_style": {
-          "description": "Corner radius for borders; Radius(-1) or Auto to let the program decide automatically. (default: Auto)",
           "$ref": "#/definitions/borderStyleProperties"
         },
         "animations": {
-          "description": "Defines the animation settings for the border's visual effects, including different animations for both active and inactive states, speed, and frame rate.",
-          "type": "object",
-          "properties": {
-            "active": {
-              "description": "A list of animations to apply when the border is in the active state. These animations will be applied when the window or component is focused or active.",
-              "$ref": "#/definitions/animationProperties"
-            },
-            "inactive": {
-              "description": "A list of animations to apply when the border is in the active state. These animations will be applied when the window or component is focused or active.",
-              "$ref": "#/definitions/animationProperties"
-            },
-            "fps": {
-              "type": "integer",
-              "description": "Defines the frame rate of the animation, specifying how many frames are rendered per second. A higher value results in smoother animation (default: 60)",
-              "format": "int32"
-            }
-          }
+          "$ref": "#/definitions/animationProperties"
         },
         "active_color": {
           "description": "Color or gradient for active (focused) window borders. Can be a single color string, gradient string or a gradient object.",
@@ -89,20 +70,7 @@
         }
       },
       "not": {
-        "anyOf": [
-          {
-            "required": [
-              "init_delay",
-              "initialize_delay"
-            ]
-          },
-          {
-            "required": [
-              "unminimize_delay",
-              "restore_delay"
-            ]
-          }
-        ]
+        "$ref": "#/definitions/notDefinitions"
       }
     },
     "window_rules": {
@@ -121,20 +89,7 @@
               "kind"
             ],
             "not": {
-              "anyOf": [
-                {
-                  "required": [
-                    "init_delay",
-                    "initialize_delay"
-                  ]
-                },
-                {
-                  "required": [
-                    "unminimize_delay",
-                    "restore_delay"
-                  ]
-                }
-              ]
+              "$ref": "#/definitions/notDefinitions"
             },
             "properties": {
               "kind": {
@@ -160,23 +115,7 @@
                 ]
               },
               "animations": {
-                "description": "Defines the animation settings for the border's visual effects, including different animations for both active and inactive states, speed, and frame rate.",
-                "type": "object",
-                "properties": {
-                  "active": {
-                    "description": "A list of animations to apply when the border is in the active state. These animations will be applied when the window or component is focused or active.",
-                    "$ref": "#/definitions/animationProperties"
-                  },
-                  "inactive": {
-                    "description": "A list of animations to apply when the border is in the active state. These animations will be applied when the window or component is focused or active.",
-                    "$ref": "#/definitions/animationProperties"
-                  },
-                  "fps": {
-                    "type": "integer",
-                    "description": "Defines the frame rate of the animation, specifying how many frames are rendered per second. A higher value results in smoother animation (default: 60)",
-                    "format": "int32"
-                  }
-                }
+                "$ref": "#/definitions/animationProperties"
               },
               "active_color": {
                 "description": "Color or gradient for active (focused) window borders. Can be a single color string, gradient string or a gradient object.",
@@ -203,15 +142,12 @@
                 "type": "boolean"
               },
               "border_width": {
-                "description": "Thickness of the window borders in pixels. This can be specified as an integer (e.g., 2) or a string with a 'px' suffix (e.g., '10px'). Default is 2.",
                 "$ref": "#/definitions/borderWidthProperties"
               },
               "border_offset": {
-                "description": "Adjusts the border size relative to the window in pixels. Positive values expand the border, and negative values shrink it. This can be specified as an integer (e.g., -1) or a string with a 'px' suffix (e.g., '-5px'). Default is -1.",
                 "$ref": "#/definitions/borderOffsetProperties"
               },
               "border_style": {
-                "description": "Corner radius for borders; Radius(-1) or Auto to let the program decide automatically. (default: Auto)",
                 "$ref": "#/definitions/borderStyleProperties"
               }
             }
@@ -225,6 +161,22 @@
     "window_rules"
   ],
   "definitions": {
+    "notDefinitions": {
+      "anyOf": [
+        {
+          "required": [
+            "init_delay",
+            "initialize_delay"
+          ]
+        },
+        {
+          "required": [
+            "unminimize_delay",
+            "restore_delay"
+          ]
+        }
+      ]
+    },
     "initializeDelayProperties": {
       "type": "integer",
       "description": "The initial delay (in milliseconds) before applying animations when the window is first rendered. A reduced delay can be used to account for animations like fade, which take additional time."
@@ -233,7 +185,27 @@
       "type": "integer",
       "description": "The delay (in milliseconds) before applying animations when a minimized window is restored."
     },
+    "animationProperties": {
+      "description": "Defines the animation settings for the border's visual effects, including different animations for both active and inactive states, speed, and frame rate.",
+      "type": "object",
+      "properties": {
+        "active": {
+          "description": "A list of animations to apply when the border is in the active state. These animations will be applied when the window or component is focused or active.",
+          "$ref": "#/definitions/animationDataProperties"
+        },
+        "inactive": {
+          "description": "A list of animations to apply when the border is in the active state. These animations will be applied when the window or component is focused or active.",
+          "$ref": "#/definitions/animationDataProperties"
+        },
+        "fps": {
+          "type": "integer",
+          "description": "Defines the frame rate of the animation, specifying how many frames are rendered per second. A higher value results in smoother animation (default: 60)",
+          "format": "int32"
+        }
+      }
+    },
     "borderWidthProperties": {
+      "description": "Thickness of the window borders in pixels. This can be specified as an integer (e.g., 2) or a string with a 'px' suffix (e.g., '10px'). Default is 2.",
       "anyOf": [
         {
           "type": "integer",
@@ -248,6 +220,7 @@
       ]
     },
     "borderOffsetProperties": {
+      "description": "Adjusts the border size relative to the window in pixels. Positive values expand the border, and negative values shrink it. This can be specified as an integer (e.g., -1) or a string with a 'px' suffix (e.g., '-5px'). Default is -1.",
       "anyOf": [
         {
           "type": "integer",
@@ -262,6 +235,7 @@
       ]
     },
     "borderStyleProperties": {
+      "description": "Corner radius for borders; Radius(-1) or Auto to let the program decide automatically. (default: Auto)",
       "oneOf": [
         {
           "type": "string",
@@ -395,7 +369,7 @@
         }
       ]
     },
-    "animationProperties": {
+    "animationDataProperties": {
       "type": "array",
       "items": {
         "type": "object",

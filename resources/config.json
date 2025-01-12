@@ -1,0 +1,86 @@
+{
+  "$schema": "https://raw.githubusercontent.com/GlazeBar/tacky-borders/refs/heads/main/schema.json",
+  "monitor_config_changes": true,
+  "keybindings": {
+    "reload": "f8",
+    "open_config": "f9",
+    "exit": "f10"
+  },
+  "global": {
+    "border_width": 2,
+    "border_offset": -1,
+    "border_style": "Auto",
+    "active_color": {
+      "colors": [
+        "#000000",
+        "#ffffff"
+      ],
+      "direction": {
+        "start": [
+          0.0,
+          0.0
+        ],
+        "end": [
+          1.0,
+          0.0
+        ]
+      }
+    },
+    "inactive_color": "#d2d2d2",
+    "animations": {
+      "active": [
+        {
+          "kind": "fade",
+          "duration": "450ms",
+          "easing": "EaseInOut"
+        },
+        {
+          "kind": "spiral",
+          "duration": "1800ms",
+          "easing": "cubic-bezier(0.42, 0.0, 0.58, 1.0)"
+        }
+      ],
+      "inactive": [
+        {
+          "kind": "fade",
+          "duration": "450ms",
+          "easing": "ease-in-out"
+        },
+        {
+          "kind": "reverse_spiral",
+          "duration": "1800ms",
+          "easing": "cubic-bezier(0.42, 0.0, 0.58, 1.0)"
+        }
+      ],
+      "fps": 60
+    },
+    "initialize_delay": 150,
+    "restore_delay": 100
+  },
+  "window_rules": [
+    {
+      "match": {
+        "kind": "Class",
+        "value": "Windows.UI.Core.CoreWindow",
+        "strategy": "Contains",
+        "enabled": false
+      }
+    },
+    {
+      "match": {
+        "kind": "Process",
+        "value": "(?i)^Flow.*",
+        "strategy": "Regex",
+        "enabled": false
+      }
+    },
+    {
+      "match": {
+        "kind": "Title",
+        "value": "Zebar",
+        "strategy": "Equals",
+        "enabled": false
+      }
+    }
+  ]
+}

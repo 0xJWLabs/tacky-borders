@@ -71,18 +71,38 @@
           "description": "Color or gradient for active (focused) window borders. Can be a single color string, gradient string or a gradient object.",
           "$ref": "#/definitions/colorProperties"
         },
-        "initialize_delay": {
-          "type": "integer",
-          "description": "The initial delay (in milliseconds) before applying animations when the window is first rendered. A reduced delay can be used to account for animations like fade, which take additional time."
-        },
-        "unminimize_delay": {
-          "type": "integer",
-          "description": "The delay (in milliseconds) before applying animations when a minimized window is restored."
-        },
         "inactive_color": {
           "description": "Color or gradient for inactive (unfocused) window borders. Similar to 'active_color' format.",
           "$ref": "#/definitions/colorProperties"
+        },
+        "initialize_delay": {
+          "$ref": "#/definitions/initializeDelayProperties"
+        },
+        "init_delay": {
+          "$ref": "#/definitions/initializeDelayProperties"
+        },
+        "unminimize_delay": {
+          "$ref": "#/definitions/restoreDelayProperties"
+        },
+        "restore_delay": {
+          "$ref": "#/definitions/restoreDelayProperties"
         }
+      },
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "init_delay",
+              "initialize_delay"
+            ]
+          },
+          {
+            "required": [
+              "unminimize_delay",
+              "restore_delay"
+            ]
+          }
+        ]
       }
     },
     "window_rules": {
@@ -100,6 +120,22 @@
             "required": [
               "kind"
             ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "init_delay",
+                    "initialize_delay"
+                  ]
+                },
+                {
+                  "required": [
+                    "unminimize_delay",
+                    "restore_delay"
+                  ]
+                }
+              ]
+            },
             "properties": {
               "kind": {
                 "description": "Specifies the rule type: 'Global' (applies to all windows), 'Class' (by window class), or 'Title' (by window title).",
@@ -151,12 +187,16 @@
                 "$ref": "#/definitions/colorProperties"
               },
               "initialize_delay": {
-                "type": "integer",
-                "description": "The initial delay (in milliseconds) before applying animations when the window is first rendered. A reduced delay can be used to account for animations like fade, which take additional time."
+                "$ref": "#/definitions/initializeDelayProperties"
+              },
+              "init_delay": {
+                "$ref": "#/definitions/initializeDelayProperties"
               },
               "unminimize_delay": {
-                "type": "integer",
-                "description": "The delay (in milliseconds) before applying animations when a minimized window is restored."
+                "$ref": "#/definitions/restoreDelayProperties"
+              },
+              "restore_delay": {
+                "$ref": "#/definitions/restoreDelayProperties"
               },
               "enabled": {
                 "description": "Enables or disables border for this rule. (default: true)",
@@ -185,6 +225,14 @@
     "window_rules"
   ],
   "definitions": {
+    "initializeDelayProperties": {
+      "type": "integer",
+      "description": "The initial delay (in milliseconds) before applying animations when the window is first rendered. A reduced delay can be used to account for animations like fade, which take additional time."
+    },
+    "restoreDelayProperties": {
+      "type": "integer",
+      "description": "The delay (in milliseconds) before applying animations when a minimized window is restored."
+    },
     "borderWidthProperties": {
       "anyOf": [
         {

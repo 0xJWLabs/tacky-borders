@@ -92,9 +92,9 @@ global:
 
   # initialize_delay: The initial delay (in milliseconds) before applying animations when the window is first rendered. 
   #             A reduced delay can be used to account for animations like fade, which take additional time.
-  # unminimize_delay: The delay (in milliseconds) before applying animations when a minimized window is restored.
+  # restore_delay: The delay (in milliseconds) before applying animations when a minimized window is restored.
   initialize_delay: 150
-  unminimize_delay: 100
+  restore_delay: 100
 
 # window_rules: Defines specific window matching rules for borders.
 # Each rule can define custom properties for how borders are applied to matching windows.

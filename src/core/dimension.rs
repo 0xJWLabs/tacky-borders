@@ -5,13 +5,9 @@ use serde::de::Error;
 use serde::Deserialize;
 use serde::Deserializer;
 #[cfg(feature = "json")]
-use serde_jsonc2::Number as JsonNumber;
-#[cfg(feature = "json")]
-use serde_jsonc2::Value as JsonValue;
+use serde_jsonc2::{Number as JsonNumber, Value as JsonValue};
 #[cfg(feature = "yml")]
-use serde_yml::Number as YamlNumber;
-#[cfg(feature = "yml")]
-use serde_yml::Value as YamlValue;
+use serde_yml::{Number as YamlNumber, Value as YamlValue};
 
 pub enum Dimension {
     #[cfg(feature = "json")]

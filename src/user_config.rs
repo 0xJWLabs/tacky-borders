@@ -38,15 +38,15 @@ pub static CONFIG_FORMAT: LazyLock<RwLock<ConfigFormat>> =
 /// Represents the supported configuration file formats.
 #[derive(Debug, Clone, Default)]
 pub enum ConfigFormat {
-    #[cfg(feature = "yml")]
-    /// YAML configuration file.
-    Yaml,
     #[cfg(feature = "json")]
     /// JSON configuration file.
     Json,
     #[cfg(feature = "json")]
     /// JSON with comments (JSONC) configuration file.
     Jsonc,
+    #[cfg(feature = "yml")]
+    /// YAML configuration file.
+    Yaml,
     /// Placeholder for cases where no configuration type is detected.
     #[default]
     None,
@@ -263,7 +263,8 @@ impl UserConfig {
     /// Attempts to create a new configuration instance by reading from the config file.
     pub fn create() -> AnyResult<Self> {
         let config_dir = UserConfig::get_config_dir().unwrap_or_default();
-        let config_file = UserConfig::detect_config_file(&config_dir).unwrap_or_default();
+        let config_file = UserConfig::detect_config_file(&config_dir)
+            .unwrap_or(Self::create_default_config(&config_dir).unwrap_or_default());
         let config_format = UserConfig::detect_config_format(&config_dir).unwrap_or_default();
         let contents = read_to_string(&config_file)
             .with_context(|| format!("failed to read config file: {}", config_file.display()))?;
@@ -275,7 +276,6 @@ impl UserConfig {
     }
 
     /// Deserializes configuration content into a `Config` instance based on the file format.
-    #[cfg(any(feature = "json", feature = "yml"))]
     fn deserialize(contents: String) -> AnyResult<Self> {
         let config_format = &*CONFIG_FORMAT
             .read()
@@ -297,12 +297,15 @@ impl UserConfig {
     /// Detects the configuration file in the given directory or creates a default config file if none exists.
     pub fn detect_config_file(config_dir: &Path) -> AnyResult<PathBuf> {
         let candidates = [
+            "json",
             #[cfg(feature = "json")]
             "json",
             #[cfg(feature = "json")]
             "jsonc",
             #[cfg(feature = "yml")]
             "yaml",
+            #[cfg(feature = "yml")]
+            "yml",
         ];
 
         for ext in candidates {
@@ -312,12 +315,11 @@ impl UserConfig {
             }
         }
 
-        // Create default config if none exist
-        Self::create_default_config(config_dir)
+        Err(anyhow!("config file not found"))
     }
 
     /// Creates a default configuration file in the specified directory.
-    fn create_default_config(config_dir: &Path) -> AnyResult<PathBuf> {
+    pub fn create_default_config(config_dir: &Path) -> AnyResult<PathBuf> {
         let path = config_dir.join("config.yaml");
         write(path.clone(), DEFAULT_CONFIG.as_bytes())
             .with_context(|| format!("failed to write default config to {}", path.display()))?;
@@ -327,12 +329,14 @@ impl UserConfig {
 
     pub fn detect_config_format(config_dir: &Path) -> AnyResult<ConfigFormat> {
         let candidates = [
-            #[cfg(feature = "yml")]
-            ("yaml", ConfigFormat::Yaml),
             #[cfg(feature = "json")]
             ("json", ConfigFormat::Json),
             #[cfg(feature = "json")]
             ("jsonc", ConfigFormat::Jsonc),
+            #[cfg(feature = "yml")]
+            ("yaml", ConfigFormat::Yaml),
+            #[cfg(feature = "yml")]
+            ("yml", ConfigFormat::Yaml),
         ];
 
         for (ext, config_type) in candidates {
@@ -342,7 +346,25 @@ impl UserConfig {
             }
         }
 
-        Ok(ConfigFormat::Yaml)
+        #[cfg(all(feature = "yml", not(feature = "json")))]
+        {
+            Ok(ConfigFormat::Yaml)
+        }
+
+        #[cfg(all(feature = "json", not(feature = "yml")))]
+        {
+            Ok(ConfigFormat::Json)
+        }
+
+        #[cfg(all(feature = "json", feature = "yml"))]
+        {
+            Ok(ConfigFormat::Json) // Priority is YAML
+        }
+
+        #[cfg(not(any(feature = "json", feature = "yml")))]
+        {
+            Err(anyhow::anyhow!("No supported config format found"))
+        }
     }
 
     /// Retrieves the configuration directory, creating it if necessary.
@@ -428,23 +450,16 @@ impl UserConfig {
     /// (e.g., JSON, YAML, JSONC) and attempts to open it using the default file association on the system.
     pub fn open() {
         match Self::get_config_dir() {
-            Ok(mut dir) => {
-                let config_file = match *CONFIG_FORMAT.read().unwrap() {
-                    #[cfg(feature = "json")]
-                    ConfigFormat::Json => "config.json",
-                    #[cfg(feature = "json")]
-                    ConfigFormat::Jsonc => "config.jsonc",
-                    #[cfg(feature = "yml")]
-                    ConfigFormat::Yaml => "config.yaml",
-                    _ => {
-                        error!("Unsupported config file");
-                        return;
+            Ok(dir) => {
+                let config_file_res = Self::detect_config_file(dir.as_path());
+                match config_file_res {
+                    Ok(config_file) => {
+                        win_open::that(config_file).log_if_err();
                     }
-                };
-
-                dir.push(config_file);
-
-                win_open::that(dir).log_if_err();
+                    Err(e) => {
+                        error!("{e}");
+                    }
+                }
             }
             Err(err) => error!("{err}"),
         }

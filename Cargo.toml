@@ -8,7 +8,7 @@ opt-level = 0
 lto = "off"
 
 [features]
-default = ["fast-hash", "yml", "json"]
+default = ["fast-hash", "json"]
 fast-hash = ["fx-hash"]
 yml = ["serde_yml"]
 json = ["serde_jsonc2"]
@@ -21,7 +21,6 @@ serde_yml = { version = "0.0.12", optional = true }
 log = "0.4.22"
 anyhow = "1.0.95"
 simple-bezier-easing = "0.1.1"
-serde_jsonc2 = { version = "0.1.1", optional = true }
 tray-icon-win = "0.1.5"
 win-open = "0.1.2"
 notify-win-debouncer-full = "0.1.2"
@@ -33,7 +32,7 @@ colorparser-css = { version = "0.1.1", features = [
   "fast-hash",
 ] }
 fx-hash = { version = "0.1.0", optional = true }
-
+serde_jsonc2 = { version = "0.1.1", optional = true }
 
 [dependencies.windows]
 version = "0.59.0"

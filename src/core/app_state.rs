@@ -36,7 +36,8 @@ impl AppState {
         let active_window = WindowsApi::get_foreground_window();
 
         let config_dir = UserConfig::get_config_dir().unwrap_or_default();
-        let config_file = UserConfig::detect_config_file(&config_dir).unwrap_or_default();
+        let config_file = UserConfig::detect_config_file(&config_dir)
+            .unwrap_or(UserConfig::create_default_config(&config_dir).unwrap_or_default());
         let mut config_watcher = ConfigWatcher::new(config_file, Duration::from_millis(200));
 
         let config = match UserConfig::create() {

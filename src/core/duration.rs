@@ -1,9 +1,10 @@
+use schema_jsonrs::JsonSchema;
 use serde::de::Error as SerdeError;
 use serde::de::Visitor;
 use serde::Deserialize;
 use serde::Deserializer;
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, JsonSchema)]
 /// Represents a duration, which can be either a finite number (f32) or a non-empty string.
 pub enum Duration {
     Number(f32),

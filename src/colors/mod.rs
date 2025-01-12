@@ -8,6 +8,7 @@ use gradient::ColorMapping;
 use gradient::Gradient;
 use parser::parse_color_mapping;
 use parser::parse_color_string;
+use schema_jsonrs::JsonSchema;
 use serde::Deserialize;
 use solid::Solid;
 use windows::core::Result as WinResult;
@@ -39,7 +40,7 @@ pub enum Color {
 
 /// The `GlobalColor` enum represents a global color that can be either a color string (e.g., a hex color code or a color name)
 /// or a mapping to a gradient definition.
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, JsonSchema)]
 #[serde(untagged)]
 pub enum GlobalColor {
     /// A string representing a color, which could be a hex color code or a color name.

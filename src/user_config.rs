@@ -12,6 +12,7 @@ use crate::windows_api::WindowsApi;
 use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result as AnyResult;
+use schema_jsonrs::JsonSchema;
 use serde::de;
 use serde::Deserialize;
 use serde::Deserializer;
@@ -53,7 +54,7 @@ pub enum ConfigFormat {
 }
 
 /// Defines options for border radius customization.
-#[derive(Debug, PartialEq, Clone, Default)]
+#[derive(Debug, PartialEq, Clone, Default, JsonSchema)]
 pub enum BorderStyle {
     /// Fully rounded borders.
     Round,
@@ -117,7 +118,7 @@ impl BorderStyle {
 }
 
 /// Specifies the type of match used for window identification.
-#[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Clone, JsonSchema)]
 pub enum MatchKind {
     /// Match based on the window title.
     Title,
@@ -128,7 +129,7 @@ pub enum MatchKind {
 }
 
 /// Defines the strategy for matching a value against a criterion.
-#[derive(Debug, Deserialize, PartialEq, Clone)]
+#[derive(Debug, Deserialize, PartialEq, Clone, JsonSchema)]
 pub enum MatchStrategy {
     /// Match values that are exactly equal.
     Equals,
@@ -139,7 +140,7 @@ pub enum MatchStrategy {
 }
 
 /// Represents criteria used to match windows for applying specific configurations.
-#[derive(Debug, Deserialize, Clone, Default, PartialEq)]
+#[derive(Debug, Deserialize, Clone, Default, PartialEq, JsonSchema)]
 pub struct WindowMatchConfig {
     /// Type of match (e.g., title, class, or process).
     #[serde(rename = "kind")]
@@ -187,7 +188,7 @@ pub struct WindowMatchConfig {
 }
 
 /// Represents a rule for a specific window, including matching criteria and associated actions.
-#[derive(Debug, Deserialize, Clone, Default, PartialEq)]
+#[derive(Debug, Deserialize, Clone, Default, PartialEq, JsonSchema)]
 pub struct WindowRuleConfig {
     /// The matching details and settings for a specific type of window.
     #[serde(rename = "match")]
@@ -203,7 +204,7 @@ fn serde_default_global() -> GlobalRuleConfig {
 }
 
 /// Contains global configuration settings applied across all windows.
-#[derive(Debug, Deserialize, Clone, Default, PartialEq)]
+#[derive(Debug, Deserialize, Clone, Default, PartialEq, JsonSchema)]
 #[serde(default)]
 pub struct GlobalRuleConfig {
     /// Default width of the window borders.
@@ -239,7 +240,7 @@ pub struct GlobalRuleConfig {
 }
 
 /// Stores the complete configuration including global rules, window rules, and keybindings.
-#[derive(Debug, Deserialize, Clone, Default, PartialEq)]
+#[derive(Debug, Deserialize, Clone, Default, PartialEq, JsonSchema)]
 #[serde(default)]
 pub struct UserConfig {
     /// Global settings applied across all windows.

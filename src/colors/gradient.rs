@@ -1,6 +1,6 @@
-use serde::Deserialize;
-
 use colorparser_css::GradientCoordinates;
+use schema_jsonrs::JsonSchema;
+use serde::Deserialize;
 use windows::Win32::{
     Foundation::RECT,
     Graphics::Direct2D::{
@@ -43,7 +43,6 @@ pub struct Gradient {
     pub direction: GradientCoordinates,
     /// A list of gradient stops defining color stops in the gradient.
     pub gradient_stops: Vec<D2D1_GRADIENT_STOP>,
-
     /// An optional linear gradient brush that can be used for rendering the gradient.
     /// It represents the gradient with a direction and color stops, and may be `None` if not yet initialized.
     pub brush: Option<ID2D1LinearGradientBrush>,
@@ -86,7 +85,7 @@ impl Gradient {
 
 /// Enum representing different types of gradient directions.
 /// It can either be a string describing the direction (e.g., "to right") or explicit coordinates for the gradient direction.
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, JsonSchema)]
 #[serde(untagged)]
 pub enum GradientDirection {
     /// Direction is represented as a string (e.g., "to right").
@@ -102,7 +101,7 @@ impl From<&str> for GradientDirection {
 }
 
 /// A structure that defines a gradient mapping, which contains a list of color stops and a direction.
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, JsonSchema)]
 pub struct ColorMapping {
     /// A list of colors in the gradient, represented as hexadecimal color strings.
     pub colors: Vec<String>,

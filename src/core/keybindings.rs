@@ -1,9 +1,10 @@
 use crate::core::app_state::APP_STATE;
 use crate::keyboard_hook::KeybindingConfig;
 use crate::sys_tray::SystemTrayEvent;
+use schema_jsonrs::JsonSchema;
 use serde::Deserialize;
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct Keybindings {
     #[serde(default = "default_reload_key")]

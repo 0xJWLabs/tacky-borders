@@ -51,7 +51,7 @@ on the tray icon and hitting "Open Config" or by triggering `open_config` keybin
 
 The following auto-generated `config.jsonc` is included as reference:
 
-```json
+```jsonc
 {
   "$schema": "https://raw.githubusercontent.com/GlazeBar/tacky-borders/refs/heads/main/schema.json",
   // allow auto reload on config changes

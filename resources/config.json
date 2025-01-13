@@ -1,6 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/GlazeBar/tacky-borders/refs/heads/main/schema.json",
   "monitor_config_changes": true,
+  "theme": null,
   "keybindings": {
     "reload": "f8",
     "open_config": "f9",

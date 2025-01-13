@@ -2,9 +2,11 @@
 
 Bring sleek, customizable borders to your Windows desktop.
 
-Use the original [tacky-borders](https://github.com/lukeyou05/tacky-borders) please!## Installation
+Use the original [tacky-borders](https://github.com/lukeyou05/tacky-borders) please!
 
 https://github.com/user-attachments/assets/6520880d-b831-4652-b19d-34aa9b07f7cb
+
+## Installation
 
 ### Download Prebuilt Release
 1. Visit the [Releases](https://github.com/GlazeBar/tacky-borders/releases) page.
@@ -25,13 +27,13 @@ If you'd like to build the application manually:
     ```sh
     git clone https://github.com/GlazeBar/tacky-borders.git
     ```
-    
+
 3. Navigate into the project directory:
 
     ```sh
     cd tacky-borders
     ```
-    
+
 4. Build or run the project:
 
     ```sh

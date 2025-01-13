@@ -486,14 +486,17 @@
       "properties": {
         "exit": {
           "type": "string",
+          "description": "The keybinding used to close the app. Pressing this key will close 'tacky-borders'. (default: f10)",
           "default": "f10"
         },
         "open_config": {
           "type": "string",
+          "description": "The keybinding used to open the configuration in editor. Pressing this key will open config for 'tacky-borders'. (default: f9)",
           "default": "f9"
         },
         "reload": {
           "type": "string",
+          "description": "The keybinding used to reload the border. Pressing this key will refresh the border settings or appearance. (default: f8)",
           "default": "f8"
         }
       }

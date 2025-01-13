@@ -34,6 +34,22 @@
     }
   },
   "$defs": {
+    "Alias": {
+      "anyOf": [
+        {
+          "required": [
+            "init_delay",
+            "initialize_delay"
+          ]
+        },
+        {
+          "required": [
+            "unminimize_delay",
+            "restore_delay"
+          ]
+        }
+      ]
+    },
     "AnimationConfig": {
       "type": "object",
       "properties": {
@@ -335,6 +351,12 @@
         "direction"
       ]
     },
+    "Delay": {
+      "description": "Represents a delay time, which can be either a finite number or a null",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
     "Duration": {
       "description": "Represents a duration, which can be either a finite number (f32) or a non-empty string.",
       "oneOf": [
@@ -365,6 +387,9 @@
     "GlobalRuleConfig": {
       "description": "Contains global configuration settings applied across all windows.",
       "type": "object",
+      "not": {
+        "$ref": "#/$defs/Alias"
+      },
       "properties": {
         "active_color": {
           "description": "Default color for active window borders.",
@@ -394,17 +419,23 @@
         },
         "initialize_delay": {
           "description": "Delay (in milliseconds) before applying borders after initialization.",
-          "type": "integer",
-          "format": "uint64",
-          "default": 250,
-          "minimum": 0
+          "$ref": "#/$defs/Delay",
+          "default": 250
+        },
+        "init_delay": {
+          "description": "Delay (in milliseconds) before applying borders after initialization.",
+          "$ref": "#/$defs/Delay",
+          "default": 250
         },
         "unminimize_delay": {
           "description": "Delay (in milliseconds) before applying borders after unminimizing.",
-          "type": "integer",
-          "format": "uint64",
-          "default": 200,
-          "minimum": 0
+          "$ref": "#/$defs/Delay",
+          "default": 200
+        },
+        "restore_delay": {
+          "description": "Delay (in milliseconds) before applying borders after unminimizing.",
+          "$ref": "#/$defs/Delay",
+          "default": 200
         }
       }
     },
@@ -510,6 +541,9 @@
     "WindowMatchConfig": {
       "description": "Represents criteria used to match windows for applying specific configurations.",
       "type": "object",
+      "not": {
+        "$ref": "#/$defs/Alias"
+      },
       "properties": {
         "active_color": {
           "description": "Color for the border when the window is active.",
@@ -586,12 +620,25 @@
         },
         "initialize_delay": {
           "description": "Delay (in milliseconds) before applying the border after initialization.",
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint64",
-          "minimum": 0
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Delay"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "init_delay": {
+          "description": "Delay (in milliseconds) before applying the border after initialization.",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Delay"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "kind": {
           "description": "Type of match (e.g., title, class, or process).",
@@ -617,12 +664,25 @@
         },
         "unminimize_delay": {
           "description": "Delay (in milliseconds) before applying the border after unminimizing.",
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint64",
-          "minimum": 0
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Delay"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "restore_delay": {
+          "description": "Delay (in milliseconds) before applying the border after unminimizing.",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Delay"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "value": {
           "description": "The value to match against (e.g., window title or class name).",

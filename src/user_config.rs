@@ -32,7 +32,7 @@ use windows::Win32::Graphics::Dwm::DWMWCP_ROUND;
 use windows::Win32::Graphics::Dwm::DWMWCP_ROUNDSMALL;
 
 /// Default configuration content stored as a YAML string.
-const DEFAULT_CONFIG: &str = include_str!("../resources/config.yaml");
+const DEFAULT_CONFIG: &str = include_str!("../resources/config.jsonc");
 
 static CONFIG_FORMAT: OnceLock<RwLock<ConfigFormat>> = OnceLock::new();
 
@@ -360,7 +360,7 @@ impl UserConfig {
 
     /// Creates a default configuration file in the specified directory.
     pub fn create_default_config(config_dir: &Path) -> anyhow::Result<PathBuf> {
-        let path = config_dir.join("config.yaml");
+        let path = config_dir.join("config.jsonc");
         write(path.clone(), DEFAULT_CONFIG.as_bytes())
             .with_context(|| format!("failed to write default config to {}", path.display()))?;
 

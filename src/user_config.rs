@@ -5,6 +5,8 @@ use crate::core::app_state::APP_STATE;
 use crate::core::dimension::deserialize_dimension;
 use crate::core::dimension::deserialize_optional_dimension;
 use crate::core::keybindings::Keybindings;
+use crate::core::theme::deserialize_theme;
+use crate::core::theme::Theme;
 use crate::create_keybindings;
 use crate::error::LogIfErr;
 use crate::keyboard_hook::KEYBOARD_HOOK;
@@ -256,7 +258,8 @@ pub struct UserConfig {
     #[serde(default)]
     pub monitor_config_changes: bool,
     /// Enable custom predefined theme
-    pub theme: Option<String>,
+    #[serde(deserialize_with = "deserialize_theme")]
+    pub theme: Theme,
 }
 
 /// Methods for managing the configuration, including loading, saving, and reloading.

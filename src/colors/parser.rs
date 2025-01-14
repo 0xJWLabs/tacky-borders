@@ -7,7 +7,6 @@ use windows::Win32::Graphics::Direct2D::Common::D2D1_COLOR_F;
 use windows::Win32::Graphics::Direct2D::Common::D2D1_GRADIENT_STOP;
 
 use crate::core::app_state::APP_STATE;
-use crate::user_config::UserConfig;
 
 use super::error::Error;
 use super::error::ErrorKind;
@@ -154,25 +153,17 @@ fn parse_gradient_direction(direction: &GradientDirection) -> Result<GradientCoo
 /// ```
 pub fn parse_color_string(s: &str) -> anyhow::Result<Color> {
     let theme = match APP_STATE.config.read() {
-        Ok(config) => config.theme.clone(),
-        Err(_) => None,
-    };
+        Ok(config) => Ok(config.theme.clone()),
+        Err(_) => Err(anyhow!("config lock poisoned")),
+    }?;
 
-    let css_color = match theme {
-        Some(theme) => {
-            let config_dir = UserConfig::get_config_dir().unwrap().join("themes");
-            let theme_file = config_dir
-                .join(theme)
-                .with_extension("jsonc")
-                .to_string_lossy()
-                .to_string();
-            CssColor::from_html_with_theme(s, &theme_file).map_err(|e| {
-                Error::new(
-                    ErrorKind::InvalidInput,
-                    format!("CSS parsing failed: {}", e),
-                )
-            })?
-        }
+    let css_color = match theme.get() {
+        Some(theme) => CssColor::from_html_with_theme(s, &theme).map_err(|e| {
+            Error::new(
+                ErrorKind::InvalidInput,
+                format!("CSS parsing failed: {}", e),
+            )
+        })?,
         None => CssColor::from_html(s).map_err(|e| {
             Error::new(
                 ErrorKind::InvalidInput,

@@ -40,11 +40,8 @@ static CONFIG_FORMAT: OnceLock<RwLock<ConfigFormat>> = OnceLock::new();
 #[derive(Debug, Clone, Default)]
 pub enum ConfigFormat {
     #[cfg(feature = "json")]
-    /// JSON configuration file.
+    /// JSON or JSONC(JSON with comments) configuration file.
     Json,
-    #[cfg(feature = "json")]
-    /// JSON with comments (JSONC) configuration file.
-    Jsonc,
     #[cfg(feature = "yml")]
     /// YAML configuration file.
     Yaml,
@@ -326,7 +323,7 @@ impl UserConfig {
         let config_format = ConfigFormat::get()?;
 
         #[cfg(feature = "json")]
-        if matches!(config_format, ConfigFormat::Json | ConfigFormat::Jsonc) {
+        if matches!(config_format, ConfigFormat::Json) {
             return serde_jsonc2::from_str(&contents).with_context(|| "failed to deserialize JSON");
         }
 
@@ -341,11 +338,10 @@ impl UserConfig {
     /// Detects the configuration file in the given directory or creates a default config file if none exists.
     pub fn detect_config_file(config_dir: &Path) -> anyhow::Result<PathBuf> {
         let candidates = [
-            "json",
-            #[cfg(feature = "json")]
-            "json",
             #[cfg(feature = "json")]
             "jsonc",
+            #[cfg(feature = "json")]
+            "json",
             #[cfg(feature = "yml")]
             "yaml",
             #[cfg(feature = "yml")]
@@ -374,9 +370,9 @@ impl UserConfig {
     pub fn detect_config_format(config_dir: &Path) -> anyhow::Result<ConfigFormat> {
         let candidates = [
             #[cfg(feature = "json")]
-            ("json", ConfigFormat::Json),
+            ("jsonc", ConfigFormat::Json),
             #[cfg(feature = "json")]
-            ("jsonc", ConfigFormat::Jsonc),
+            ("json", ConfigFormat::Json),
             #[cfg(feature = "yml")]
             ("yaml", ConfigFormat::Yaml),
             #[cfg(feature = "yml")]
@@ -390,14 +386,14 @@ impl UserConfig {
             }
         }
 
-        #[cfg(all(feature = "yml", not(feature = "json")))]
-        {
-            Ok(ConfigFormat::Yaml)
-        }
-
         #[cfg(all(feature = "json", not(feature = "yml")))]
         {
             Ok(ConfigFormat::Json)
+        }
+
+        #[cfg(all(feature = "yml", not(feature = "json")))]
+        {
+            Ok(ConfigFormat::Yaml)
         }
 
         #[cfg(all(feature = "json", feature = "yml"))]

@@ -78,7 +78,7 @@ where
     let config_format = ConfigFormat::get().map_err(|e| D::Error::custom(e))?;
 
     #[cfg(feature = "json")]
-    if matches!(config_format, ConfigFormat::Json | ConfigFormat::Jsonc) {
+    if matches!(config_format, ConfigFormat::Json) {
         let value: JsonValue = Deserialize::deserialize(deserializer)?;
         return match value {
             JsonValue::Number(num) => parse_value(Dimension::JsonNumber(num)),
@@ -107,7 +107,7 @@ where
     let config_format = ConfigFormat::get().map_err(|e| D::Error::custom(e))?;
 
     #[cfg(feature = "json")]
-    if matches!(config_format, ConfigFormat::Json | ConfigFormat::Jsonc) {
+    if matches!(config_format, ConfigFormat::Json) {
         let value: Option<JsonValue> = Option::deserialize(deserializer)?;
         return match value {
             Some(value) => match value {

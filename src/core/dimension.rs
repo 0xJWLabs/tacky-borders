@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 use crate::user_config::ConfigFormat;
+use crate::user_config::CONFIG_FORMAT;
 use serde::de::Error;
 use serde::Deserialize;
 use serde::Deserializer;
@@ -75,10 +76,11 @@ pub fn deserialize_dimension<'de, D>(deserializer: D) -> Result<i32, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let config_format = ConfigFormat::get().map_err(|e| D::Error::custom(e))?;
+    let config_format = &*CONFIG_FORMAT
+            .read().unwrap();
 
     #[cfg(feature = "json")]
-    if matches!(config_format, ConfigFormat::Json) {
+    if matches!(config_format, ConfigFormat::Json | ConfigFormat::Jsonc) {
         let value: JsonValue = Deserialize::deserialize(deserializer)?;
         return match value {
             JsonValue::Number(num) => parse_value(Dimension::JsonNumber(num)),
@@ -104,10 +106,11 @@ pub fn deserialize_optional_dimension<'de, D>(deserializer: D) -> Result<Option<
 where
     D: Deserializer<'de>,
 {
-    let config_format = ConfigFormat::get().map_err(|e| D::Error::custom(e))?;
+    let config_format = &*CONFIG_FORMAT
+            .read().unwrap();
 
     #[cfg(feature = "json")]
-    if matches!(config_format, ConfigFormat::Json) {
+    if matches!(config_format, ConfigFormat::Json | ConfigFormat::Jsonc) {
         let value: Option<JsonValue> = Option::deserialize(deserializer)?;
         return match value {
             Some(value) => match value {

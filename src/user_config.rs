@@ -24,7 +24,7 @@ use std::fs::write;
 use std::fs::DirBuilder;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::LazyLock;
 use std::sync::RwLock;
 use windows::Win32::Graphics::Dwm::DWMWCP_DEFAULT;
 use windows::Win32::Graphics::Dwm::DWMWCP_DONOTROUND;
@@ -34,44 +34,24 @@ use windows::Win32::Graphics::Dwm::DWMWCP_ROUNDSMALL;
 /// Default configuration content stored as a YAML string.
 const DEFAULT_CONFIG: &str = include_str!("../resources/config.jsonc");
 
-static CONFIG_FORMAT: OnceLock<RwLock<ConfigFormat>> = OnceLock::new();
+pub static CONFIG_FORMAT: LazyLock<RwLock<ConfigFormat>> =
+    LazyLock::new(|| RwLock::new(ConfigFormat::default()));
 
 /// Represents the supported configuration file formats.
 #[derive(Debug, Clone, Default)]
 pub enum ConfigFormat {
     #[cfg(feature = "json")]
-    /// JSON or JSONC(JSON with comments) configuration file.
+    /// JSON configuration file.
     Json,
+    #[cfg(feature = "json")]
+    /// JSON with comments (JSONC) configuration file.
+    Jsonc,
     #[cfg(feature = "yml")]
     /// YAML configuration file.
     Yaml,
     /// Placeholder for cases where no configuration type is detected.
     #[default]
     None,
-}
-
-impl ConfigFormat {
-    pub fn set(format: ConfigFormat) -> anyhow::Result<()> {
-        let rwlock = CONFIG_FORMAT
-            .get_or_init(|| RwLock::new(ConfigFormat::default()));
-        let mut config_format = rwlock
-            .write()
-            .map_err(|_| anyhow!("failed to acquire write lock on CONFIG_FORMAT"))?;
-        *config_format = format;
-        Ok(())
-    }
-
-    /// Get the current configuration format with read access.
-    pub fn get() -> anyhow::Result<ConfigFormat> {
-        if let Some(rwlock) = CONFIG_FORMAT.get() {
-            let config_format = rwlock
-                .read()
-                .map_err(|_| anyhow!("failed to acquire read lock on CONFIG_FORMAT"))?;
-            Ok(config_format.clone())
-        } else {
-            Err(anyhow!("CONFIG_FORMAT is not initialized"))
-        }
-    }
 }
 
 /// Defines options for border radius customization.
@@ -292,8 +272,13 @@ impl UserConfig {
                 return Err(err);
             }
         };
-        let config_file = UserConfig::detect_config_file(&config_dir)
-            .unwrap_or(Self::create_default_config(&config_dir).unwrap_or_default());
+        let config_file = match UserConfig::detect_config_file(&config_dir) {
+            Ok(file) => file,
+            Err(_) => {
+                println!("Creating default config file");
+                Self::create_default_config(&config_dir).unwrap_or_default()
+            }
+        };
         let config_format = UserConfig::detect_config_format(&config_dir).unwrap_or_default();
 
         let contents = match read_to_string(&config_file) {
@@ -304,7 +289,7 @@ impl UserConfig {
             }
         };
 
-        ConfigFormat::set(config_format).log_if_err();
+        *CONFIG_FORMAT.write().unwrap() = config_format.clone();
 
         let config = Self::deserialize(contents);
 
@@ -320,10 +305,12 @@ impl UserConfig {
 
     /// Deserializes configuration content into a `Config` instance based on the file format.
     fn deserialize(contents: String) -> anyhow::Result<Self> {
-        let config_format = ConfigFormat::get()?;
+        let config_format = &*CONFIG_FORMAT
+            .read()
+            .map_err(|_| anyhow!("config format lock poisoned"))?;
 
         #[cfg(feature = "json")]
-        if matches!(config_format, ConfigFormat::Json) {
+        if matches!(config_format, ConfigFormat::Json | ConfigFormat::Jsonc) {
             return serde_jsonc2::from_str(&contents).with_context(|| "failed to deserialize JSON");
         }
 
@@ -339,9 +326,9 @@ impl UserConfig {
     pub fn detect_config_file(config_dir: &Path) -> anyhow::Result<PathBuf> {
         let candidates = [
             #[cfg(feature = "json")]
-            "jsonc",
-            #[cfg(feature = "json")]
             "json",
+            #[cfg(feature = "json")]
+            "jsonc",
             #[cfg(feature = "yml")]
             "yaml",
             #[cfg(feature = "yml")]
@@ -370,9 +357,9 @@ impl UserConfig {
     pub fn detect_config_format(config_dir: &Path) -> anyhow::Result<ConfigFormat> {
         let candidates = [
             #[cfg(feature = "json")]
-            ("jsonc", ConfigFormat::Json),
-            #[cfg(feature = "json")]
             ("json", ConfigFormat::Json),
+            #[cfg(feature = "json")]
+            ("jsonc", ConfigFormat::Jsonc),
             #[cfg(feature = "yml")]
             ("yaml", ConfigFormat::Yaml),
             #[cfg(feature = "yml")]
@@ -386,14 +373,14 @@ impl UserConfig {
             }
         }
 
-        #[cfg(all(feature = "json", not(feature = "yml")))]
-        {
-            Ok(ConfigFormat::Json)
-        }
-
         #[cfg(all(feature = "yml", not(feature = "json")))]
         {
             Ok(ConfigFormat::Yaml)
+        }
+
+        #[cfg(all(feature = "json", not(feature = "yml")))]
+        {
+            Ok(ConfigFormat::Json)
         }
 
         #[cfg(all(feature = "json", feature = "yml"))]

@@ -638,8 +638,7 @@ impl WindowsApi {
                 &FOLDERID_Profile,
                 KNOWN_FOLDER_FLAG(0),
                 Some(HANDLE::default()),
-            )
-            .unwrap();
+            )?;
 
             if path_ptr.0.is_null() {
                 anyhow::bail!("SHGetKnownFolderPath returned a null pointer");

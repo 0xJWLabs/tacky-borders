@@ -13,7 +13,6 @@ use crate::keyboard_hook::KEYBOARD_HOOK;
 use crate::windows_api::WindowsApi;
 use anyhow::anyhow;
 use anyhow::Context;
-use anyhow::Result as AnyResult;
 use schema_jsonrs::JsonSchema;
 use serde::de;
 use serde::Deserialize;
@@ -25,7 +24,7 @@ use std::fs::write;
 use std::fs::DirBuilder;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::LazyLock;
+use std::sync::OnceLock;
 use std::sync::RwLock;
 use windows::Win32::Graphics::Dwm::DWMWCP_DEFAULT;
 use windows::Win32::Graphics::Dwm::DWMWCP_DONOTROUND;
@@ -35,8 +34,7 @@ use windows::Win32::Graphics::Dwm::DWMWCP_ROUNDSMALL;
 /// Default configuration content stored as a YAML string.
 const DEFAULT_CONFIG: &str = include_str!("../resources/config.yaml");
 
-pub static CONFIG_FORMAT: LazyLock<RwLock<ConfigFormat>> =
-    LazyLock::new(|| RwLock::new(ConfigFormat::default()));
+static CONFIG_FORMAT: OnceLock<RwLock<ConfigFormat>> = OnceLock::new();
 
 /// Represents the supported configuration file formats.
 #[derive(Debug, Clone, Default)]
@@ -53,6 +51,30 @@ pub enum ConfigFormat {
     /// Placeholder for cases where no configuration type is detected.
     #[default]
     None,
+}
+
+impl ConfigFormat {
+    pub fn set(format: ConfigFormat) -> anyhow::Result<()> {
+        let rwlock = CONFIG_FORMAT
+            .get_or_init(|| RwLock::new(ConfigFormat::default()));
+        let mut config_format = rwlock
+            .write()
+            .map_err(|_| anyhow!("failed to acquire write lock on CONFIG_FORMAT"))?;
+        *config_format = format;
+        Ok(())
+    }
+
+    /// Get the current configuration format with read access.
+    pub fn get() -> anyhow::Result<ConfigFormat> {
+        if let Some(rwlock) = CONFIG_FORMAT.get() {
+            let config_format = rwlock
+                .read()
+                .map_err(|_| anyhow!("failed to acquire read lock on CONFIG_FORMAT"))?;
+            Ok(config_format.clone())
+        } else {
+            Err(anyhow!("CONFIG_FORMAT is not initialized"))
+        }
+    }
 }
 
 /// Defines options for border radius customization.
@@ -265,25 +287,43 @@ pub struct UserConfig {
 /// Methods for managing the configuration, including loading, saving, and reloading.
 impl UserConfig {
     /// Attempts to create a new configuration instance by reading from the config file.
-    pub fn create() -> AnyResult<Self> {
-        let config_dir = UserConfig::get_config_dir().unwrap_or_default();
+    pub fn create() -> anyhow::Result<Self> {
+        let config_dir = match UserConfig::get_config_dir() {
+            Ok(dir) => dir,
+            Err(err) => {
+                WindowsApi::show_error_dialog("UserConfig", &format!("failed to get config directory: {}", err));
+                return Err(err);
+            }
+        };
         let config_file = UserConfig::detect_config_file(&config_dir)
             .unwrap_or(Self::create_default_config(&config_dir).unwrap_or_default());
         let config_format = UserConfig::detect_config_format(&config_dir).unwrap_or_default();
-        let contents = read_to_string(&config_file)
-            .with_context(|| format!("failed to read config file: {}", config_file.display()))?;
 
-        *CONFIG_FORMAT.write().unwrap() = config_format.clone();
-        let config = Self::deserialize(contents)?;
+        let contents = match read_to_string(&config_file) {
+            Ok(contents) => contents,
+            Err(e) => {
+                WindowsApi::show_error_dialog("UserConfig", &format!("failed to read config file: {}", config_file.display()));
+                return Err(e.into());
+            }
+        };
 
-        Ok(config)
+        ConfigFormat::set(config_format).log_if_err();
+
+        let config = Self::deserialize(contents);
+
+        match config {
+            Ok(config) => Ok(config),
+            Err(err) => {
+                // Show error dialog for deserialization failure.
+                WindowsApi::show_error_dialog("UserConfig", &format!("{}", err));
+                Err(err)
+            }
+        }
     }
 
     /// Deserializes configuration content into a `Config` instance based on the file format.
-    fn deserialize(contents: String) -> AnyResult<Self> {
-        let config_format = &*CONFIG_FORMAT
-            .read()
-            .map_err(|_| anyhow!("config format lock poisoned"))?;
+    fn deserialize(contents: String) -> anyhow::Result<Self> {
+        let config_format = ConfigFormat::get()?;
 
         #[cfg(feature = "json")]
         if matches!(config_format, ConfigFormat::Json | ConfigFormat::Jsonc) {
@@ -299,7 +339,7 @@ impl UserConfig {
     }
 
     /// Detects the configuration file in the given directory or creates a default config file if none exists.
-    pub fn detect_config_file(config_dir: &Path) -> AnyResult<PathBuf> {
+    pub fn detect_config_file(config_dir: &Path) -> anyhow::Result<PathBuf> {
         let candidates = [
             "json",
             #[cfg(feature = "json")]
@@ -323,7 +363,7 @@ impl UserConfig {
     }
 
     /// Creates a default configuration file in the specified directory.
-    pub fn create_default_config(config_dir: &Path) -> AnyResult<PathBuf> {
+    pub fn create_default_config(config_dir: &Path) -> anyhow::Result<PathBuf> {
         let path = config_dir.join("config.yaml");
         write(path.clone(), DEFAULT_CONFIG.as_bytes())
             .with_context(|| format!("failed to write default config to {}", path.display()))?;
@@ -331,7 +371,7 @@ impl UserConfig {
         Ok(path.clone())
     }
 
-    pub fn detect_config_format(config_dir: &Path) -> AnyResult<ConfigFormat> {
+    pub fn detect_config_format(config_dir: &Path) -> anyhow::Result<ConfigFormat> {
         let candidates = [
             #[cfg(feature = "json")]
             ("json", ConfigFormat::Json),
@@ -372,7 +412,7 @@ impl UserConfig {
     }
 
     /// Retrieves the configuration directory, creating it if necessary.
-    pub fn get_config_dir() -> AnyResult<PathBuf> {
+    pub fn get_config_dir() -> anyhow::Result<PathBuf> {
         let home_dir = WindowsApi::home_dir()?;
         let config_dir = home_dir.join(".config").join("tacky-borders");
         let fallback_dir = home_dir.join(".tacky-borders");

@@ -84,12 +84,16 @@ impl<'de> Deserialize<'de> for BorderStyle {
             Ok(BorderStyle::SmallRound)
         } else if s.eq_ignore_ascii_case("AUTO") {
             Ok(BorderStyle::Auto)
-        } else {
-            let trimmed = s.strip_suffix("px").unwrap_or(&s);
+        } else if s.to_ascii_uppercase().starts_with("RADIUS(") && s.ends_with(")") {
+            let inner = &s[7..s.len() - 1];
+            let trimmed = inner.strip_suffix("px").unwrap_or(&s);
+
             trimmed
                 .parse::<f32>()
                 .map(BorderStyle::Radius)
-                .map_err(|_| de::Error::custom("invalid border style"))
+                .map_err(|_| de::Error::custom("Invalid Radius value"))
+        } else {
+            Err(de::Error::custom("Invalid border style"))
         }
     }
 }

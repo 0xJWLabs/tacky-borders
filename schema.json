@@ -325,8 +325,8 @@
         },
         {
           "type": "string",
-          "pattern": "^-?\\d+(px)?$",
-          "description": "Custom border radius specified as pixels."
+          "pattern": "^[Rr]adius\\([-+]?[0-9]*\\.?[0-9]+(?:px)?\\)$",
+          "description": "Custom border radius specified as a number, optionally followed by 'px'."
         }
       ]
     },

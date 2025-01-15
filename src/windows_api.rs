@@ -8,13 +8,13 @@ use crate::user_config::MatchKind;
 use crate::user_config::MatchStrategy;
 use crate::user_config::WindowRuleConfig;
 use crate::windows_callback::enum_windows;
-use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result as AnyResult;
+use anyhow::anyhow;
 use regex::Regex;
-use std::ffi::c_void;
 use std::ffi::OsStr;
 use std::ffi::OsString;
+use std::ffi::c_void;
 use std::iter::once;
 use std::os::windows::ffi::OsStrExt;
 use std::os::windows::ffi::OsStringExt;
@@ -22,86 +22,92 @@ use std::os::windows::io::AsRawHandle;
 use std::path::PathBuf;
 use std::ptr;
 use std::thread::JoinHandle;
-use windows::core::w;
-use windows::core::Param;
-use windows::core::Result as WinResult;
-use windows::core::PCWSTR;
-use windows::core::PWSTR;
-use windows::Win32::Foundation::CloseHandle;
-use windows::Win32::Foundation::GetLastError;
-use windows::Win32::Foundation::SetLastError;
 use windows::Win32::Foundation::BOOL;
 use windows::Win32::Foundation::COLORREF;
+use windows::Win32::Foundation::CloseHandle;
 use windows::Win32::Foundation::ERROR_ENVVAR_NOT_FOUND;
 use windows::Win32::Foundation::ERROR_INVALID_WINDOW_HANDLE;
 use windows::Win32::Foundation::ERROR_SUCCESS;
+use windows::Win32::Foundation::GetLastError;
 use windows::Win32::Foundation::HANDLE;
 use windows::Win32::Foundation::HINSTANCE;
 use windows::Win32::Foundation::HMODULE;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Foundation::LPARAM;
 use windows::Win32::Foundation::LRESULT;
+use windows::Win32::Foundation::RECT;
+use windows::Win32::Foundation::SetLastError;
 use windows::Win32::Foundation::WPARAM;
-use windows::Win32::Graphics::Dwm::DwmGetWindowAttribute;
-use windows::Win32::Graphics::Dwm::DWMWA_CLOAKED;
-use windows::Win32::Graphics::Dwm::DWMWA_EXTENDED_FRAME_BOUNDS;
-use windows::Win32::Graphics::Dwm::DWMWA_WINDOW_CORNER_PREFERENCE;
-use windows::Win32::Graphics::Dwm::DWMWINDOWATTRIBUTE;
 use windows::Win32::Graphics::Dwm::DWM_CLOAKED_APP;
 use windows::Win32::Graphics::Dwm::DWM_CLOAKED_INHERITED;
 use windows::Win32::Graphics::Dwm::DWM_CLOAKED_SHELL;
 use windows::Win32::Graphics::Dwm::DWM_WINDOW_CORNER_PREFERENCE;
+use windows::Win32::Graphics::Dwm::DWMWA_CLOAKED;
+use windows::Win32::Graphics::Dwm::DWMWA_EXTENDED_FRAME_BOUNDS;
+use windows::Win32::Graphics::Dwm::DWMWA_WINDOW_CORNER_PREFERENCE;
+use windows::Win32::Graphics::Dwm::DWMWINDOWATTRIBUTE;
+use windows::Win32::Graphics::Dwm::DwmGetWindowAttribute;
+use windows::Win32::Graphics::Gdi::GetMonitorInfoW;
+use windows::Win32::Graphics::Gdi::HMONITOR;
+use windows::Win32::Graphics::Gdi::MONITOR_DEFAULTTONEAREST;
+use windows::Win32::Graphics::Gdi::MONITORINFO;
+use windows::Win32::Graphics::Gdi::MonitorFromWindow;
+use windows::Win32::Graphics::Gdi::ValidateRect;
 use windows::Win32::System::Com::CoTaskMemFree;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::GetThreadId;
 use windows::Win32::System::Threading::OpenProcess;
-use windows::Win32::System::Threading::QueryFullProcessImageNameW;
 use windows::Win32::System::Threading::PROCESS_NAME_WIN32;
 use windows::Win32::System::Threading::PROCESS_QUERY_LIMITED_INFORMATION;
+use windows::Win32::System::Threading::QueryFullProcessImageNameW;
+use windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2;
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::HiDpi::SetProcessDpiAwarenessContext;
-use windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2;
 use windows::Win32::UI::Input::Ime::ImmDisableIME;
 use windows::Win32::UI::Shell::FOLDERID_Profile;
-use windows::Win32::UI::Shell::SHGetKnownFolderPath;
 use windows::Win32::UI::Shell::KNOWN_FOLDER_FLAG;
+use windows::Win32::UI::Shell::SHGetKnownFolderPath;
+use windows::Win32::UI::WindowsAndMessaging::CW_USEDEFAULT;
 use windows::Win32::UI::WindowsAndMessaging::CreateWindowExW;
+use windows::Win32::UI::WindowsAndMessaging::DefWindowProcW;
 use windows::Win32::UI::WindowsAndMessaging::DispatchMessageW;
 use windows::Win32::UI::WindowsAndMessaging::EnumWindows;
+use windows::Win32::UI::WindowsAndMessaging::GW_HWNDPREV;
+use windows::Win32::UI::WindowsAndMessaging::GWL_EXSTYLE;
+use windows::Win32::UI::WindowsAndMessaging::GWL_STYLE;
 use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
 use windows::Win32::UI::WindowsAndMessaging::GetMessageW;
 use windows::Win32::UI::WindowsAndMessaging::GetWindow;
+use windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW;
 use windows::Win32::UI::WindowsAndMessaging::GetWindowLongW;
 use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
 use windows::Win32::UI::WindowsAndMessaging::GetWindowTextW;
 use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
-use windows::Win32::UI::WindowsAndMessaging::IsWindowVisible;
-use windows::Win32::UI::WindowsAndMessaging::MessageBoxW;
-use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
-use windows::Win32::UI::WindowsAndMessaging::PostQuitMessage;
-use windows::Win32::UI::WindowsAndMessaging::PostThreadMessageW;
-use windows::Win32::UI::WindowsAndMessaging::RealGetWindowClassW;
-use windows::Win32::UI::WindowsAndMessaging::SendNotifyMessageW;
-use windows::Win32::UI::WindowsAndMessaging::SetLayeredWindowAttributes;
-use windows::Win32::UI::WindowsAndMessaging::SetWindowPos;
-use windows::Win32::UI::WindowsAndMessaging::TranslateMessage;
-use windows::Win32::UI::WindowsAndMessaging::CW_USEDEFAULT;
-use windows::Win32::UI::WindowsAndMessaging::GWL_EXSTYLE;
-use windows::Win32::UI::WindowsAndMessaging::GWL_STYLE;
-use windows::Win32::UI::WindowsAndMessaging::GW_HWNDPREV;
 use windows::Win32::UI::WindowsAndMessaging::HMENU;
 use windows::Win32::UI::WindowsAndMessaging::HWND_TOP;
+use windows::Win32::UI::WindowsAndMessaging::IsWindowVisible;
 use windows::Win32::UI::WindowsAndMessaging::LAYERED_WINDOW_ATTRIBUTES_FLAGS;
 use windows::Win32::UI::WindowsAndMessaging::MB_ICONERROR;
 use windows::Win32::UI::WindowsAndMessaging::MB_OK;
 use windows::Win32::UI::WindowsAndMessaging::MB_SYSTEMMODAL;
 use windows::Win32::UI::WindowsAndMessaging::MSG;
+use windows::Win32::UI::WindowsAndMessaging::MessageBoxW;
+use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
+use windows::Win32::UI::WindowsAndMessaging::PostQuitMessage;
+use windows::Win32::UI::WindowsAndMessaging::PostThreadMessageW;
+use windows::Win32::UI::WindowsAndMessaging::RealGetWindowClassW;
 use windows::Win32::UI::WindowsAndMessaging::SET_WINDOW_POS_FLAGS;
 use windows::Win32::UI::WindowsAndMessaging::SWP_NOACTIVATE;
 use windows::Win32::UI::WindowsAndMessaging::SWP_NOREDRAW;
 use windows::Win32::UI::WindowsAndMessaging::SWP_NOSENDCHANGING;
 use windows::Win32::UI::WindowsAndMessaging::SWP_NOZORDER;
+use windows::Win32::UI::WindowsAndMessaging::SendNotifyMessageW;
+use windows::Win32::UI::WindowsAndMessaging::SetLayeredWindowAttributes;
+use windows::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW;
+use windows::Win32::UI::WindowsAndMessaging::SetWindowPos;
+use windows::Win32::UI::WindowsAndMessaging::TranslateMessage;
 use windows::Win32::UI::WindowsAndMessaging::WINDOW_EX_STYLE;
+use windows::Win32::UI::WindowsAndMessaging::WINDOW_LONG_PTR_INDEX;
 use windows::Win32::UI::WindowsAndMessaging::WINDOW_STYLE;
 use windows::Win32::UI::WindowsAndMessaging::WM_APP;
 use windows::Win32::UI::WindowsAndMessaging::WM_NCDESTROY;
@@ -119,6 +125,11 @@ use windows::Win32::UI::WindowsAndMessaging::WS_MAXIMIZE;
 use windows::Win32::UI::WindowsAndMessaging::WS_MINIMIZE;
 use windows::Win32::UI::WindowsAndMessaging::WS_POPUP;
 use windows::Win32::UI::WindowsAndMessaging::WS_SYSMENU;
+use windows::core::PCWSTR;
+use windows::core::PWSTR;
+use windows::core::Param;
+use windows::core::Result as WinResult;
+use windows::core::w;
 
 pub const WM_APP_LOCATIONCHANGE: u32 = WM_APP;
 pub const WM_APP_REORDER: u32 = WM_APP + 1;
@@ -134,6 +145,16 @@ pub trait PointerConversion {
     fn as_ptr(&self) -> *mut c_void;
     fn as_uint(&self) -> usize;
     fn as_hwnd(&self) -> HWND;
+}
+
+pub trait HWNDConversion {
+    fn as_int(&self) -> isize;
+}
+
+impl HWNDConversion for HWND {
+    fn as_int(&self) -> isize {
+        self.0.as_int()
+    }
 }
 
 macro_rules! impl_pointer_conversion {
@@ -163,6 +184,28 @@ impl_pointer_conversion!(isize, usize, *mut c_void);
 pub struct WindowsApi;
 
 impl WindowsApi {
+    #[cfg(target_pointer_width = "64")]
+    pub fn set_window_long_ptr_w(hwnd: isize, index: WINDOW_LONG_PTR_INDEX, new_value: isize) {
+        let _ = unsafe { SetWindowLongPtrW(hwnd.as_hwnd(), index, new_value) };
+    }
+
+    #[cfg(target_pointer_width = "64")]
+    pub fn window_long_ptr_w(hwnd: isize, index: WINDOW_LONG_PTR_INDEX) -> isize {
+        unsafe { GetWindowLongPtrW(hwnd.as_hwnd(), index) }
+    }
+
+    pub fn def_window_proc_w(hwnd: isize, msg: u32, wparam: usize, lparam: isize) -> LRESULT {
+        unsafe { DefWindowProcW(hwnd.as_hwnd(), msg, WPARAM(wparam), LPARAM(lparam)) }
+    }
+
+    pub fn validate_rect(hwnd: Option<isize>, rect: Option<Rect>) -> BOOL {
+        let hwnd = hwnd.map(|hwnd| hwnd.as_hwnd());
+        let lprect = rect.map(RECT::from);
+        let lprect_ptr = lprect.as_ref().map(|r| r as *const RECT);
+
+        unsafe { ValidateRect(hwnd, lprect_ptr) }
+    }
+
     pub fn module_handle_w() -> WinResult<HMODULE> {
         unsafe { GetModuleHandleW(None) }
     }
@@ -175,8 +218,30 @@ impl WindowsApi {
         unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) }
     }
 
-    pub fn get_dpi_for_window(hwnd: isize) -> u32 {
-        unsafe { GetDpiForWindow(hwnd.as_hwnd()) }
+    pub fn get_dpi_for_window(hwnd: isize) -> anyhow::Result<u32> {
+        match unsafe { GetDpiForWindow(hwnd.as_hwnd()) } {
+            0 => Err(anyhow!("received invalid dpi of 0 for {hwnd:?}")),
+            valid_dpi => Ok(valid_dpi),
+        }
+    }
+
+    pub fn monitor_from_window(hwnd: isize) -> HMONITOR {
+        unsafe { MonitorFromWindow(hwnd.as_hwnd(), MONITOR_DEFAULTTONEAREST) }
+    }
+
+    pub fn get_monitor_info(hmonitor: HMONITOR) -> anyhow::Result<MONITORINFO> {
+        let mut mi = MONITORINFO {
+            cbSize: size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        if !unsafe { GetMonitorInfoW(hmonitor, &mut mi) }.as_bool() {
+            return Err(anyhow!(
+                "could not get monitor info for {:?}: {:?}",
+                hmonitor,
+                unsafe { GetLastError() }
+            ));
+        };
+        Ok(mi)
     }
 
     pub fn post_message_w(

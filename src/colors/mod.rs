@@ -11,17 +11,19 @@ use parser::parse_color_string;
 use schema_jsonrs::JsonSchema;
 use serde::Deserialize;
 use solid::Solid;
-use windows::core::Result as WinResult;
 use windows::Foundation::Numerics::Matrix3x2;
 use windows::Win32::Foundation::RECT;
-use windows::Win32::Graphics::Direct2D::Common::D2D1_COLOR_F;
 use windows::Win32::Graphics::Direct2D::Common::D2D_POINT_2F;
-use windows::Win32::Graphics::Direct2D::ID2D1Brush;
-use windows::Win32::Graphics::Direct2D::ID2D1HwndRenderTarget;
+use windows::Win32::Graphics::Direct2D::Common::D2D1_COLOR_F;
 use windows::Win32::Graphics::Direct2D::D2D1_BRUSH_PROPERTIES;
+use windows::Win32::Graphics::Direct2D::D2D1_BUFFER_PRECISION_8BPC_UNORM;
+use windows::Win32::Graphics::Direct2D::D2D1_COLOR_INTERPOLATION_MODE_STRAIGHT;
+use windows::Win32::Graphics::Direct2D::D2D1_COLOR_SPACE_SRGB;
 use windows::Win32::Graphics::Direct2D::D2D1_EXTEND_MODE_CLAMP;
-use windows::Win32::Graphics::Direct2D::D2D1_GAMMA_2_2;
 use windows::Win32::Graphics::Direct2D::D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES;
+use windows::Win32::Graphics::Direct2D::ID2D1Brush;
+use windows::Win32::Graphics::Direct2D::ID2D1DeviceContext7;
+use windows::core::Result as WinResult;
 
 /// The `Color` enum represents different types of colors, including both solid colors and gradients.
 /// It can be either a solid color or a gradient, allowing flexibility in color representation.
@@ -134,7 +136,7 @@ pub trait ColorImpl {
     /// on a Direct2D render target. The brush is initialized with the given window rectangle and brush properties.
     ///
     /// # Parameters
-    /// - `render_target`: The Direct2D render target on which the brush will be applied.
+    /// - `d2d_context`: The Direct2D render target on which the brush will be applied.
     /// - `window_rect`: The dimensions of the window, used to adjust the brush's rendering.
     /// - `brush_properties`: The properties that define how the brush will behave.
     ///
@@ -142,7 +144,7 @@ pub trait ColorImpl {
     /// A `WinResult<()>`, indicating success or failure.
     fn to_d2d1_brush(
         &mut self,
-        render_target: &ID2D1HwndRenderTarget,
+        d2d_context: &ID2D1DeviceContext7,
         window_rect: &RECT,
         brush_properties: &D2D1_BRUSH_PROPERTIES,
     ) -> WinResult<()>;
@@ -225,16 +227,14 @@ impl ColorImpl for Color {
 
     fn to_d2d1_brush(
         &mut self,
-        render_target: &ID2D1HwndRenderTarget,
+        d2d_context: &ID2D1DeviceContext7,
         window_rect: &RECT,
         brush_properties: &D2D1_BRUSH_PROPERTIES,
     ) -> WinResult<()> {
         match self {
             Color::Solid(solid) => unsafe {
                 let id2d1_brush =
-                    render_target.CreateSolidColorBrush(&solid.color, Some(brush_properties))?;
-
-                id2d1_brush.SetOpacity(0.0);
+                    d2d_context.CreateSolidColorBrush(&solid.color, Some(brush_properties))?;
 
                 solid.brush = Some(id2d1_brush);
 
@@ -255,19 +255,21 @@ impl ColorImpl for Color {
                     },
                 };
 
-                let gradient_stop_collection = render_target.CreateGradientStopCollection(
+                let gradient_stop_collection = d2d_context.CreateGradientStopCollection(
                     &gradient.gradient_stops,
-                    D2D1_GAMMA_2_2,
+                    D2D1_COLOR_SPACE_SRGB,
+                    D2D1_COLOR_SPACE_SRGB,
+                    D2D1_BUFFER_PRECISION_8BPC_UNORM,
                     D2D1_EXTEND_MODE_CLAMP,
+                    D2D1_COLOR_INTERPOLATION_MODE_STRAIGHT,
                 )?;
 
-                let id2d1_brush = render_target.CreateLinearGradientBrush(
+                let id2d1_brush = d2d_context.CreateLinearGradientBrush(
                     &gradient_properties,
                     Some(brush_properties),
                     &gradient_stop_collection,
                 )?;
 
-                id2d1_brush.SetOpacity(0.0);
                 gradient.brush = Some(id2d1_brush);
 
                 Ok(())

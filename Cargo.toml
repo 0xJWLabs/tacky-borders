@@ -13,7 +13,6 @@ fast-hash = ["fx-hash"]
 yml = ["serde_yml"]
 json = ["serde_jsonc2"]
 
-
 [dependencies]
 serde = "1.0.217"
 regex = "1.11.1"
@@ -46,6 +45,10 @@ features = [
   "Win32_Graphics_Gdi",
   "Win32_Graphics_Direct2D",
   "Win32_Graphics_Direct2D_Common",
+  "Win32_Graphics_Direct3D",
+  "Win32_Graphics_Direct3D11",
+  "Win32_Graphics_DirectComposition",
+  "Win32_Graphics_Dxgi",
   "Win32_Graphics_Dxgi_Common",
   "Win32_System_Threading",
   "Win32_System_Com",

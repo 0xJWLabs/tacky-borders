@@ -58,7 +58,7 @@ The following auto-generated `config.jsonc` is included as reference:
   "$schema": "https://raw.githubusercontent.com/GlazeBar/tacky-borders/refs/heads/main/schema.json",
   // allow auto reload on config changes
   "monitor_config_changes": true,
-  "theme": null, // Theme name from file in `%USERPROFILES%/.config/tacky-borders/themes`
+  "theme": null, // Theme name from themes stored in `%USERPROFILES%/.config/tacky-borders/themes`
   "keybindings": {
     // reload: Binds the reload action to the specified key (default: f8).
     // - Pressing this key will trigger the reloading process, typically refreshing content or settings.

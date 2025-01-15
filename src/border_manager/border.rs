@@ -9,9 +9,9 @@ use crate::core::rect::Rect;
 use crate::error::LogIfErr;
 use crate::user_config::BorderStyle;
 use crate::user_config::WindowRuleConfig;
+use crate::windows_api::HWNDConversion;
 use crate::windows_api::PointerConversion;
 use crate::windows_api::ToWideString;
-use crate::windows_api::WindowsApi;
 use crate::windows_api::WM_APP_FOREGROUND;
 use crate::windows_api::WM_APP_HIDECLOAKED;
 use crate::windows_api::WM_APP_LOCATIONCHANGE;
@@ -20,53 +20,64 @@ use crate::windows_api::WM_APP_MINIMIZESTART;
 use crate::windows_api::WM_APP_REORDER;
 use crate::windows_api::WM_APP_SHOWUNCLOAKED;
 use crate::windows_api::WM_APP_TIMER;
-use anyhow::anyhow;
+use crate::windows_api::WindowsApi;
 use anyhow::Context;
 use anyhow::Result as AnyResult;
+use anyhow::anyhow;
+use std::mem::ManuallyDrop;
 use std::thread;
 use std::time;
 use std::time::Instant;
-use windows::core::CloneType;
-use windows::core::TypeKind;
 use windows::Foundation::Numerics::Matrix3x2;
-use windows::Win32::Foundation::GetLastError;
 use windows::Win32::Foundation::COLORREF;
 use windows::Win32::Foundation::D2DERR_RECREATE_TARGET;
 use windows::Win32::Foundation::FALSE;
+use windows::Win32::Foundation::GetLastError;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Foundation::LPARAM;
 use windows::Win32::Foundation::LRESULT;
 use windows::Win32::Foundation::RECT;
+use windows::Win32::Foundation::S_OK;
 use windows::Win32::Foundation::TRUE;
 use windows::Win32::Foundation::WPARAM;
+use windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F;
 use windows::Win32::Graphics::Direct2D::Common::D2D1_ALPHA_MODE_PREMULTIPLIED;
 use windows::Win32::Graphics::Direct2D::Common::D2D1_PIXEL_FORMAT;
-use windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F;
-use windows::Win32::Graphics::Direct2D::Common::D2D_SIZE_U;
-use windows::Win32::Graphics::Direct2D::ID2D1Brush;
-use windows::Win32::Graphics::Direct2D::ID2D1HwndRenderTarget;
 use windows::Win32::Graphics::Direct2D::D2D1_ANTIALIAS_MODE_PER_PRIMITIVE;
+use windows::Win32::Graphics::Direct2D::D2D1_BITMAP_OPTIONS_CANNOT_DRAW;
+use windows::Win32::Graphics::Direct2D::D2D1_BITMAP_OPTIONS_TARGET;
+use windows::Win32::Graphics::Direct2D::D2D1_BITMAP_PROPERTIES1;
 use windows::Win32::Graphics::Direct2D::D2D1_BRUSH_PROPERTIES;
-use windows::Win32::Graphics::Direct2D::D2D1_HWND_RENDER_TARGET_PROPERTIES;
-use windows::Win32::Graphics::Direct2D::D2D1_PRESENT_OPTIONS_IMMEDIATELY;
-use windows::Win32::Graphics::Direct2D::D2D1_PRESENT_OPTIONS_RETAIN_CONTENTS;
-use windows::Win32::Graphics::Direct2D::D2D1_RENDER_TARGET_PROPERTIES;
-use windows::Win32::Graphics::Direct2D::D2D1_RENDER_TARGET_TYPE_DEFAULT;
+use windows::Win32::Graphics::Direct2D::D2D1_DEVICE_CONTEXT_OPTIONS_NONE;
 use windows::Win32::Graphics::Direct2D::D2D1_ROUNDED_RECT;
-use windows::Win32::Graphics::Dwm::DwmEnableBlurBehindWindow;
-use windows::Win32::Graphics::Dwm::DWMWA_EXTENDED_FRAME_BOUNDS;
+use windows::Win32::Graphics::Direct2D::ID2D1Bitmap1;
+use windows::Win32::Graphics::Direct2D::ID2D1Brush;
+use windows::Win32::Graphics::Direct2D::ID2D1DeviceContext7;
+use windows::Win32::Graphics::DirectComposition::DCompositionCreateDevice;
+use windows::Win32::Graphics::DirectComposition::IDCompositionDevice;
+use windows::Win32::Graphics::DirectComposition::IDCompositionTarget;
 use windows::Win32::Graphics::Dwm::DWM_BB_BLURREGION;
 use windows::Win32::Graphics::Dwm::DWM_BB_ENABLE;
 use windows::Win32::Graphics::Dwm::DWM_BLURBEHIND;
-use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_UNKNOWN;
+use windows::Win32::Graphics::Dwm::DWMWA_EXTENDED_FRAME_BOUNDS;
+use windows::Win32::Graphics::Dwm::DwmEnableBlurBehindWindow;
+use windows::Win32::Graphics::Dxgi::Common::DXGI_ALPHA_MODE_PREMULTIPLIED;
+use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
+use windows::Win32::Graphics::Dxgi::Common::DXGI_SAMPLE_DESC;
+use windows::Win32::Graphics::Dxgi::DXGI_PRESENT;
+use windows::Win32::Graphics::Dxgi::DXGI_SCALING_STRETCH;
+use windows::Win32::Graphics::Dxgi::DXGI_SWAP_CHAIN_DESC1;
+use windows::Win32::Graphics::Dxgi::DXGI_SWAP_CHAIN_FLAG;
+use windows::Win32::Graphics::Dxgi::DXGI_SWAP_EFFECT_FLIP_DISCARD;
+use windows::Win32::Graphics::Dxgi::DXGI_USAGE_RENDER_TARGET_OUTPUT;
+use windows::Win32::Graphics::Dxgi::IDXGIFactory7;
+use windows::Win32::Graphics::Dxgi::IDXGISurface;
+use windows::Win32::Graphics::Dxgi::IDXGISwapChain1;
 use windows::Win32::Graphics::Gdi::CreateRectRgn;
-use windows::Win32::Graphics::Gdi::ValidateRect;
-use windows::Win32::UI::WindowsAndMessaging::DefWindowProcW;
-use windows::Win32::UI::WindowsAndMessaging::GetSystemMetrics;
-use windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW;
-use windows::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW;
+use windows::Win32::Graphics::Gdi::HMONITOR;
 use windows::Win32::UI::WindowsAndMessaging::CREATESTRUCTW;
 use windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA;
+use windows::Win32::UI::WindowsAndMessaging::GetSystemMetrics;
 use windows::Win32::UI::WindowsAndMessaging::LWA_ALPHA;
 use windows::Win32::UI::WindowsAndMessaging::LWA_COLORKEY;
 use windows::Win32::UI::WindowsAndMessaging::MSG;
@@ -80,6 +91,8 @@ use windows::Win32::UI::WindowsAndMessaging::WM_PAINT;
 use windows::Win32::UI::WindowsAndMessaging::WM_QUIT;
 use windows::Win32::UI::WindowsAndMessaging::WM_WINDOWPOSCHANGED;
 use windows::Win32::UI::WindowsAndMessaging::WM_WINDOWPOSCHANGING;
+use windows::core::CloneType;
+use windows::core::TypeKind;
 
 use super::get_active_window;
 use super::window_border;
@@ -103,11 +116,16 @@ pub struct Border {
     pub tracking_window: isize,
     pub is_window_active: bool,
     pub window_rect: Rect,
+    pub render_rect: D2D1_ROUNDED_RECT,
     pub width: i32,
     pub offset: i32,
     pub style: BorderStyle,
-    pub render_target: Option<ID2D1HwndRenderTarget>,
-    pub rounded_rect: D2D1_ROUNDED_RECT,
+    pub current_monitor: HMONITOR,
+    pub current_dpi: f32,
+    pub d2d_context: Option<ID2D1DeviceContext7>,
+    pub swap_chain: Option<IDXGISwapChain1>,
+    pub target_bitmap: Option<ID2D1Bitmap1>,
+    pub composition_target: Option<IDCompositionTarget>,
     pub active_color: Color,
     pub inactive_color: Color,
     pub animation_manager: AnimationManager,
@@ -115,7 +133,6 @@ pub struct Border {
     pub initialize_delay: u64,
     pub unminimize_delay: u64,
     pub pause: bool,
-    pub current_dpi: f32,
 }
 
 impl Border {
@@ -416,12 +433,13 @@ impl Border {
         self.active_color = config_active.to_color()?;
         self.inactive_color = config_inactive.to_color()?;
 
-        self.current_dpi = match WindowsApi::get_dpi_for_window(self.tracking_window) as f32 {
-            0.0 => {
+        self.current_monitor = WindowsApi::monitor_from_window(self.tracking_window);
+        self.current_dpi = match WindowsApi::get_dpi_for_window(self.tracking_window) {
+            Ok(dpi) => dpi as f32,
+            Err(err) => {
                 self.exit_border_thread();
-                return Err(anyhow!("received invalid dpi of 0 from GetDpiForWindow"));
+                return Err(anyhow!("could not get dpi for window: {err}"));
             }
-            valid_dpi => valid_dpi,
         };
 
         self.width = (config_width as f32 * self.current_dpi / 96.0).round() as i32;
@@ -451,24 +469,79 @@ impl Border {
     }
 
     fn create_render_resources(&mut self) -> AnyResult<()> {
-        let render_target_properties = D2D1_RENDER_TARGET_PROPERTIES {
-            r#type: D2D1_RENDER_TARGET_TYPE_DEFAULT,
+        let d2d_context = unsafe {
+            APP_STATE
+                .d2d_device
+                .CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE)
+        }
+        .context("d2d_context")?;
+
+        unsafe { d2d_context.SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE) };
+
+        let m_info = WindowsApi::get_monitor_info(self.current_monitor).context("mi")?;
+        let screen_width = (m_info.rcMonitor.right - m_info.rcMonitor.left) as u32;
+        let screen_height = (m_info.rcMonitor.bottom - m_info.rcMonitor.top) as u32;
+
+        let swap_chain_desc = DXGI_SWAP_CHAIN_DESC1 {
+            Width: screen_width + (self.width * 2) as u32,
+            Height: screen_height + (self.width * 2) as u32,
+            Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+            Stereo: FALSE,
+            SampleDesc: DXGI_SAMPLE_DESC {
+                Count: 1,
+                Quality: 0,
+            },
+            BufferUsage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
+            BufferCount: 2,
+            Scaling: DXGI_SCALING_STRETCH,
+            SwapEffect: DXGI_SWAP_EFFECT_FLIP_DISCARD,
+            AlphaMode: DXGI_ALPHA_MODE_PREMULTIPLIED,
+            Flags: 0,
+        };
+
+        let dxgi_adapter = unsafe { APP_STATE.dxgi_device.GetAdapter() }.context("dxgi_adapter")?;
+        let dxgi_factory: IDXGIFactory7 =
+            unsafe { dxgi_adapter.GetParent() }.context("dxgi_factory")?;
+
+        let swap_chain = unsafe {
+            dxgi_factory.CreateSwapChainForComposition(&APP_STATE.device, &swap_chain_desc, None)
+        }
+        .context("swap_chain")?;
+
+        let d_comp_device: IDCompositionDevice =
+            unsafe { DCompositionCreateDevice(&APP_STATE.dxgi_device) }?;
+        let d_comp_target =
+            unsafe { d_comp_device.CreateTargetForHwnd(self.border_window.as_hwnd(), true) }
+                .context("d_comp_target")?;
+        let d_comp_visual = unsafe { d_comp_device.CreateVisual() }.context("visual")?;
+
+        unsafe { d_comp_visual.SetContent(&swap_chain) }.context("d_comp_visual.SetContent()")?;
+        unsafe { d_comp_target.SetRoot(&d_comp_visual) }.context("d_comp_target.SetRoot()")?;
+        unsafe { d_comp_device.Commit() }.context("d_comp_device.Commit()")?;
+
+        let bitmap_properties = D2D1_BITMAP_PROPERTIES1 {
+            bitmapOptions: D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
             pixelFormat: D2D1_PIXEL_FORMAT {
-                format: DXGI_FORMAT_UNKNOWN,
+                format: DXGI_FORMAT_B8G8R8A8_UNORM,
                 alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED,
             },
             dpiX: 96.0,
             dpiY: 96.0,
-            ..Default::default()
-        };
-        let hwnd_render_target_properties = D2D1_HWND_RENDER_TARGET_PROPERTIES {
-            hwnd: self.border_window(),
-            pixelSize: Default::default(),
-            presentOptions: D2D1_PRESENT_OPTIONS_RETAIN_CONTENTS | D2D1_PRESENT_OPTIONS_IMMEDIATELY,
+            colorContext: ManuallyDrop::new(None),
         };
 
+        let dxgi_back_buffer: IDXGISurface =
+            unsafe { swap_chain.GetBuffer(0) }.context("dxgi_back_buffer")?;
+
+        let d2d_target_bitmap = unsafe {
+            d2d_context.CreateBitmapFromDxgiSurface(&dxgi_back_buffer, Some(&bitmap_properties))
+        }
+        .context("d2d_target_bitmap")?;
+
+        unsafe { d2d_context.SetTarget(&d2d_target_bitmap) };
+
         let brush_properties = D2D1_BRUSH_PROPERTIES {
-            opacity: 1.0,
+            opacity: 0.0,
             transform: Matrix3x2::identity(),
         };
 
@@ -476,30 +549,23 @@ impl Border {
             self.style
                 .to_radius(self.width, self.current_dpi, self.tracking_window);
 
-        self.rounded_rect = D2D1_ROUNDED_RECT {
+        self.render_rect = D2D1_ROUNDED_RECT {
             rect: Default::default(),
             radiusX: border_radius,
             radiusY: border_radius,
         };
 
-        // Initialize the actual border color assuming it is in focus
-        unsafe {
-            let render_target = APP_STATE.render_factory.CreateHwndRenderTarget(
-                &render_target_properties,
-                &hwnd_render_target_properties,
-            )?;
+        self.active_color
+            .to_d2d1_brush(&d2d_context, &self.window_rect.into(), &brush_properties)
+            .log_if_err();
+        self.inactive_color
+            .to_d2d1_brush(&d2d_context, &self.window_rect.into(), &brush_properties)
+            .log_if_err();
 
-            render_target.SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-
-            self.active_color
-                .to_d2d1_brush(&render_target, &self.window_rect.into(), &brush_properties)
-                .log_if_err();
-            self.inactive_color
-                .to_d2d1_brush(&render_target, &self.window_rect.into(), &brush_properties)
-                .log_if_err();
-
-            self.render_target = Some(render_target);
-        }
+        self.d2d_context = Some(d2d_context);
+        self.swap_chain = Some(swap_chain);
+        self.target_bitmap = Some(d2d_target_bitmap);
+        self.composition_target = Some(d_comp_target);
 
         Ok(())
     }
@@ -607,11 +673,65 @@ impl Border {
         }
     }
 
+    fn update_swap_chain_buffers(&mut self) -> anyhow::Result<()> {
+        let d2d_context = self
+            .d2d_context
+            .as_ref()
+            .context("could not get d2d_context")?;
+        let swap_chain = self
+            .swap_chain
+            .as_ref()
+            .context("could not get swap_chain")?;
+
+        // Release buffer references
+        unsafe { d2d_context.SetTarget(None) };
+        self.target_bitmap = None;
+
+        let m_info = WindowsApi::get_monitor_info(self.current_monitor).context("mi")?;
+        let screen_width = (m_info.rcMonitor.right - m_info.rcMonitor.left) as u32;
+        let screen_height = (m_info.rcMonitor.bottom - m_info.rcMonitor.top) as u32;
+
+        unsafe {
+            swap_chain.ResizeBuffers(
+                2,
+                screen_width + (self.width * 2) as u32,
+                screen_height + (self.width * 2) as u32,
+                DXGI_FORMAT_B8G8R8A8_UNORM,
+                DXGI_SWAP_CHAIN_FLAG::default(),
+            )
+        }
+        .context("swap_chain.ResizeBuffers()")?;
+
+        let bitmap_properties = D2D1_BITMAP_PROPERTIES1 {
+            bitmapOptions: D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
+            pixelFormat: D2D1_PIXEL_FORMAT {
+                format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED,
+            },
+            dpiX: 96.0,
+            dpiY: 96.0,
+            colorContext: ManuallyDrop::new(None),
+        };
+
+        let dxgi_back_buffer: IDXGISurface =
+            unsafe { swap_chain.GetBuffer(0) }.context("dxgi_back_buffer")?;
+
+        let d2d_target_bitmap = unsafe {
+            d2d_context.CreateBitmapFromDxgiSurface(&dxgi_back_buffer, Some(&bitmap_properties))
+        }
+        .context("d2d_target_bitmap")?;
+
+        unsafe { d2d_context.SetTarget(&d2d_target_bitmap) };
+        self.target_bitmap = Some(d2d_target_bitmap);
+
+        Ok(())
+    }
+
     fn render(&mut self) -> AnyResult<()> {
         self.last_render_time = Some(std::time::Instant::now());
 
-        let Some(ref render_target) = self.render_target else {
-            return Err(anyhow!("render_target has not been set yet"));
+        let Some(ref d2d_context) = self.d2d_context else {
+            return Err(anyhow!("d2d_context has not been set yet"));
         };
 
         let rect_width = self.window_rect.width() as f32;
@@ -620,7 +740,7 @@ impl Border {
         let border_width = self.width as f32;
         let border_offset = self.offset as f32;
 
-        self.rounded_rect.rect = D2D_RECT_F {
+        self.render_rect.rect = D2D_RECT_F {
             left: border_width / 2.0 - border_offset,
             top: border_width / 2.0 - border_offset,
             right: rect_width - border_width / 2.0 + border_offset,
@@ -628,20 +748,13 @@ impl Border {
         };
 
         unsafe {
-            render_target
-                .Resize(&D2D_SIZE_U {
-                    width: rect_width as u32,
-                    height: rect_height as u32,
-                })
-                .context("could not resize render_target")?;
-
             let (bottom_color, top_color) = match self.is_window_active {
                 true => (&self.inactive_color, &self.active_color),
                 false => (&self.active_color, &self.inactive_color),
             };
 
-            render_target.BeginDraw();
-            render_target.Clear(None);
+            d2d_context.BeginDraw();
+            d2d_context.Clear(None);
 
             if bottom_color.get_opacity() > Some(0.0) {
                 if let Color::Gradient(gradient) = bottom_color {
@@ -649,7 +762,7 @@ impl Border {
                 }
 
                 match bottom_color.get_brush() {
-                    Some(id2d1_brush) => self.draw_rectangle(render_target, id2d1_brush),
+                    Some(id2d1_brush) => self.draw_rectangle(d2d_context, id2d1_brush),
                     None => debug!("ID2D1Brush for bottom_color has not been created yet"),
                 }
             }
@@ -660,12 +773,12 @@ impl Border {
                 }
 
                 match top_color.get_brush() {
-                    Some(id2d1_brush) => self.draw_rectangle(render_target, id2d1_brush),
+                    Some(id2d1_brush) => self.draw_rectangle(d2d_context, id2d1_brush),
                     None => debug!("ID2D1Brush for top_color has not been created yet"),
                 }
             }
 
-            match render_target.EndDraw(None, None) {
+            match d2d_context.EndDraw(None, None) {
                 Ok(_) => {}
                 Err(e) if e.code() == D2DERR_RECREATE_TARGET => {
                     // D2DERR_RECREATE_TARGET is recoverable if we just recreate the render target.
@@ -686,25 +799,35 @@ impl Border {
                     self.exit_border_thread();
                 }
             }
+
+            let hresult = self
+                .swap_chain
+                .as_ref()
+                .context("could not get swap_chain")?
+                .Present(1, DXGI_PRESENT::default());
+            if hresult != S_OK {
+                return Err(anyhow!("could not present swap_chain: {hresult}"));
+            }
         }
 
         Ok(())
     }
 
-    fn draw_rectangle(&self, render_target: &ID2D1HwndRenderTarget, brush: &ID2D1Brush) {
+    fn draw_rectangle(&self, d2d_context: &ID2D1DeviceContext7, brush: &ID2D1Brush) {
         let border_radius =
             self.style
                 .to_radius(self.width, self.current_dpi, self.tracking_window);
+
         unsafe {
             match border_radius {
-                0.0 => render_target.DrawRectangle(
-                    &self.rounded_rect.rect,
+                0.0 => d2d_context.DrawRectangle(
+                    &self.render_rect.rect,
                     brush,
                     self.width as f32,
                     None,
                 ),
-                _ => render_target.DrawRoundedRectangle(
-                    &self.rounded_rect,
+                _ => d2d_context.DrawRoundedRectangle(
+                    &self.render_rect,
                     brush,
                     self.width as f32,
                     None,
@@ -762,18 +885,28 @@ impl Border {
                     (!WindowsApi::is_window_visible(self.border_window)).then_some(SWP_SHOWWINDOW);
                 self.update_position(update_pos_flags).log_if_err();
 
-                let new_dpi = match WindowsApi::get_dpi_for_window(self.tracking_window) as f32 {
-                    0.0 => {
-                        error!("received invalid dpi of 0 from GetDpiForWindow");
-                        self.exit_border_thread();
-                        return LRESULT(0);
-                    }
-                    valid_dpi => valid_dpi,
-                };
+                let new_monitor = WindowsApi::monitor_from_window(self.tracking_window);
 
-                if new_dpi != self.current_dpi {
-                    self.current_dpi = new_dpi;
-                    self.update_width_radius();
+                if new_monitor != self.current_monitor {
+                    self.current_monitor = new_monitor;
+                    self.update_swap_chain_buffers()
+                        .context("could not update swap chain buffers")
+                        .log_if_err();
+
+                    let new_dpi = match WindowsApi::get_dpi_for_window(self.tracking_window) {
+                        Ok(dpi) => dpi as f32,
+                        Err(err) => {
+                            error!("could not get dpi for window: {err}");
+                            self.exit_border_thread();
+                            return LRESULT(0);
+                        }
+                    };
+
+                    if new_dpi != self.current_dpi {
+                        self.current_dpi = new_dpi;
+                        self.update_width_radius();
+                    }
+
                     should_render |= true;
                 }
 
@@ -898,8 +1031,6 @@ impl Border {
                     }
                 }
 
-                // println!("time since last anim: {}", render_elapsed.as_secs_f32());
-
                 let interval = 1.0 / self.animation_manager.fps();
                 let diff = render_elapsed.as_secs_f32() - interval;
                 if animations_updated && (diff.abs() <= 0.001 || diff >= 0.0) {
@@ -907,16 +1038,16 @@ impl Border {
                 }
             }
             WM_PAINT => {
-                let _ = unsafe { ValidateRect(Some(window), None) };
+                let _ = WindowsApi::validate_rect(Some(window.as_int()), None);
             }
             WM_NCDESTROY => {
-                unsafe { SetWindowLongPtrW(window, GWLP_USERDATA, 0) };
+                WindowsApi::set_window_long_ptr_w(window.as_int(), GWLP_USERDATA, 0);
                 self.exit_border_thread();
             }
             // Ignore these window position messages
             WM_WINDOWPOSCHANGING | WM_WINDOWPOSCHANGED => {}
             _ => {
-                return unsafe { DefWindowProcW(window, message, wparam, lparam) };
+                return WindowsApi::def_window_proc_w(window.as_int(), message, wparam.0, lparam.0);
             }
         }
         LRESULT(0)
@@ -928,19 +1059,18 @@ impl Border {
         wparam: WPARAM,
         lparam: LPARAM,
     ) -> LRESULT {
-        unsafe {
-            let mut border_pointer: *mut Border = GetWindowLongPtrW(window, GWLP_USERDATA) as _;
+        let mut border_pointer: *mut Border =
+            WindowsApi::window_long_ptr_w(window.as_int(), GWLP_USERDATA) as _;
 
-            if border_pointer.is_null() && message == WM_CREATE {
-                let create_struct: *mut CREATESTRUCTW = lparam.0 as *mut _;
-                border_pointer = (*create_struct).lpCreateParams as *mut _;
-                SetWindowLongPtrW(window, GWLP_USERDATA, border_pointer as _);
-            }
+        if border_pointer.is_null() && message == WM_CREATE {
+            let create_struct: *mut CREATESTRUCTW = lparam.0 as *mut _;
+            border_pointer = unsafe { (*create_struct).lpCreateParams as *mut _ };
+            WindowsApi::set_window_long_ptr_w(window.as_int(), GWLP_USERDATA, border_pointer as _);
+        }
 
-            match !border_pointer.is_null() {
-                true => (*border_pointer).callback(window, message, wparam, lparam),
-                false => DefWindowProcW(window, message, wparam, lparam),
-            }
+        match !border_pointer.is_null() {
+            true => unsafe { (*border_pointer).callback(window, message, wparam, lparam) },
+            false => WindowsApi::def_window_proc_w(window.as_int(), message, wparam.0, lparam.0),
         }
     }
 }

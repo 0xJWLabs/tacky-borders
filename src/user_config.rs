@@ -5,23 +5,23 @@ use crate::core::app_state::APP_STATE;
 use crate::core::dimension::deserialize_dimension;
 use crate::core::dimension::deserialize_optional_dimension;
 use crate::core::keybindings::Keybindings;
-use crate::core::theme::deserialize_theme;
 use crate::core::theme::Theme;
+use crate::core::theme::deserialize_theme;
 use crate::create_keybindings;
 use crate::error::LogIfErr;
 use crate::keyboard_hook::KEYBOARD_HOOK;
 use crate::windows_api::WindowsApi;
-use anyhow::anyhow;
 use anyhow::Context;
+use anyhow::anyhow;
 use schema_jsonrs::JsonSchema;
-use serde::de;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
+use serde::de;
+use std::fs::DirBuilder;
 use std::fs::exists;
 use std::fs::read_to_string;
 use std::fs::write;
-use std::fs::DirBuilder;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::LazyLock;
@@ -84,14 +84,12 @@ impl<'de> Deserialize<'de> for BorderStyle {
             Ok(BorderStyle::SmallRound)
         } else if s.eq_ignore_ascii_case("AUTO") {
             Ok(BorderStyle::Auto)
-        } else if s.to_ascii_uppercase().starts_with("RADIUS(") && s.ends_with(")") {
-            let inner = &s[7..s.len() - 1];
-            inner
+        } else {
+            let trimmed = s.strip_suffix("px").unwrap_or(&s);
+            trimmed
                 .parse::<f32>()
                 .map(BorderStyle::Radius)
-                .map_err(|_| de::Error::custom("Invalid Radius value"))
-        } else {
-            Err(de::Error::custom("Invalid border style"))
+                .map_err(|_| de::Error::custom("invalid border style"))
         }
     }
 }
@@ -268,7 +266,10 @@ impl UserConfig {
         let config_dir = match UserConfig::get_config_dir() {
             Ok(dir) => dir,
             Err(err) => {
-                WindowsApi::show_error_dialog("UserConfig", &format!("failed to get config directory: {}", err));
+                WindowsApi::show_error_dialog(
+                    "UserConfig",
+                    &format!("failed to get config directory: {}", err),
+                );
                 return Err(err);
             }
         };
@@ -284,7 +285,10 @@ impl UserConfig {
         let contents = match read_to_string(&config_file) {
             Ok(contents) => contents,
             Err(e) => {
-                WindowsApi::show_error_dialog("UserConfig", &format!("failed to read config file: {}", config_file.display()));
+                WindowsApi::show_error_dialog(
+                    "UserConfig",
+                    &format!("failed to read config file: {}", config_file.display()),
+                );
                 return Err(e.into());
             }
         };

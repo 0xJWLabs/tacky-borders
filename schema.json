@@ -306,22 +306,36 @@
         {
           "description": "Fully rounded borders.",
           "type": "string",
-          "const": "Round"
+          "enum": [
+            "Round",
+            "round"
+          ]
         },
         {
           "description": "Square borders with no rounding.",
           "type": "string",
-          "const": "Square"
+          "enum": [
+            "Square",
+            "square"
+          ]
         },
         {
           "description": "Small rounding for subtle border effects.",
           "type": "string",
-          "const": "SmallRound"
+          "enum": [
+            "SmallRound",
+            "smallround",
+            "small_round",
+            "small-round"
+          ]
         },
         {
           "description": "Automatically determine the border radius based on context.",
           "type": "string",
-          "const": "Auto"
+          "enum": [
+            "Auto",
+            "auto"
+          ]
         },
         {
           "type": "string",

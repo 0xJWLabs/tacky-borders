@@ -1,10 +1,10 @@
 use crate::animation::manager::AnimationManager;
 use crate::animation::wrapper::AnimationEngineVec;
+use crate::app_manager::APP;
 use crate::colors::Color;
 use crate::colors::ColorImpl;
 use crate::colors::GlobalColorImpl;
 use crate::core::animation::AnimationKind;
-use crate::core::app_state::APP_STATE;
 use crate::core::rect::Rect;
 use crate::error::LogIfErr;
 use crate::user_config::BorderStyle;
@@ -394,7 +394,7 @@ impl Border {
     }
 
     fn load_from_config(&mut self, window_rule: &WindowRuleConfig) -> AnyResult<()> {
-        let config = (*APP_STATE.config.read().unwrap()).clone();
+        let config = APP.config().clone();
         let global = &config.global_rule;
 
         let config_width = window_rule
@@ -470,8 +470,8 @@ impl Border {
 
     fn create_render_resources(&mut self) -> AnyResult<()> {
         let d2d_context = unsafe {
-            APP_STATE
-                .d2d_device
+            APP
+                .d2d_device()
                 .CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE)
         }
         .context("d2d_context")?;
@@ -499,17 +499,17 @@ impl Border {
             Flags: 0,
         };
 
-        let dxgi_adapter = unsafe { APP_STATE.dxgi_device.GetAdapter() }.context("dxgi_adapter")?;
+        let dxgi_adapter = unsafe { APP.dxgi_device().GetAdapter() }.context("dxgi_adapter")?;
         let dxgi_factory: IDXGIFactory7 =
             unsafe { dxgi_adapter.GetParent() }.context("dxgi_factory")?;
 
         let swap_chain = unsafe {
-            dxgi_factory.CreateSwapChainForComposition(&APP_STATE.device, &swap_chain_desc, None)
+            dxgi_factory.CreateSwapChainForComposition(&APP.device(), &swap_chain_desc, None)
         }
         .context("swap_chain")?;
 
         let d_comp_device: IDCompositionDevice =
-            unsafe { DCompositionCreateDevice(&APP_STATE.dxgi_device) }?;
+            unsafe { DCompositionCreateDevice(&APP.dxgi_device()) }?;
         let d_comp_target =
             unsafe { d_comp_device.CreateTargetForHwnd(self.border_window.as_hwnd(), true) }
                 .context("d_comp_target")?;
@@ -648,7 +648,7 @@ impl Border {
 
     fn update_width_radius(&mut self) {
         let window_rule = WindowsApi::get_window_rule(self.tracking_window);
-        let config = (*APP_STATE.config.read().unwrap()).clone();
+        let config = APP.config().clone();
         let global = &config.global_rule;
 
         let width_config = window_rule

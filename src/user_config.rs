@@ -1,15 +1,15 @@
 use crate::animation::AnimationsConfig;
+use crate::app_manager::APP;
 use crate::border_manager::reload_borders;
 use crate::colors::GlobalColor;
-use crate::core::app_state::APP_STATE;
 use crate::core::dimension::deserialize_dimension;
 use crate::core::dimension::deserialize_optional_dimension;
 use crate::core::keybindings::Keybindings;
-use crate::core::theme::Theme;
-use crate::core::theme::deserialize_theme;
 use crate::create_keybindings;
 use crate::error::LogIfErr;
 use crate::keyboard_hook::KEYBOARD_HOOK;
+use crate::theme_manager::deserialize_theme;
+use crate::theme_manager::ThemeManager;
 use crate::windows_api::WindowsApi;
 use anyhow::Context;
 use anyhow::anyhow;
@@ -260,7 +260,7 @@ pub struct UserConfig {
     pub monitor_config_changes: bool,
     /// Enable custom predefined theme
     #[serde(deserialize_with = "deserialize_theme")]
-    pub theme: Theme,
+    pub theme: ThemeManager,
 }
 
 /// Methods for managing the configuration, including loading, saving, and reloading.
@@ -433,12 +433,12 @@ impl UserConfig {
     pub fn update() {
         let new_config = match Self::create() {
             Ok(config) => {
-                let mut config_watcher = APP_STATE.config_watcher.write().unwrap();
+                let config_watcher_is_running = APP.config_watcher_is_running();
 
-                if config.monitor_config_changes && !config_watcher.is_running() {
-                    config_watcher.start().log_if_err();
-                } else if !config.monitor_config_changes && config_watcher.is_running() {
-                    config_watcher.stop().log_if_err();
+                if config.monitor_config_changes && !config_watcher_is_running {
+                    APP.start_config_watcher();
+                } else if !config.monitor_config_changes && config_watcher_is_running {
+                    APP.stop_config_watcher();
                 }
                 config
             }
@@ -448,7 +448,7 @@ impl UserConfig {
             }
         };
 
-        *APP_STATE.config.write().unwrap() = new_config;
+        APP.set_config(new_config);
     }
 
     /// Reloads the application configuration and restarts the borders.
@@ -463,9 +463,9 @@ impl UserConfig {
     /// - If a keyboard hook is available, the keybindings are refreshed and applied.
     pub fn reload() -> bool {
         debug!("reloading application configuration and restarting borders.");
-        let old_config = (*APP_STATE.config.read().unwrap()).clone();
+        let old_config = APP.config().clone();
         Self::update();
-        let new_config = APP_STATE.config.read().unwrap();
+        let new_config = APP.config();
 
         if old_config != *new_config {
             reload_borders();

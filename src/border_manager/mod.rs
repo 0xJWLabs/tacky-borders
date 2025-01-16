@@ -1,6 +1,6 @@
 mod border;
 
-use crate::core::app_state::APP_STATE;
+use crate::app_manager::APP;
 use crate::error::LogIfErr;
 use crate::windows_api::WindowsApi;
 use anyhow::Context;
@@ -19,7 +19,7 @@ use windows::Win32::UI::WindowsAndMessaging::IDC_ARROW;
 use windows::Win32::UI::WindowsAndMessaging::WNDCLASSW;
 
 pub fn window_borders() -> MutexGuard<'static, HashMap<isize, Border>> {
-    APP_STATE.borders.lock().unwrap()
+    APP.borders()
 }
 
 pub fn window_border(hwnd: isize) -> Option<Border> {
@@ -27,11 +27,11 @@ pub fn window_border(hwnd: isize) -> Option<Border> {
 }
 
 pub fn get_active_window() -> MutexGuard<'static, isize> {
-    APP_STATE.active_window.lock().unwrap()
+    APP.active_window()
 }
 
 pub fn set_active_window(handle: isize) {
-    *APP_STATE.active_window.lock().unwrap() = handle;
+    APP.set_active_window(handle);
 }
 
 pub fn register_border_class() -> AnyResult<()> {

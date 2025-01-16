@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 extern crate windows;
+use crate::app_manager::APP;
 use crate::border_manager::Border;
-use crate::core::app_state::APP_STATE;
 use crate::core::rect::Rect;
 use crate::error::LogIfErr;
 use crate::user_config::MatchKind;
@@ -555,7 +555,7 @@ impl WindowsApi {
             }
         };
 
-        let config = (*APP_STATE.config.read().unwrap()).clone();
+        let config = APP.config().clone();
 
         for rule in config.window_rules.iter() {
             let window_name = match rule.match_window.match_kind {

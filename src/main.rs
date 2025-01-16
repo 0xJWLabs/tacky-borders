@@ -8,16 +8,16 @@
 extern crate log;
 extern crate sp_log2;
 
-use core::app_state::APP_STATE;
 use core::keybindings::create_keybindings;
 
-use anyhow::anyhow;
 use anyhow::Result as AnyResult;
-use border_manager::register_border_class;
+use anyhow::anyhow;
+use app_manager::APP;
 use border_manager::Border;
+use border_manager::register_border_class;
 use error::LogIfErr;
-use keyboard_hook::KeyboardHook;
 use keyboard_hook::KEYBOARD_HOOK;
+use keyboard_hook::KeyboardHook;
 use sp_log2::ColorChoice;
 use sp_log2::CombinedLogger;
 use sp_log2::ConfigBuilder;
@@ -28,14 +28,15 @@ use sp_log2::TermLogger;
 use sp_log2::TerminalMode;
 use sys_tray::SystemTray;
 use user_config::UserConfig;
-use window_event_hook::WindowEventHook;
 use window_event_hook::WIN_EVENT_HOOK;
+use window_event_hook::WindowEventHook;
 use windows::Win32::Foundation::GetLastError;
 use windows::Win32::UI::WindowsAndMessaging::MSG;
 use windows::Win32::UI::WindowsAndMessaging::WM_QUIT;
 use windows_api::WindowsApi;
 
 mod animation;
+mod app_manager;
 mod border_manager;
 mod colors;
 mod config_watcher;
@@ -43,6 +44,7 @@ mod core;
 mod error;
 mod keyboard_hook;
 mod sys_tray;
+mod theme_manager;
 mod user_config;
 mod window_event_hook;
 mod windows_api;
@@ -119,9 +121,7 @@ fn exit_application() {
         hook.stop().log_if_err();
     }
 
-    (*APP_STATE.config_watcher.write().unwrap())
-        .stop()
-        .log_if_err();
+    APP.stop_config_watcher();
 
     WindowsApi::post_quit_message(0);
 }

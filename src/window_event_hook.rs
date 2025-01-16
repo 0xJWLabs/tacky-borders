@@ -1,8 +1,8 @@
+use crate::app_manager::APP;
 use crate::border_manager::set_active_window;
 use crate::border_manager::window_border;
 use crate::border_manager::window_borders;
 use crate::border_manager::Border;
-use crate::core::app_state::APP_STATE;
 use crate::error::LogIfErr;
 use crate::windows_api::PointerConversion;
 use crate::windows_api::WindowsApi;
@@ -161,7 +161,7 @@ impl WindowEventHook {
                 let potential_active_hwnd = WindowsApi::get_foreground_window();
 
                 if potential_active_hwnd != handle.0.as_int()
-                    && !APP_STATE.is_polling_active_window()
+                    && !APP.is_polling_active_window()
                 {
                     poll_active_window_with_limit(3);
                 } else {
@@ -240,11 +240,11 @@ extern "system" fn window_event_hook_proc(
 }
 
 fn poll_active_window_with_limit(max_polls: u32) {
-    APP_STATE.set_polling_active_window(true);
+    APP.set_polling_active_window(true);
 
     let _ = std::thread::spawn(move || {
         for _ in 0..max_polls {
-            let current_active_hwnd = *APP_STATE.active_window.lock().unwrap();
+            let current_active_hwnd = *APP.active_window();
             let new_active_hwnd = WindowsApi::get_foreground_window();
 
             if new_active_hwnd != current_active_hwnd && !new_active_hwnd.as_hwnd().is_invalid() {
@@ -254,7 +254,7 @@ fn poll_active_window_with_limit(max_polls: u32) {
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
 
-        APP_STATE.set_polling_active_window(false);
+        APP.set_polling_active_window(false);
     });
 }
 

@@ -10,9 +10,11 @@ use fx_hash::{FxHashMap as HashMap, FxHashMapExt};
 use std::collections::HashMap;
 use std::sync::LazyLock;
 use std::sync::Mutex;
+use std::sync::MutexGuard;
 use std::sync::RwLock;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
+use std::sync::RwLockReadGuard;
 use std::time::Duration;
 use windows::Win32::Foundation::HMODULE;
 use windows::Win32::Graphics::Direct2D::D2D1_FACTORY_TYPE_MULTI_THREADED;
@@ -35,23 +37,72 @@ use windows::Win32::Graphics::Direct3D11::ID3D11Device;
 use windows::Win32::Graphics::Dxgi::IDXGIDevice;
 use windows::core::Interface;
 
-pub static APP_STATE: LazyLock<AppState> = LazyLock::new(AppState::new);
+pub static APP: LazyLock<AppManager> = LazyLock::new(AppManager::new);
 
-pub struct AppState {
-    pub borders: Mutex<HashMap<isize, Border>>,
-    pub active_window: Mutex<isize>,
-    pub config: RwLock<UserConfig>,
-    pub config_watcher: RwLock<ConfigWatcher>,
-    pub device: ID3D11Device,
-    pub dxgi_device: IDXGIDevice,
-    pub d2d_device: ID2D1Device7,
-    pub is_polling_active_window: AtomicBool,
+#[derive(Debug)]
+pub struct AppManager {
+    borders: Mutex<HashMap<isize, Border>>,
+    active_window: Mutex<isize>,
+    config: RwLock<UserConfig>,
+    config_watcher: RwLock<ConfigWatcher>,
+    device: ID3D11Device,
+    dxgi_device: IDXGIDevice,
+    d2d_device: ID2D1Device7,
+    is_polling_active_window: AtomicBool,
 }
 
-unsafe impl Send for AppState {}
-unsafe impl Sync for AppState {}
+unsafe impl Send for AppManager {}
+unsafe impl Sync for AppManager {}
 
-impl AppState {
+impl AppManager {
+    pub fn device(&self) -> ID3D11Device {
+        self.device.clone()
+    }
+
+    pub fn dxgi_device(&self) -> IDXGIDevice {
+        self.dxgi_device.clone()
+    }
+
+    pub fn d2d_device(&self) -> ID2D1Device7 {
+        self.d2d_device.clone()
+    }
+
+    pub fn borders(&self) -> MutexGuard<HashMap<isize, Border>> {
+        self.borders.lock().unwrap()
+    }
+
+    pub fn active_window(&'static self) -> MutexGuard<'static, isize> {
+        self.active_window.lock().unwrap()
+    }
+    
+    pub fn set_active_window(&self, handle: isize) {
+        *self.active_window.lock().unwrap() = handle;
+    }
+
+    pub fn stop_config_watcher(&self) {
+        (self.config_watcher.write().unwrap())
+        .stop()
+        .log_if_err();
+    }
+
+    pub fn start_config_watcher(&self) {
+        (self.config_watcher.write().unwrap())
+        .start()
+        .log_if_err();
+    }
+
+    pub fn config_watcher_is_running(&self) -> bool {
+        (self.config_watcher.read().unwrap()).is_running()
+    }
+
+    pub fn config(&self) -> RwLockReadGuard<UserConfig> {
+        self.config.read().unwrap()
+    }
+
+    pub fn set_config(&self, config: UserConfig) {
+        *self.config.write().unwrap() = config;
+    }
+
     pub fn new() -> Self {
         let active_window = WindowsApi::get_foreground_window();
 
@@ -59,7 +110,7 @@ impl AppState {
         let config_file = match UserConfig::detect_config_file(&config_dir) {
             Ok(file) => file,
             Err(_) => {
-                println!("Creating default config file (AppState)");
+                println!("Creating default config file (AppManager)");
                 UserConfig::create_default_config(&config_dir).unwrap_or_default()
             }
         };

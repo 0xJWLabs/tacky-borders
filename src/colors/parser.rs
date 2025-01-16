@@ -6,7 +6,7 @@ use colorparser_css::Color as CssColor;
 use windows::Win32::Graphics::Direct2D::Common::D2D1_COLOR_F;
 use windows::Win32::Graphics::Direct2D::Common::D2D1_GRADIENT_STOP;
 
-use crate::core::app_state::APP_STATE;
+use crate::app_manager::APP;
 
 use super::error::Error;
 use super::error::ErrorKind;
@@ -152,12 +152,13 @@ fn parse_gradient_direction(direction: &GradientDirection) -> Result<GradientCoo
 /// let color = parse_color_string("#FF0000")?;
 /// ```
 pub fn parse_color_string(s: &str) -> anyhow::Result<Color> {
-    let theme = match APP_STATE.config.read() {
-        Ok(config) => Ok(config.theme.clone()),
-        Err(_) => Err(anyhow!("config lock poisoned")),
-    }?;
+    let config = APP.config().clone();
+    let theme = config.theme;
 
-    let css_color = match theme.get() {
+    println!("{theme:?}");
+    println!("{theme}");
+
+    let css_color = match theme.path() {
         Some(theme) => CssColor::from_html_with_theme(s, &theme).map_err(|e| {
             Error::new(
                 ErrorKind::InvalidInput,

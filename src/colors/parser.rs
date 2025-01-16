@@ -155,9 +155,6 @@ pub fn parse_color_string(s: &str) -> anyhow::Result<Color> {
     let config = APP.config().clone();
     let theme = config.theme;
 
-    println!("{theme:?}");
-    println!("{theme}");
-
     let css_color = match theme.path() {
         Some(theme) => CssColor::from_html_with_theme(s, &theme).map_err(|e| {
             Error::new(

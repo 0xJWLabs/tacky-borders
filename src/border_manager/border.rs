@@ -470,8 +470,7 @@ impl Border {
 
     fn create_render_resources(&mut self) -> AnyResult<()> {
         let d2d_context = unsafe {
-            APP
-                .d2d_device()
+            APP.d2d_device()
                 .CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE)
         }
         .context("d2d_context")?;
@@ -789,13 +788,13 @@ impl Border {
                     match self.create_render_resources() {
                         Ok(_) => info!("successfully recreated render_target; resuming thread"),
                         Err(e_2) => {
-                            error!("could not recreate render_target; exiting thread: {e_2}");
+                            error!("could not recreate render_target; exiting thread: {e_2:#}");
                             self.exit_border_thread();
                         }
                     }
                 }
                 Err(other) => {
-                    error!("render_target.EndDraw() failed; exiting thread: {other}");
+                    error!("render_target.EndDraw() failed; exiting thread: {other:#}");
                     self.exit_border_thread();
                 }
             }

@@ -12,9 +12,9 @@ use std::sync::LazyLock;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::sync::RwLock;
+use std::sync::RwLockReadGuard;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use std::sync::RwLockReadGuard;
 use std::time::Duration;
 use windows::Win32::Foundation::HMODULE;
 use windows::Win32::Graphics::Direct2D::D2D1_FACTORY_TYPE_MULTI_THREADED;
@@ -74,21 +74,20 @@ impl AppManager {
     pub fn active_window(&'static self) -> MutexGuard<'static, isize> {
         self.active_window.lock().unwrap()
     }
-    
+
     pub fn set_active_window(&self, handle: isize) {
-        *self.active_window.lock().unwrap() = handle;
+        let mut active = self.active_window.lock().unwrap();
+        *active = handle;
     }
 
     pub fn stop_config_watcher(&self) {
-        (self.config_watcher.write().unwrap())
-        .stop()
-        .log_if_err();
+        let mut config_watcher = self.config_watcher.write().unwrap();
+        config_watcher.stop().log_if_err();
     }
 
     pub fn start_config_watcher(&self) {
-        (self.config_watcher.write().unwrap())
-        .start()
-        .log_if_err();
+        let mut config_watcher = self.config_watcher.write().unwrap();
+        config_watcher.start().log_if_err();
     }
 
     pub fn config_watcher_is_running(&self) -> bool {

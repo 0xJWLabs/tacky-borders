@@ -109,7 +109,7 @@ use super::get_active_window;
 use super::window_border;
 use super::window_borders;
 
-const BLUR_EFFECT_STANDARD_DEVIATION: f32 = 8.0;
+const BLUR_EFFECT_STANDARD_DEVIATION: f32 = 6.0;
 
 impl TypeKind for Border {
     type TypeKind = CloneType;
@@ -498,8 +498,8 @@ impl Border {
         let screen_height = (m_info.rcMonitor.bottom - m_info.rcMonitor.top) as u32;
 
         let swap_chain_desc = DXGI_SWAP_CHAIN_DESC1 {
-            Width: screen_width + (self.width * 2) as u32,
-            Height: screen_height + (self.width * 2) as u32,
+            Width: screen_width + ((self.width + self.window_padding) * 2) as u32,
+            Height: screen_height + ((self.width + self.window_padding) * 2) as u32,
             Format: DXGI_FORMAT_B8G8R8A8_UNORM,
             Stereo: FALSE,
             SampleDesc: DXGI_SAMPLE_DESC {
@@ -641,7 +641,7 @@ impl Border {
         let d2d_effects_bitmap = unsafe {
             d2d_context.CreateBitmap(
                 D2D_SIZE_U {
-                    width: screen_width + ((self.width + self.width) * 2) as u32,
+                    width: screen_width + ((self.width + self.window_padding) * 2) as u32,
                     height: screen_height + ((self.width + self.window_padding) * 2) as u32,
                 },
                 None,
@@ -649,7 +649,7 @@ impl Border {
                 &bitmap_properties,
             )
         }
-        .context("effects_bitmap")?;
+        .context("effects_bitmap")?; 
 
         self.target_bitmap = Some(d2d_target_bitmap);
         self.effects_bitmap = Some(d2d_effects_bitmap);
@@ -904,9 +904,10 @@ impl Border {
     fn render(&mut self) -> AnyResult<()> {
         self.last_render_time = Some(std::time::Instant::now());
 
-        let Some(ref d2d_context) = self.d2d_context else {
-            return Err(anyhow!("d2d_context has not been set yet"));
-        };
+        let d2d_context = self
+            .d2d_context
+            .as_ref()
+            .context("could not get d2d_context")?;
 
         let rect_width = self.window_rect.width() as f32;
         let rect_height = self.window_rect.height() as f32;

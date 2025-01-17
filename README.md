@@ -272,6 +272,9 @@ Place your theme files under the following directory for tacky-borders to recogn
 %USERPROFILE%/.config/tacky-borders/themes/{theme-name}.json(c)
 ```
 
+## Screenshots
+![tacky-borders](./resources/screenshot.png)
+
 ## Credits
 This project makes use of the following open-source library:
 - [Bezier-Easing](https://github.com/gre/bezier-easing) by Gaëtan Renaudeau

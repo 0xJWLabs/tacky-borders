@@ -1,6 +1,6 @@
 use crate::animation::manager::AnimationManager;
 use crate::animation::wrapper::AnimationEngineVec;
-use crate::app_manager::APP;
+use crate::app_manager::AppManager;
 use crate::colors::Color;
 use crate::colors::ColorImpl;
 use crate::colors::GlobalColorImpl;
@@ -22,7 +22,6 @@ use crate::windows_api::WM_APP_SHOWUNCLOAKED;
 use crate::windows_api::WM_APP_TIMER;
 use crate::windows_api::WindowsApi;
 use anyhow::Context;
-use anyhow::Result as AnyResult;
 use anyhow::anyhow;
 use std::mem::ManuallyDrop;
 use std::thread;
@@ -40,11 +39,13 @@ use windows::Win32::Foundation::RECT;
 use windows::Win32::Foundation::S_OK;
 use windows::Win32::Foundation::TRUE;
 use windows::Win32::Foundation::WPARAM;
+use windows::Win32::Graphics::Direct2D::CLSID_D2D1AlphaMask;
 use windows::Win32::Graphics::Direct2D::CLSID_D2D1Composite;
 use windows::Win32::Graphics::Direct2D::CLSID_D2D1GaussianBlur;
 use windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F;
 use windows::Win32::Graphics::Direct2D::Common::D2D_SIZE_U;
 use windows::Win32::Graphics::Direct2D::Common::D2D1_ALPHA_MODE_PREMULTIPLIED;
+use windows::Win32::Graphics::Direct2D::Common::D2D1_COLOR_F;
 use windows::Win32::Graphics::Direct2D::Common::D2D1_COMPOSITE_MODE_SOURCE_OVER;
 use windows::Win32::Graphics::Direct2D::Common::D2D1_PIXEL_FORMAT;
 use windows::Win32::Graphics::Direct2D::D2D1_ANTIALIAS_MODE_PER_PRIMITIVE;
@@ -52,6 +53,7 @@ use windows::Win32::Graphics::Direct2D::D2D1_BITMAP_OPTIONS_CANNOT_DRAW;
 use windows::Win32::Graphics::Direct2D::D2D1_BITMAP_OPTIONS_TARGET;
 use windows::Win32::Graphics::Direct2D::D2D1_BITMAP_PROPERTIES1;
 use windows::Win32::Graphics::Direct2D::D2D1_BRUSH_PROPERTIES;
+use windows::Win32::Graphics::Direct2D::D2D1_COMBINE_MODE_XOR;
 use windows::Win32::Graphics::Direct2D::D2D1_DEVICE_CONTEXT_OPTIONS_NONE;
 use windows::Win32::Graphics::Direct2D::D2D1_DIRECTIONALBLUR_OPTIMIZATION_SPEED;
 use windows::Win32::Graphics::Direct2D::D2D1_GAUSSIANBLUR_PROP_OPTIMIZATION;
@@ -70,7 +72,6 @@ use windows::Win32::Graphics::DirectComposition::IDCompositionTarget;
 use windows::Win32::Graphics::Dwm::DWM_BB_BLURREGION;
 use windows::Win32::Graphics::Dwm::DWM_BB_ENABLE;
 use windows::Win32::Graphics::Dwm::DWM_BLURBEHIND;
-use windows::Win32::Graphics::Dwm::DWMWA_EXTENDED_FRAME_BOUNDS;
 use windows::Win32::Graphics::Dwm::DwmEnableBlurBehindWindow;
 use windows::Win32::Graphics::Dxgi::Common::DXGI_ALPHA_MODE_PREMULTIPLIED;
 use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
@@ -109,7 +110,7 @@ use super::get_active_window;
 use super::window_border;
 use super::window_borders;
 
-const BLUR_EFFECT_STANDARD_DEVIATION: f32 = 6.0;
+const BLUR_EFFECT_STANDARD_DEVIATION: f32 = 4.0;
 
 impl TypeKind for Border {
     type TypeKind = CloneType;
@@ -121,6 +122,13 @@ impl PartialEq for Border {
     fn eq(&self, other: &Self) -> bool {
         self.tracking_window as usize == other.tracking_window as usize
     }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct Bitmaps {
+    pub target_bitmap: Option<ID2D1Bitmap1>,
+    pub border_bitmap: Option<ID2D1Bitmap1>,
+    pub mask_bitmap: Option<ID2D1Bitmap1>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -137,9 +145,8 @@ pub struct Border {
     pub current_dpi: f32,
     pub d2d_context: Option<ID2D1DeviceContext7>,
     pub swap_chain: Option<IDXGISwapChain1>,
-    pub target_bitmap: Option<ID2D1Bitmap1>,
+    pub bitmaps: Bitmaps,
     pub composition_target: Option<IDCompositionTarget>,
-    pub effects_bitmap: Option<ID2D1Bitmap1>,
     pub command_list: Option<ID2D1CommandList>,
     pub window_padding: i32,
     pub active_color: Color,
@@ -293,7 +300,7 @@ impl Border {
         });
     }
 
-    pub fn create_border_window(&mut self, window_rule: &WindowRuleConfig) -> AnyResult<()> {
+    pub fn create_border_window(&mut self, window_rule: &WindowRuleConfig) -> anyhow::Result<()> {
         let title = format!(
             "tacky-border | {} | {:?}",
             WindowsApi::get_window_title(self.tracking_window).unwrap_or_default(),
@@ -307,7 +314,7 @@ impl Border {
         Ok(())
     }
 
-    pub fn init(&mut self) -> AnyResult<()> {
+    pub fn init(&mut self) -> anyhow::Result<()> {
         thread::sleep(time::Duration::from_millis(self.initialize_delay));
 
         unsafe {
@@ -409,8 +416,8 @@ impl Border {
         Ok(())
     }
 
-    fn load_from_config(&mut self, window_rule: &WindowRuleConfig) -> AnyResult<()> {
-        let config = APP.config().clone();
+    fn load_from_config(&mut self, window_rule: &WindowRuleConfig) -> anyhow::Result<()> {
+        let config = AppManager::get().config().clone();
         let global = &config.global_rule;
 
         let config_width = window_rule
@@ -484,9 +491,11 @@ impl Border {
         Ok(())
     }
 
-    fn create_render_resources(&mut self) -> AnyResult<()> {
+    fn create_render_resources(&mut self) -> anyhow::Result<()> {
+        let app_manager = AppManager::get();
         let d2d_context = unsafe {
-            APP.d2d_device()
+            app_manager
+                .d2d_device()
                 .CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE)
         }
         .context("d2d_context")?;
@@ -514,17 +523,18 @@ impl Border {
             Flags: 0,
         };
 
-        let dxgi_adapter = unsafe { APP.dxgi_device().GetAdapter() }.context("dxgi_adapter")?;
+        let dxgi_adapter =
+            unsafe { app_manager.dxgi_device().GetAdapter() }.context("dxgi_adapter")?;
         let dxgi_factory: IDXGIFactory7 =
             unsafe { dxgi_adapter.GetParent() }.context("dxgi_factory")?;
 
         let swap_chain = unsafe {
-            dxgi_factory.CreateSwapChainForComposition(&APP.device(), &swap_chain_desc, None)
+            dxgi_factory.CreateSwapChainForComposition(app_manager.device(), &swap_chain_desc, None)
         }
         .context("swap_chain")?;
 
         let d_comp_device: IDCompositionDevice =
-            unsafe { DCompositionCreateDevice(&APP.dxgi_device()) }?;
+            unsafe { DCompositionCreateDevice(app_manager.dxgi_device()) }?;
         let d_comp_target =
             unsafe { d_comp_device.CreateTargetForHwnd(self.border_window.as_hwnd(), true) }
                 .context("d_comp_target")?;
@@ -534,30 +544,8 @@ impl Border {
         unsafe { d_comp_target.SetRoot(&d_comp_visual) }.context("d_comp_target.SetRoot()")?;
         unsafe { d_comp_device.Commit() }.context("d_comp_device.Commit()")?;
 
-        let bitmap_properties = D2D1_BITMAP_PROPERTIES1 {
-            bitmapOptions: D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
-            pixelFormat: D2D1_PIXEL_FORMAT {
-                format: DXGI_FORMAT_B8G8R8A8_UNORM,
-                alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED,
-            },
-            dpiX: 96.0,
-            dpiY: 96.0,
-            colorContext: ManuallyDrop::new(None),
-        };
-
-        let dxgi_back_buffer: IDXGISurface =
-            unsafe { swap_chain.GetBuffer(0) }.context("dxgi_back_buffer")?;
-
-        let d2d_target_bitmap = unsafe {
-            d2d_context.CreateBitmapFromDxgiSurface(&dxgi_back_buffer, Some(&bitmap_properties))
-        }
-        .context("d2d_target_bitmap")?;
-
-        unsafe { d2d_context.SetTarget(&d2d_target_bitmap) };
-
         self.d2d_context = Some(d2d_context);
         self.swap_chain = Some(swap_chain);
-        self.target_bitmap = Some(d2d_target_bitmap);
         self.composition_target = Some(d_comp_target);
 
         self.create_bitmaps(screen_width, screen_height)
@@ -620,12 +608,12 @@ impl Border {
         let dxgi_back_buffer: IDXGISurface =
             unsafe { swap_chain.GetBuffer(0) }.context("dxgi_back_buffer")?;
 
-        let d2d_target_bitmap = unsafe {
+        let target_bitmap = unsafe {
             d2d_context.CreateBitmapFromDxgiSurface(&dxgi_back_buffer, Some(&bitmap_properties))
         }
         .context("d2d_target_bitmap")?;
 
-        unsafe { d2d_context.SetTarget(&d2d_target_bitmap) };
+        unsafe { d2d_context.SetTarget(&target_bitmap) };
 
         // We create two bitmaps because the first (target_bitmap) cannot be used for effects
         let bitmap_properties = D2D1_BITMAP_PROPERTIES1 {
@@ -638,7 +626,7 @@ impl Border {
             dpiY: 96.0,
             colorContext: ManuallyDrop::new(None),
         };
-        let d2d_effects_bitmap = unsafe {
+        let border_bitmap = unsafe {
             d2d_context.CreateBitmap(
                 D2D_SIZE_U {
                     width: screen_width + ((self.width + self.window_padding) * 2) as u32,
@@ -649,10 +637,25 @@ impl Border {
                 &bitmap_properties,
             )
         }
-        .context("effects_bitmap")?; 
+        .context("border_bitmap")?;
 
-        self.target_bitmap = Some(d2d_target_bitmap);
-        self.effects_bitmap = Some(d2d_effects_bitmap);
+        // Aaaand yet another for the mask
+        let mask_bitmap = unsafe {
+            d2d_context.CreateBitmap(
+                D2D_SIZE_U {
+                    width: screen_width + ((self.width + self.window_padding) * 2) as u32,
+                    height: screen_height + ((self.width + self.window_padding) * 2) as u32,
+                },
+                None,
+                0,
+                &bitmap_properties,
+            )
+        }
+        .context("mask_bitmap")?;
+
+        self.bitmaps.target_bitmap = Some(target_bitmap);
+        self.bitmaps.border_bitmap = Some(border_bitmap);
+        self.bitmaps.mask_bitmap = Some(mask_bitmap);
 
         Ok(())
     }
@@ -662,63 +665,76 @@ impl Border {
             .d2d_context
             .as_ref()
             .context("could not get d2d_context")?;
-        let effects_bitmap = self
-            .effects_bitmap
+        let border_bitmap = self
+            .bitmaps
+            .border_bitmap
             .as_ref()
-            .context("could not get effects_bitmap")?;
+            .context("could not get border_bitmap")?;
+        let mask_bitmap = self
+            .bitmaps
+            .mask_bitmap
+            .as_ref()
+            .context("could not get mask_bitmap")?;
 
-        // Open a command list to record draw operations
-        let command_list = unsafe { d2d_context.CreateCommandList() }
-            .context("d2d_context.CreateCommandList()")?;
+        unsafe {
+            // Open a command list to record draw operations
+            let command_list = d2d_context
+                .CreateCommandList()
+                .context("d2d_context.CreateCommandList()")?;
 
-        unsafe { d2d_context.SetTarget(&command_list) };
+            // Set the command list as the target so we can begin recording
+            d2d_context.SetTarget(&command_list);
 
-        // Create the blur effect and link it to the effects_bitmap
-        let blur_effect = unsafe {
-            d2d_context
+            // Create the blur effect and link it to the border_bitmap
+            let blur_effect = d2d_context
                 .CreateEffect(&CLSID_D2D1GaussianBlur)
-                .context("blur_effect")?
-        };
-        unsafe { blur_effect.SetInput(0, effects_bitmap, false) };
-        unsafe {
-            blur_effect.SetValue(
-                D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION.0 as u32,
-                D2D1_PROPERTY_TYPE_FLOAT,
-                &BLUR_EFFECT_STANDARD_DEVIATION.to_le_bytes(),
-            )
-        }
-        .context("blur_effect.SetValue() std deviation")?;
-        unsafe {
-            blur_effect.SetValue(
-                D2D1_GAUSSIANBLUR_PROP_OPTIMIZATION.0 as u32,
-                D2D1_PROPERTY_TYPE_ENUM,
-                &D2D1_DIRECTIONALBLUR_OPTIMIZATION_SPEED.0.to_le_bytes(),
-            )
-        }
-        .context("blur_effect.SetValue() optimization")?;
+                .context("blur_effect")?;
+            blur_effect.SetInput(0, border_bitmap, false);
+            blur_effect
+                .SetValue(
+                    D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION.0 as u32,
+                    D2D1_PROPERTY_TYPE_FLOAT,
+                    &BLUR_EFFECT_STANDARD_DEVIATION.to_le_bytes(),
+                )
+                .context("blur_effect.SetValue() std deviation")?;
+            blur_effect
+                .SetValue(
+                    D2D1_GAUSSIANBLUR_PROP_OPTIMIZATION.0 as u32,
+                    D2D1_PROPERTY_TYPE_ENUM,
+                    &D2D1_DIRECTIONALBLUR_OPTIMIZATION_SPEED.0.to_le_bytes(),
+                )
+                .context("blur_effect.SetValue() optimization")?;
 
-        // Create a composite effect and link it to the effect and effects_bitmap
-        let composite_effect = unsafe {
-            d2d_context
-                .CreateEffect(&CLSID_D2D1Composite)
-                .context("composite_effect")?
-        };
-        unsafe {
-            composite_effect.SetInput(
+            // Create an alpha mask effect to mask out the inner glow
+            let mask_effect = d2d_context
+                .CreateEffect(&CLSID_D2D1AlphaMask)
+                .context("mask_effect")?;
+            mask_effect.SetInput(
                 0,
                 &blur_effect
                     .GetOutput()
                     .context("could not get blur output")?,
                 false,
-            )
-        };
-        unsafe { composite_effect.SetInput(1, effects_bitmap, false) };
+            );
+            mask_effect.SetInput(1, mask_bitmap, false);
 
-        unsafe { d2d_context.BeginDraw() };
-        unsafe { d2d_context.Clear(None) };
+            // Create a composite effect and link it to the effect(s) and border_bitmap
+            let composite_effect = d2d_context
+                .CreateEffect(&CLSID_D2D1Composite)
+                .context("composite_effect")?;
+            composite_effect.SetInput(
+                0,
+                &mask_effect
+                    .GetOutput()
+                    .context("could not get mask output")?,
+                false,
+            );
+            composite_effect.SetInput(1, border_bitmap, false);
 
-        // Draw the composite effect (recorded by the command list)
-        unsafe {
+            d2d_context.BeginDraw();
+            d2d_context.Clear(None);
+
+            // Draw the composite effect (recorded by the command list)
             d2d_context.DrawImage(
                 &composite_effect
                     .GetOutput()
@@ -727,60 +743,37 @@ impl Border {
                 None,
                 D2D1_INTERPOLATION_MODE_LINEAR,
                 D2D1_COMPOSITE_MODE_SOURCE_OVER,
-            )
-        };
+            );
 
-        match unsafe { d2d_context.EndDraw(None, None) } {
-            Ok(_) => {}
-            Err(e) if e.code() == D2DERR_RECREATE_TARGET => {
-                // D2DERR_RECREATE_TARGET is recoverable if we just recreate the render target.
-                // This error can be caused by things like waking up from sleep, updating GPU
-                // drivers, changing screen resolution, etc.
-                warn!("render target has been lost; attempting to recreate");
+            d2d_context
+                .EndDraw(None, None)
+                .unwrap_or_else(|err| self.handle_end_draw_error(err));
 
-                match self.create_render_resources() {
-                    Ok(_) => info!("successfully recreated render target; resuming thread"),
-                    Err(e_2) => {
-                        error!("could not recreate render target; exiting thread: {e_2}");
-                        self.exit_border_thread();
-                    }
-                }
-            }
-            Err(other) => {
-                error!("d2d_context.EndDraw() failed; exiting thread: {other}");
-                self.exit_border_thread();
-            }
+            // Close the command list to tell it we are done recording
+            command_list.Close().context("command_list.Close()")?;
+
+            self.command_list = Some(command_list);
         }
-
-        // Close the command list to tell it we are done recording
-        unsafe { command_list.Close() }.context("command_list.Close()")?;
-
-        self.command_list = Some(command_list);
 
         Ok(())
     }
 
-    fn update_window_rect(&mut self) -> AnyResult<()> {
-        if let Err(e) = WindowsApi::dwm_get_window_attribute::<RECT>(
-            self.tracking_window,
-            DWMWA_EXTENDED_FRAME_BOUNDS,
-            &mut self.window_rect,
-        )
-        .context(format!(
-            "could not get window rect for {:?}",
-            self.tracking_window
-        )) {
-            self.exit_border_thread();
+    fn update_window_rect(&mut self) -> anyhow::Result<()> {
+        self.window_rect = WindowsApi::window_rect(self.tracking_window).map_err(|e| {
+            self.exit_border_thread(); // Exit the thread on error
+            e.context(format!(
+                "could not get window rect for: {:?}",
+                self.tracking_window()
+            )) // Add context
+        })?;
 
-            return Err(e);
-        }
-
-        self.window_rect.add_margin(self.width + self.window_padding);
+        self.window_rect
+            .add_margin(self.width + self.window_padding);
 
         Ok(())
     }
 
-    fn update_position(&mut self, other_flags: Option<SET_WINDOW_POS_FLAGS>) -> AnyResult<()> {
+    fn update_position(&mut self, other_flags: Option<SET_WINDOW_POS_FLAGS>) -> anyhow::Result<()> {
         // Attempt to set the window position with the provided flags
         WindowsApi::set_border_pos(
             self.border_window,
@@ -804,7 +797,7 @@ impl Border {
         Ok(())
     }
 
-    fn update_color(&mut self, check_delay: Option<u64>) -> AnyResult<()> {
+    fn update_color(&mut self, check_delay: Option<u64>) -> anyhow::Result<()> {
         self.is_window_active = self.tracking_window == *get_active_window();
 
         if self.current_animations().contains_kind(AnimationKind::Fade) {
@@ -838,7 +831,7 @@ impl Border {
 
     fn update_width_radius(&mut self) {
         let window_rule = WindowsApi::get_window_rule(self.tracking_window);
-        let config = APP.config().clone();
+        let config = AppManager::get().config().clone();
         let global = &config.global_rule;
 
         let width_config = window_rule
@@ -875,7 +868,7 @@ impl Border {
 
         // Release buffer references
         unsafe { d2d_context.SetTarget(None) };
-        self.target_bitmap = None;
+        self.bitmaps.target_bitmap = None;
 
         let m_info = WindowsApi::get_monitor_info(self.current_monitor).context("mi")?;
         let screen_width = (m_info.rcMonitor.right - m_info.rcMonitor.left) as u32;
@@ -901,7 +894,7 @@ impl Border {
         Ok(())
     }
 
-    fn render(&mut self) -> AnyResult<()> {
+    fn render(&mut self) -> anyhow::Result<()> {
         self.last_render_time = Some(std::time::Instant::now());
 
         let d2d_context = self
@@ -915,6 +908,9 @@ impl Border {
         let border_width = self.width as f32;
         let border_offset = self.offset as f32;
         let window_padding = self.window_padding as f32;
+        let border_radius =
+            self.style
+                .to_radius(self.width, self.current_dpi, self.tracking_window);
 
         self.render_rect.rect = D2D_RECT_F {
             left: border_width / 2.0 + window_padding - border_offset,
@@ -929,12 +925,16 @@ impl Border {
                 false => (&self.active_color, &self.inactive_color),
             };
 
-            // Set the d2d_context target to the effects_bitmap
-            let effects_bitmap = self
-                .effects_bitmap
+            let app_manager = AppManager::get();
+
+            // Set the d2d_context target to the border_bitmap
+            let border_bitmap = self
+                .bitmaps
+                .border_bitmap
                 .as_ref()
-                .context("could not get effects_bitmap")?;
-            d2d_context.SetTarget(effects_bitmap);
+                .context("could not get border_bitmap")?;
+
+            d2d_context.SetTarget(border_bitmap);
 
             d2d_context.BeginDraw();
             d2d_context.Clear(None);
@@ -961,27 +961,9 @@ impl Border {
                 }
             }
 
-            match d2d_context.EndDraw(None, None) {
-                Ok(_) => {}
-                Err(e) if e.code() == D2DERR_RECREATE_TARGET => {
-                    // D2DERR_RECREATE_TARGET is recoverable if we just recreate the render target.
-                    // This error can be caused by things like waking up from sleep, updating GPU
-                    // drivers, screen resolution changing, etc.
-                    warn!("render_target has been lost; attempting to recreate");
-
-                    match self.create_render_resources() {
-                        Ok(_) => info!("successfully recreated render_target; resuming thread"),
-                        Err(e_2) => {
-                            error!("could not recreate render_target; exiting thread: {e_2:#}");
-                            self.exit_border_thread();
-                        }
-                    }
-                }
-                Err(other) => {
-                    error!("render_target.EndDraw() failed; exiting thread: {other:#}");
-                    self.exit_border_thread();
-                }
-            }
+            d2d_context
+                .EndDraw(None, None)
+                .unwrap_or_else(|err| self.handle_end_draw_error(err));
 
             // Get d2d_context again to satisfy Rust's borrow checker
             let d2d_context = self
@@ -989,14 +971,92 @@ impl Border {
                 .as_ref()
                 .context("could not get d2d_context")?;
 
-            // Set d2d_context's target back to the target_bitmap so we can render to the display
+            // Set the d2d_context target to the mask_bitmap so we can create an alpha mask
+            let mask_bitmap = self
+                .bitmaps
+                .mask_bitmap
+                .as_ref()
+                .context("could not get target_bitmap")?;
+            d2d_context.SetTarget(mask_bitmap);
+
+            let rounded_rect_geometry = app_manager
+                .factory()
+                .CreateRoundedRectangleGeometry(&D2D1_ROUNDED_RECT {
+                    rect: D2D_RECT_F {
+                        left: border_width + window_padding - border_offset,
+                        top: border_width + window_padding - border_offset,
+                        right: rect_width - border_width - window_padding + border_offset,
+                        bottom: rect_height - border_width - window_padding + border_offset,
+                    },
+                    radiusX: border_radius,
+                    radiusY: border_radius,
+                })
+                .context("rounded_rect_geometry")?;
+            let outer_rect_geometry = app_manager
+                .factory()
+                .CreateRectangleGeometry(&D2D_RECT_F {
+                    left: 0.0,
+                    top: 0.0,
+                    right: rect_width,
+                    bottom: rect_height,
+                })
+                .context("outer_rect_geometry")?;
+            let path_geometry = app_manager
+                .factory()
+                .CreatePathGeometry()
+                .context("path_geometry")?;
+
+            // Combine the two geometries
+            let geometry_sink = path_geometry.Open().context("geometry_sink")?;
+            rounded_rect_geometry
+                .CombineWithGeometry(
+                    &outer_rect_geometry,
+                    D2D1_COMBINE_MODE_XOR,
+                    Some(&Matrix3x2::identity()),
+                    0.1,
+                    &geometry_sink,
+                )
+                .context("rounded_rect_geometry.CombineWithGeometry()")?;
+            geometry_sink.Close().context("geometry_sink.Close()")?;
+
+            // Create a brush that is guaranteed to be 100% opaque
+            let opaque_brush = d2d_context
+                .CreateSolidColorBrush(
+                    &D2D1_COLOR_F {
+                        r: 1.0,
+                        g: 1.0,
+                        b: 1.0,
+                        a: 1.0,
+                    },
+                    None,
+                )
+                .context("opaque_brush")?;
+
+            // Draw to the mask_bitmap
+            d2d_context.BeginDraw();
+            d2d_context.Clear(None);
+
+            d2d_context.FillGeometry(&path_geometry, &opaque_brush, None);
+
+            d2d_context
+                .EndDraw(None, None)
+                .unwrap_or_else(|err| self.handle_end_draw_error(err));
+
+            // Get d2d_context again to satisfy Rust's borrow checker
+            let d2d_context = self
+                .d2d_context
+                .as_ref()
+                .context("could not get d2d_context")?;
+
+            // Set d2d_context's target back to the target_bitmap so we can draw to the display
             let target_bitmap = self
+                .bitmaps
                 .target_bitmap
                 .as_ref()
                 .context("could not get target_bitmap")?;
             d2d_context.SetTarget(target_bitmap);
 
-            // Retrieve our command list (includes effect(s) + border from effects_bitmap)
+            // Retrieve our command list (includes effect(s) + border)
             let command_list = self
                 .command_list
                 .as_ref()
@@ -1006,7 +1066,7 @@ impl Border {
             d2d_context.BeginDraw();
             d2d_context.Clear(None);
 
-            // Draw using the command list (includes effect(s) + border from effects_bitmap)
+            // Draw using the command list
             d2d_context.DrawImage(
                 command_list,
                 None,
@@ -1015,33 +1075,17 @@ impl Border {
                 D2D1_COMPOSITE_MODE_SOURCE_OVER,
             );
 
-            match d2d_context.EndDraw(None, None) {
-                Ok(_) => {}
-                Err(e) if e.code() == D2DERR_RECREATE_TARGET => {
-                    // D2DERR_RECREATE_TARGET is recoverable if we just recreate the render target.
-                    // This error can be caused by things like waking up from sleep, updating GPU
-                    // drivers, changing screen resolution, etc.
-                    warn!("render target has been lost; attempting to recreate");
+            d2d_context
+                .EndDraw(None, None)
+                .unwrap_or_else(|err| self.handle_end_draw_error(err));
 
-                    match self.create_render_resources() {
-                        Ok(_) => info!("successfully recreated render target; resuming thread"),
-                        Err(e_2) => {
-                            error!("could not recreate render target; exiting thread: {e_2}");
-                            self.exit_border_thread();
-                        }
-                    }
-                }
-                Err(other) => {
-                    error!("d2d_context.EndDraw() failed; exiting thread: {other}");
-                    self.exit_border_thread();
-                }
-            }
-
+            // Present the swap chain buffer
             let hresult = self
                 .swap_chain
                 .as_ref()
                 .context("could not get swap_chain")?
                 .Present(1, DXGI_PRESENT::default());
+
             if hresult != S_OK {
                 return Err(anyhow!("could not present swap_chain: {hresult}"));
             }
@@ -1070,6 +1114,26 @@ impl Border {
                     None,
                 ),
             }
+        }
+    }
+
+    fn handle_end_draw_error(&mut self, err: windows::core::Error) {
+        if err.code() == D2DERR_RECREATE_TARGET {
+            // D2DERR_RECREATE_TARGET is recoverable if we just recreate the render target.
+            // This error can be caused by things like waking up from sleep, updating GPU
+            // drivers, changing screen resolution, etc.
+            warn!("render target has been lost; attempting to recreate");
+
+            match self.create_render_resources() {
+                Ok(_) => info!("successfully recreated render target; resuming thread"),
+                Err(err_2) => {
+                    error!("could not recreate render target; exiting thread: {err_2}");
+                    self.exit_border_thread();
+                }
+            }
+        } else {
+            error!("d2d_context.EndDraw() failed; exiting thread: {err}");
+            self.exit_border_thread();
         }
     }
 

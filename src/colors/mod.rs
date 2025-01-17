@@ -23,7 +23,6 @@ use windows::Win32::Graphics::Direct2D::D2D1_EXTEND_MODE_CLAMP;
 use windows::Win32::Graphics::Direct2D::D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES;
 use windows::Win32::Graphics::Direct2D::ID2D1Brush;
 use windows::Win32::Graphics::Direct2D::ID2D1DeviceContext7;
-use windows::core::Result as WinResult;
 
 /// The `Color` enum represents different types of colors, including both solid colors and gradients.
 /// It can be either a solid color or a gradient, allowing flexibility in color representation.
@@ -141,13 +140,13 @@ pub trait ColorImpl {
     /// - `brush_properties`: The properties that define how the brush will behave.
     ///
     /// # Returns
-    /// A `WinResult<()>`, indicating success or failure.
+    /// A `windows::core::Result<()>`, indicating success or failure.
     fn to_d2d1_brush(
         &mut self,
         d2d_context: &ID2D1DeviceContext7,
         window_rect: &RECT,
         brush_properties: &D2D1_BRUSH_PROPERTIES,
-    ) -> WinResult<()>;
+    ) -> windows::core::Result<()>;
 }
 
 pub trait GlobalColorImpl {
@@ -230,7 +229,7 @@ impl ColorImpl for Color {
         d2d_context: &ID2D1DeviceContext7,
         window_rect: &RECT,
         brush_properties: &D2D1_BRUSH_PROPERTIES,
-    ) -> WinResult<()> {
+    ) -> windows::core::Result<()> {
         match self {
             Color::Solid(solid) => unsafe {
                 let id2d1_brush =

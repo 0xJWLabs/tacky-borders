@@ -2,14 +2,14 @@
 
 use crate::error::LogIfErr;
 use crate::windows_api::PointerConversion;
-use crate::windows_api::WindowsApi;
 use crate::windows_api::WM_APP_TIMER;
-use anyhow::{anyhow, Result as AnyResult};
+use crate::windows_api::WindowsApi;
+use anyhow::anyhow;
 #[cfg(feature = "fast-hash")]
 use fx_hash::{FxHashMap as HashMap, FxHashMapExt};
-use std::collections::hash_map::Entry;
 #[cfg(not(feature = "fast-hash"))]
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::thread::{sleep, spawn};
@@ -64,7 +64,7 @@ impl CustomTimerManager {
     /// # Returns
     /// * `Ok(())` if the timer was successfully added.
     /// * `Err` if a timer already exists for the specified window.
-    pub fn add_timer(&self, hwnd: isize, timer: CustomTimer) -> AnyResult<()> {
+    pub fn add_timer(&self, hwnd: isize, timer: CustomTimer) -> anyhow::Result<()> {
         let shard_index = self.get_shard_index(hwnd);
         // Attempt to acquire the lock safely
         let mut timers = self.timers[shard_index]
@@ -87,7 +87,7 @@ impl CustomTimerManager {
     /// # Returns
     /// * `Ok(())` if the timer was removed successfully.
     /// * `Err` if no timer was found for the specified window.
-    pub fn remove_timer(&self, hwnd: isize) -> AnyResult<()> {
+    pub fn remove_timer(&self, hwnd: isize) -> anyhow::Result<()> {
         let shard_index = self.get_shard_index(hwnd);
 
         // Attempt to acquire the lock safely
@@ -126,7 +126,7 @@ impl CustomTimer {
     /// # Returns
     /// * `Ok(CustomTimer)` if the timer was successfully started.
     /// * `Err` if the interval is invalid (i.e., 0) or there was an error during timer setup.
-    pub fn start(hwnd: isize, interval_ms: u64) -> AnyResult<CustomTimer> {
+    pub fn start(hwnd: isize, interval_ms: u64) -> anyhow::Result<CustomTimer> {
         // Validate the interval
         if interval_ms == 0 {
             return Err(anyhow!("interval must be greater than 0"));
@@ -178,7 +178,7 @@ impl CustomTimer {
     /// # Returns
     /// * `Ok(())` if the timer was successfully stopped.
     /// * `Err` if an error occurred during the stopping process.
-    pub fn stop(hwnd: isize) -> AnyResult<()> {
+    pub fn stop(hwnd: isize) -> anyhow::Result<()> {
         TIMER_MANAGER
             .lock()
             .map_err(|e| anyhow!("failed to lock the TIMER_MANAGER: {e}"))?

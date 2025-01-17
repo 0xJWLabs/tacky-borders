@@ -8,9 +8,9 @@ use anyhow::Context;
 use fx_hash::{FxHashMap as HashMap, FxHashMapExt};
 #[cfg(not(feature = "fast-hash"))]
 use std::collections::HashMap;
-use std::sync::LazyLock;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
+use std::sync::OnceLock;
 use std::sync::RwLock;
 use std::sync::RwLockReadGuard;
 use std::sync::atomic::AtomicBool;
@@ -31,78 +31,128 @@ use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_10_1;
 use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_11_0;
 use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_11_1;
 use windows::Win32::Graphics::Direct3D11::D3D11_CREATE_DEVICE_BGRA_SUPPORT;
+use windows::Win32::Graphics::Direct3D11::D3D11_CREATE_DEVICE_DEBUG;
 use windows::Win32::Graphics::Direct3D11::D3D11_SDK_VERSION;
 use windows::Win32::Graphics::Direct3D11::D3D11CreateDevice;
 use windows::Win32::Graphics::Direct3D11::ID3D11Device;
 use windows::Win32::Graphics::Dxgi::IDXGIDevice;
 use windows::core::Interface;
 
-pub static APP: LazyLock<AppManager> = LazyLock::new(AppManager::new);
+/// A global instance of the AppManager initialized lazily.
+static APP_MANAGER: OnceLock<AppManager> = OnceLock::new();
 
+/// AppManager is responsible for managing the application state, configuration, and devices.
 #[derive(Debug)]
 pub struct AppManager {
+    /// Stores active borders keyed by their handles
     borders: Mutex<HashMap<isize, Border>>,
+    /// Holds the handle of the currently active window
     active_window: Mutex<isize>,
+    /// User configuration stored in a read-write lock
     config: RwLock<UserConfig>,
+    /// Watches configuration file for changes
     config_watcher: RwLock<ConfigWatcher>,
-    device: ID3D11Device,
-    dxgi_device: IDXGIDevice,
-    d2d_device: ID2D1Device7,
+    /// Flag to indicate whether active window polling is enabled
     is_polling_active_window: AtomicBool,
+    /// Direct3D 11 device used for rendering
+    device: ID3D11Device,
+    /// DirectX Graphics Infrastructure device
+    dxgi_device: IDXGIDevice,
+    /// Direct2D device used for drawing
+    d2d_device: ID2D1Device7,
+    /// Direct2D factory for creating device and context
+    factory: ID2D1Factory8,
 }
 
 unsafe impl Send for AppManager {}
 unsafe impl Sync for AppManager {}
 
 impl AppManager {
-    pub fn device(&self) -> ID3D11Device {
-        self.device.clone()
+    /// Gets the global singleton instance of `AppManager`.
+    pub fn get() -> &'static Self {
+        APP_MANAGER.get_or_init(AppManager::new)
     }
 
-    pub fn dxgi_device(&self) -> IDXGIDevice {
-        self.dxgi_device.clone()
-    }
-
-    pub fn d2d_device(&self) -> ID2D1Device7 {
-        self.d2d_device.clone()
-    }
-
+    /// Returns a mutable lock guard for the borders map.
     pub fn borders(&self) -> MutexGuard<HashMap<isize, Border>> {
-        self.borders.lock().unwrap()
+        self.borders.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    pub fn active_window(&'static self) -> MutexGuard<'static, isize> {
-        self.active_window.lock().unwrap()
+    /// Returns a mutable lock guard for the active window handle.
+    pub fn active_window(&self) -> MutexGuard<isize> {
+        self.active_window.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    /// Sets the handle of the currently active window.
     pub fn set_active_window(&self, handle: isize) {
-        let mut active = self.active_window.lock().unwrap();
-        *active = handle;
+        if let Ok(mut active) = self.active_window.lock() {
+            *active = handle;
+        }
     }
 
+    /// Stops the configuration file watcher.
     pub fn stop_config_watcher(&self) {
-        let mut config_watcher = self.config_watcher.write().unwrap();
-        config_watcher.stop().log_if_err();
+        if let Ok(mut config_watcher) = self.config_watcher.write() {
+            config_watcher.stop().log_if_err();
+        }
     }
 
+    /// Starts the configuration file watcher.
     pub fn start_config_watcher(&self) {
-        let mut config_watcher = self.config_watcher.write().unwrap();
-        config_watcher.start().log_if_err();
+        if let Ok(mut config_watcher) = self.config_watcher.write() {
+            config_watcher.start().log_if_err();
+        }
     }
 
+    /// Returns whether the configuration file watcher is currently running.
     pub fn config_watcher_is_running(&self) -> bool {
-        (self.config_watcher.read().unwrap()).is_running()
+        self.config_watcher.read().map_or(false, |w| w.is_running())
     }
 
+    /// Returns a read-only lock for the user configuration.
     pub fn config(&self) -> RwLockReadGuard<UserConfig> {
         self.config.read().unwrap()
     }
 
+    /// Sets a new user configuration.
     pub fn set_config(&self, config: UserConfig) {
-        *self.config.write().unwrap() = config;
+        if let Ok(mut cfg) = self.config.write() {
+            *cfg = config;
+        }
     }
 
-    pub fn new() -> Self {
+    /// Returns a reference to the Direct3D device.
+    pub fn device(&self) -> &ID3D11Device {
+        &self.device
+    }
+
+    /// Returns a reference to the Direct2D device.
+    pub fn d2d_device(&self) -> &ID2D1Device7 {
+        &self.d2d_device
+    }
+
+    /// Returns a reference to the DXGI device.
+    pub fn dxgi_device(&self) -> &IDXGIDevice {
+        &self.dxgi_device
+    }
+
+    /// Returns a reference to the Direct2D factory.
+    pub fn factory(&self) -> &ID2D1Factory8 {
+        &self.factory
+    }
+
+    /// Returns whether the polling of the active window is enabled.
+    pub fn is_polling_active_window(&self) -> bool {
+        self.is_polling_active_window.load(Ordering::SeqCst)
+    }
+
+    /// Sets whether polling of the active window should be enabled.
+    pub fn set_polling_active_window(&self, val: bool) {
+        self.is_polling_active_window.store(val, Ordering::SeqCst);
+    }
+
+    /// Initializes a new AppManager instance, setting up configuration and DirectX devices.
+    fn new() -> Self {
         let active_window = WindowsApi::get_foreground_window();
 
         let config_dir = UserConfig::get_config_dir().unwrap_or_default();
@@ -115,74 +165,29 @@ impl AppManager {
         };
         let mut config_watcher = ConfigWatcher::new(config_file, Duration::from_millis(200));
 
-        let config = match UserConfig::create() {
-            Ok(config) => {
-                if config.monitor_config_changes {
-                    config_watcher.start().log_if_err();
-                }
-                config
-            }
-            Err(err) => {
-                error!("could not read config: {err:#}");
-                UserConfig::default() // Assuming `config_format` can have a default value
-            }
+        let config = UserConfig::create().unwrap_or_else(|err| {
+            error!("could not read config: {err:#}");
+            UserConfig::default()
+        });
+
+        if config.monitor_config_changes {
+            config_watcher.start().log_if_err();
+        }
+
+        let factory = unsafe {
+            D2D1CreateFactory::<ID2D1Factory8>(D2D1_FACTORY_TYPE_MULTI_THREADED, None)
+                .unwrap_or_else(|err| {
+                    error!("could not create ID2D1Factory: {err}");
+                    panic!()
+                })
         };
 
-        let create_directx_devices =
-            || -> anyhow::Result<(ID3D11Device, IDXGIDevice, ID2D1Device7)> {
-                let render_factory: ID2D1Factory8 = unsafe {
-                    D2D1CreateFactory(D2D1_FACTORY_TYPE_MULTI_THREADED, None).unwrap_or_else(
-                        |err| {
-                            error!("could not create ID2D1Factory: {err}");
-                            panic!()
-                        },
-                    )
-                };
-
-                let creation_flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
-
-                let feature_levels = [
-                    D3D_FEATURE_LEVEL_11_1,
-                    D3D_FEATURE_LEVEL_11_0,
-                    D3D_FEATURE_LEVEL_10_1,
-                    D3D_FEATURE_LEVEL_10_0,
-                    D3D_FEATURE_LEVEL_9_3,
-                    D3D_FEATURE_LEVEL_9_2,
-                    D3D_FEATURE_LEVEL_9_1,
-                ];
-
-                let mut device_opt: Option<ID3D11Device> = None;
-                let mut feature_level: D3D_FEATURE_LEVEL = D3D_FEATURE_LEVEL::default();
-
-                unsafe {
-                    D3D11CreateDevice(
-                        None,
-                        D3D_DRIVER_TYPE_HARDWARE,
-                        HMODULE::default(),
-                        creation_flags,
-                        Some(&feature_levels),
-                        D3D11_SDK_VERSION,
-                        Some(&mut device_opt),
-                        Some(&mut feature_level),
-                        None,
-                    )
-                }?;
-
-                debug!("directx feature_level: {feature_level:X?}");
-
-                let device = device_opt.context("could not get d3d11 device")?;
-                let dxgi_device: IDXGIDevice = device.cast().context("id3d11device cast")?;
-                let d2d_device =
-                    unsafe { render_factory.CreateDevice(&dxgi_device) }.context("d2d_device")?;
-
-                Ok((device, dxgi_device, d2d_device))
-            };
-
-        let (device, dxgi_device, d2d_device) = create_directx_devices().unwrap_or_else(|err| {
-            error!("could not create directx devices: {err}");
-            println!("could not create directx devices: {err}");
-            panic!("could not create directx devices: {err}");
-        });
+        let (device, dxgi_device, d2d_device) =
+            create_directx_devices(&factory).unwrap_or_else(|err| {
+                error!("could not create directx devices: {err}");
+                println!("could not create directx devices: {err}");
+                panic!("could not create directx devices: {err}");
+            });
 
         Self {
             borders: Mutex::new(HashMap::new()),
@@ -193,14 +198,47 @@ impl AppManager {
             device,
             dxgi_device,
             d2d_device,
+            factory,
         }
     }
+}
 
-    pub fn is_polling_active_window(&self) -> bool {
-        self.is_polling_active_window.load(Ordering::SeqCst)
-    }
+/// Helper function to create Direct3D and Direct2D devices.
+fn create_directx_devices(factory: &ID2D1Factory8) -> anyhow::Result<(ID3D11Device, IDXGIDevice, ID2D1Device7)> {
+    let creation_flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_DEBUG;
 
-    pub fn set_polling_active_window(&self, val: bool) {
-        self.is_polling_active_window.store(val, Ordering::SeqCst);
-    }
+    let feature_levels = [
+        D3D_FEATURE_LEVEL_11_1,
+        D3D_FEATURE_LEVEL_11_0,
+        D3D_FEATURE_LEVEL_10_1,
+        D3D_FEATURE_LEVEL_10_0,
+        D3D_FEATURE_LEVEL_9_3,
+        D3D_FEATURE_LEVEL_9_2,
+        D3D_FEATURE_LEVEL_9_1,
+    ];
+
+    let mut device_opt: Option<ID3D11Device> = None;
+    let mut feature_level: D3D_FEATURE_LEVEL = D3D_FEATURE_LEVEL::default();
+
+    unsafe {
+        D3D11CreateDevice(
+            None,
+            D3D_DRIVER_TYPE_HARDWARE,
+            HMODULE::default(),
+            creation_flags,
+            Some(&feature_levels),
+            D3D11_SDK_VERSION,
+            Some(&mut device_opt),
+            Some(&mut feature_level),
+            None,
+        )
+    }?;
+
+    debug!("DirectX feature level: {feature_level:X?}");
+
+    let device = device_opt.context("Could not get D3D11 device")?;
+    let dxgi_device: IDXGIDevice = device.cast().context("ID3D11Device cast")?;
+    let d2d_device = unsafe { factory.CreateDevice(&dxgi_device) }.context("Failed to create D2D device")?;
+
+    Ok((device, dxgi_device, d2d_device))
 }

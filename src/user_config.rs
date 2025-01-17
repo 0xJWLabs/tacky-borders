@@ -1,5 +1,5 @@
 use crate::animation::AnimationsConfig;
-use crate::app_manager::APP;
+use crate::app_manager::AppManager;
 use crate::border_manager::reload_borders;
 use crate::colors::GlobalColor;
 use crate::core::dimension::deserialize_dimension;
@@ -431,14 +431,15 @@ impl UserConfig {
     /// This method replaces the current configuration with a newly loaded one.
     /// If loading fails, it falls back to the default configuration and logs an error.
     pub fn update() {
+        let app_manager = AppManager::get();
         let new_config = match Self::create() {
             Ok(config) => {
-                let config_watcher_is_running = APP.config_watcher_is_running();
+                let config_watcher_is_running = app_manager.config_watcher_is_running();
 
                 if config.monitor_config_changes && !config_watcher_is_running {
-                    APP.start_config_watcher();
+                    app_manager.start_config_watcher();
                 } else if !config.monitor_config_changes && config_watcher_is_running {
-                    APP.stop_config_watcher();
+                    app_manager.stop_config_watcher();
                 }
                 config
             }
@@ -448,7 +449,7 @@ impl UserConfig {
             }
         };
 
-        APP.set_config(new_config);
+        app_manager.set_config(new_config);
     }
 
     /// Reloads the application configuration and restarts the borders.
@@ -462,10 +463,11 @@ impl UserConfig {
     /// - The borders are reloaded, which may involve reinitializing UI components.
     /// - If a keyboard hook is available, the keybindings are refreshed and applied.
     pub fn reload() -> bool {
+        let app_manager = AppManager::get();
         debug!("reloading application configuration and restarting borders.");
-        let old_config = APP.config().clone();
+        let old_config = app_manager.config().clone();
         Self::update();
-        let new_config = APP.config();
+        let new_config = app_manager.config();
 
         if old_config != *new_config {
             reload_borders();

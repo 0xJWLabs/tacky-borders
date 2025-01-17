@@ -10,9 +10,8 @@ extern crate sp_log2;
 
 use core::keybindings::create_keybindings;
 
-use anyhow::Result as AnyResult;
 use anyhow::anyhow;
-use app_manager::APP;
+use app_manager::AppManager;
 use border_manager::Border;
 use border_manager::register_border_class;
 use error::LogIfErr;
@@ -50,7 +49,7 @@ mod window_event_hook;
 mod windows_api;
 mod windows_callback;
 
-fn main() -> AnyResult<()> {
+fn main() -> anyhow::Result<()> {
     let res = start_application();
 
     if let Err(err) = &res {
@@ -63,7 +62,7 @@ fn main() -> AnyResult<()> {
     res
 }
 
-fn start_application() -> AnyResult<()> {
+fn start_application() -> anyhow::Result<()> {
     if let Err(e) = &initialize_logger() {
         error!("logger initialization failed: {e}");
     };
@@ -121,12 +120,12 @@ fn exit_application() {
         hook.stop().log_if_err();
     }
 
-    APP.stop_config_watcher();
+    AppManager::get().stop_config_watcher();
 
     WindowsApi::post_quit_message(0);
 }
 
-fn initialize_logger() -> AnyResult<()> {
+fn initialize_logger() -> anyhow::Result<()> {
     let log_path = UserConfig::get_config_dir()?.join("tacky-borders.log");
     let Some(log_path) = log_path.to_str() else {
         return Err(anyhow!("could not convert log_path to str"));

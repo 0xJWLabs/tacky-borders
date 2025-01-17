@@ -1,4 +1,4 @@
-use crate::app_manager::APP;
+use crate::app_manager::AppManager;
 use crate::border_manager::set_active_window;
 use crate::border_manager::window_border;
 use crate::border_manager::window_borders;
@@ -12,7 +12,6 @@ use crate::windows_api::WM_APP_MINIMIZEEND;
 use crate::windows_api::WM_APP_MINIMIZESTART;
 use crate::windows_api::WM_APP_REORDER;
 use anyhow::Context;
-use anyhow::Result as AnyResult;
 use std::ffi::c_void;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -79,7 +78,7 @@ impl WindowEventHook {
         Ok(())
     }
 
-    fn hook_win_events() -> AnyResult<Vec<HWINEVENTHOOK>> {
+    fn hook_win_events() -> anyhow::Result<Vec<HWINEVENTHOOK>> {
         let event_ranges = [
             (EVENT_OBJECT_LOCATIONCHANGE, EVENT_OBJECT_LOCATIONCHANGE),
             (EVENT_OBJECT_DESTROY, EVENT_OBJECT_HIDE),
@@ -101,7 +100,7 @@ impl WindowEventHook {
     }
 
     /// Creates a window hook for the specified event range.
-    fn hook_win_event(event_min: u32, event_max: u32) -> AnyResult<HWINEVENTHOOK> {
+    fn hook_win_event(event_min: u32, event_max: u32) -> anyhow::Result<HWINEVENTHOOK> {
         let hook_handle = unsafe {
             SetWinEventHook(
                 event_min,
@@ -122,6 +121,7 @@ impl WindowEventHook {
     }
 
     fn handle_event(&self, event_type: u32, handle: HWND, id_child: i32) {
+        let app_manager = AppManager::get();
         match event_type {
             EVENT_OBJECT_LOCATIONCHANGE => {
                 if id_child != CHILDID_SELF as i32 {
@@ -161,7 +161,7 @@ impl WindowEventHook {
                 let potential_active_hwnd = WindowsApi::get_foreground_window();
 
                 if potential_active_hwnd != handle.0.as_int()
-                    && !APP.is_polling_active_window()
+                    && !app_manager.is_polling_active_window()
                 {
                     poll_active_window_with_limit(3);
                 } else {
@@ -240,11 +240,12 @@ extern "system" fn window_event_hook_proc(
 }
 
 fn poll_active_window_with_limit(max_polls: u32) {
-    APP.set_polling_active_window(true);
+    let app_manager = AppManager::get();
+    app_manager.set_polling_active_window(true);
 
     let _ = std::thread::spawn(move || {
         for _ in 0..max_polls {
-            let current_active_hwnd = *APP.active_window();
+            let current_active_hwnd = *app_manager.active_window();
             let new_active_hwnd = WindowsApi::get_foreground_window();
 
             if new_active_hwnd != current_active_hwnd && !new_active_hwnd.as_hwnd().is_invalid() {
@@ -254,7 +255,7 @@ fn poll_active_window_with_limit(max_polls: u32) {
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
 
-        APP.set_polling_active_window(false);
+        app_manager.set_polling_active_window(false);
     });
 }
 

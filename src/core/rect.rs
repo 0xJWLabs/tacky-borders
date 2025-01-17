@@ -71,4 +71,14 @@ impl Rect {
     pub fn height(&self) -> i32 {
         self.0.bottom - self.0.top
     }
+
+    #[must_use]
+    pub const fn scale(&self, system_dpi: i32, rect_dpi: i32) -> Rect {
+        Rect(RECT {
+            left: (self.0.left * system_dpi) / rect_dpi,
+            top: (self.0.top * system_dpi) / rect_dpi,
+            right: (self.0.right * system_dpi) / rect_dpi,
+            bottom: (self.0.bottom * system_dpi) / rect_dpi,
+        })
+    }
 }

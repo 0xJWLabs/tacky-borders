@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 extern crate windows;
-use crate::app_manager::APP;
+use crate::app_manager::AppManager;
 use crate::border_manager::Border;
 use crate::core::rect::Rect;
 use crate::error::LogIfErr;
@@ -9,9 +9,9 @@ use crate::user_config::MatchStrategy;
 use crate::user_config::WindowRuleConfig;
 use crate::windows_callback::enum_windows;
 use anyhow::Context;
-use anyhow::Result as AnyResult;
 use anyhow::anyhow;
 use regex::Regex;
+use windows::Win32::UI::HiDpi::GetDpiForSystem;
 use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::ffi::c_void;
@@ -128,7 +128,6 @@ use windows::Win32::UI::WindowsAndMessaging::WS_SYSMENU;
 use windows::core::PCWSTR;
 use windows::core::PWSTR;
 use windows::core::Param;
-use windows::core::Result as WinResult;
 use windows::core::w;
 
 pub const WM_APP_LOCATIONCHANGE: u32 = WM_APP;
@@ -206,7 +205,7 @@ impl WindowsApi {
         unsafe { ValidateRect(hwnd, lprect_ptr) }
     }
 
-    pub fn module_handle_w() -> WinResult<HMODULE> {
+    pub fn module_handle_w() -> windows::core::Result<HMODULE> {
         unsafe { GetModuleHandleW(None) }
     }
 
@@ -214,7 +213,7 @@ impl WindowsApi {
         unsafe { ImmDisableIME(0xFFFFFFFF) }
     }
 
-    pub fn set_process_dpi_awareness_context() -> WinResult<()> {
+    pub fn set_process_dpi_awareness_context() -> windows::core::Result<()> {
         unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) }
     }
 
@@ -249,7 +248,7 @@ impl WindowsApi {
         msg: u32,
         wparam: WPARAM,
         lparam: LPARAM,
-    ) -> WinResult<()> {
+    ) -> windows::core::Result<()> {
         unsafe { PostMessageW(hwnd, msg, wparam, lparam) }
     }
 
@@ -258,7 +257,7 @@ impl WindowsApi {
         msg: u32,
         wparam: WPARAM,
         lparam: LPARAM,
-    ) -> WinResult<()> {
+    ) -> windows::core::Result<()> {
         unsafe { SendNotifyMessageW(hwnd, msg, wparam, lparam) }
     }
 
@@ -297,7 +296,7 @@ impl WindowsApi {
         hmenu: Option<HMENU>,
         hinstance: Option<HINSTANCE>,
         lpparam: Option<*const c_void>,
-    ) -> WinResult<HWND>
+    ) -> windows::core::Result<HWND>
     where
         P1: Param<PCWSTR>,
         P2: Param<PCWSTR>,
@@ -325,7 +324,7 @@ impl WindowsApi {
         crkey: COLORREF,
         alpha: u8,
         flags: LAYERED_WINDOW_ATTRIBUTES_FLAGS,
-    ) -> WinResult<()> {
+    ) -> windows::core::Result<()> {
         unsafe { SetLayeredWindowAttributes(hwnd.as_hwnd(), crkey, alpha, flags) }
     }
 
@@ -333,7 +332,7 @@ impl WindowsApi {
         hwnd: isize,
         attribute: DWMWINDOWATTRIBUTE,
         value: &mut T,
-    ) -> WinResult<()> {
+    ) -> windows::core::Result<()> {
         unsafe {
             DwmGetWindowAttribute(
                 hwnd.as_hwnd(),
@@ -344,14 +343,14 @@ impl WindowsApi {
         }
     }
 
-    pub fn destroy_window(hwnd: isize) -> AnyResult<()> {
+    pub fn destroy_window(hwnd: isize) -> anyhow::Result<()> {
         match Self::post_message_w(Some(hwnd.as_hwnd()), WM_NCDESTROY, WPARAM(0), LPARAM(0)) {
             Ok(()) => Ok(()),
             Err(_) => Err(anyhow!("could not destroy window")),
         }
     }
 
-    pub fn enum_windows(callback: WNDENUMPROC, callback_data_address: isize) -> WinResult<()> {
+    pub fn enum_windows(callback: WNDENUMPROC, callback_data_address: isize) -> windows::core::Result<()> {
         unsafe { EnumWindows(callback, LPARAM(callback_data_address)) }
     }
 
@@ -380,11 +379,13 @@ impl WindowsApi {
         )
     }
 
-    pub fn window_rect(hwnd: isize) -> WinResult<Rect> {
+    pub fn window_rect(hwnd: isize) -> anyhow::Result<Rect> {
         let mut rect = unsafe { std::mem::zeroed() };
 
         if Self::dwm_get_window_attribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &mut rect).is_ok() {
-            Ok(Rect::from(rect))
+            let window_scale = Self::get_dpi_for_window(hwnd)?;
+            let system_scale = unsafe { GetDpiForSystem() };
+            Ok(Rect::from(rect).scale(system_scale.try_into()?, window_scale.try_into()?))
         } else {
             unsafe { GetWindowRect(hwnd.as_hwnd(), &mut rect) }?;
             Ok(Rect::from(rect))
@@ -437,7 +438,7 @@ impl WindowsApi {
         unsafe { RealGetWindowClassW(hwnd.as_hwnd(), lpstring) }
     }
 
-    pub fn get_window_title(hwnd: isize) -> AnyResult<String> {
+    pub fn get_window_title(hwnd: isize) -> anyhow::Result<String> {
         let mut buffer: [u16; 256] = [0; 256];
 
         if Self::get_window_text_w(hwnd, &mut buffer) == 0 {
@@ -458,7 +459,7 @@ impl WindowsApi {
         Ok(buffer.to_string_lossy().trim_end_matches('\0').to_string())
     }
 
-    pub fn get_window_class(hwnd: isize) -> AnyResult<String> {
+    pub fn get_window_class(hwnd: isize) -> anyhow::Result<String> {
         let mut buffer: [u16; 256] = [0; 256];
 
         if Self::get_window_class_w(hwnd, &mut buffer) == 0 {
@@ -478,7 +479,7 @@ impl WindowsApi {
         Ok(buffer.to_string_lossy().trim_end_matches('\0').to_string())
     }
 
-    pub fn get_process_name(hwnd: isize) -> AnyResult<String> {
+    pub fn get_process_name(hwnd: isize) -> anyhow::Result<String> {
         let mut process_id = 0u32;
         unsafe {
             GetWindowThreadProcessId(hwnd.as_hwnd(), Some(&mut process_id));
@@ -555,7 +556,7 @@ impl WindowsApi {
             }
         };
 
-        let config = APP.config().clone();
+        let config = AppManager::get().config().clone();
 
         for rule in config.window_rules.iter() {
             let window_name = match rule.match_window.match_kind {
@@ -594,13 +595,13 @@ impl WindowsApi {
         WindowRuleConfig::default()
     }
 
-    pub fn collect_window_handles() -> AnyResult<Vec<isize>> {
+    pub fn collect_window_handles() -> anyhow::Result<Vec<isize>> {
         let mut handles: Vec<isize> = Vec::new();
         Self::enum_windows(Some(enum_windows), &mut handles as *mut Vec<isize> as isize)?;
         Ok(handles)
     }
 
-    pub fn process_window_handles(callback: &dyn Fn(isize, WindowRuleConfig)) -> AnyResult<()> {
+    pub fn process_window_handles(callback: &dyn Fn(isize, WindowRuleConfig)) -> anyhow::Result<()> {
         let handles = Self::collect_window_handles()?;
 
         handles.iter().for_each(|&hwnd| {
@@ -639,7 +640,7 @@ impl WindowsApi {
         layout: &Rect,
         position: isize,
         other_flags: Option<SET_WINDOW_POS_FLAGS>,
-    ) -> WinResult<()> {
+    ) -> windows::core::Result<()> {
         let hwnd_above_tracking = unsafe { GetWindow(position.as_hwnd(), GW_HWNDPREV) };
 
         let mut flags =
@@ -662,7 +663,7 @@ impl WindowsApi {
         layout: &Rect,
         position: Option<HWND>,
         flags: SET_WINDOW_POS_FLAGS,
-    ) -> WinResult<()> {
+    ) -> windows::core::Result<()> {
         unsafe {
             SetWindowPos(
                 hwnd,
@@ -676,7 +677,7 @@ impl WindowsApi {
         }
     }
 
-    pub fn create_border_window(name: PCWSTR, border: &mut Border) -> WinResult<isize> {
+    pub fn create_border_window(name: PCWSTR, border: &mut Border) -> windows::core::Result<isize> {
         match Self::create_window_ex_w(
             WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE,
             w!("border"),
@@ -696,7 +697,7 @@ impl WindowsApi {
         }
     }
 
-    pub fn home_dir() -> AnyResult<PathBuf> {
+    pub fn home_dir() -> anyhow::Result<PathBuf> {
         unsafe {
             // Call SHGetKnownFolderPath with NULL token (default user)
             let path_ptr = SHGetKnownFolderPath(
@@ -737,7 +738,7 @@ impl WindowsApi {
     }
 
     #[allow(dead_code)]
-    pub fn kill_thread_message_loop<T>(thread: &JoinHandle<T>) -> AnyResult<()> {
+    pub fn kill_thread_message_loop<T>(thread: &JoinHandle<T>) -> anyhow::Result<()> {
         let handle = thread.as_raw_handle();
         let handle = HANDLE(handle);
         let thread_id = unsafe { GetThreadId(handle) };

@@ -1,4 +1,3 @@
-use anyhow::Result as AnyResult;
 #[cfg(feature = "fast-hash")]
 use fx_hash::{FxHashMap as HashMap, FxHashMapExt};
 #[cfg(not(feature = "fast-hash"))]
@@ -93,7 +92,7 @@ impl core::fmt::Debug for KeybindingConfig {
 
 impl KeyboardHook {
     /// Creates an instance of `KeyboardHook`.
-    pub fn new(keybindings: &Vec<KeybindingConfig>) -> AnyResult<Arc<Self>> {
+    pub fn new(keybindings: &Vec<KeybindingConfig>) -> anyhow::Result<Arc<Self>> {
         let keyboard_hook = Arc::new(Self {
             hook: Arc::new(Mutex::new(isize::default())),
             keybindings_by_trigger_key: Arc::new(Mutex::new(Self::keybindings_by_trigger_key(
@@ -111,7 +110,7 @@ impl KeyboardHook {
     /// Starts a keyboard hook on the current thread.
     ///
     /// Assumes that a message loop is currently running.
-    pub fn start(&self) -> AnyResult<()> {
+    pub fn start(&self) -> anyhow::Result<()> {
         *self.hook.lock().unwrap() =
             unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook_proc), None, 0) }?
                 .0
@@ -126,7 +125,7 @@ impl KeyboardHook {
     }
 
     /// Stops the low-level keyboard hook.
-    pub fn stop(&self) -> AnyResult<()> {
+    pub fn stop(&self) -> anyhow::Result<()> {
         unsafe { UnhookWindowsHookEx(HHOOK(self.hook.lock().unwrap().as_ptr())) }?;
         Ok(())
     }

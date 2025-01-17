@@ -1,8 +1,8 @@
+use crate::app_manager::AppManager;
 use crate::keyboard_hook::KeybindingConfig;
 use crate::sys_tray::SystemTrayEvent;
 use schema_jsonrs::JsonSchema;
 use serde::Deserialize;
-use crate::app_manager::APP;
 
 #[derive(Debug, Clone, PartialEq, Deserialize, JsonSchema)]
 #[serde(default)]
@@ -38,7 +38,7 @@ impl Default for Keybindings {
 }
 
 pub fn create_keybindings() -> anyhow::Result<Vec<KeybindingConfig>> {
-    let config = APP.config().clone();
+    let config = AppManager::get().config().clone();
 
     let bindings = vec![
         KeybindingConfig::new(

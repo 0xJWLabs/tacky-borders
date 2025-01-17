@@ -1,10 +1,9 @@
 mod border;
 
-use crate::app_manager::APP;
+use crate::app_manager::AppManager;
 use crate::error::LogIfErr;
 use crate::windows_api::WindowsApi;
 use anyhow::Context;
-use anyhow::Result as AnyResult;
 pub use border::Border;
 #[cfg(feature = "fast-hash")]
 use fx_hash::FxHashMap as HashMap;
@@ -19,7 +18,7 @@ use windows::Win32::UI::WindowsAndMessaging::IDC_ARROW;
 use windows::Win32::UI::WindowsAndMessaging::WNDCLASSW;
 
 pub fn window_borders() -> MutexGuard<'static, HashMap<isize, Border>> {
-    APP.borders()
+    AppManager::get().borders()
 }
 
 pub fn window_border(hwnd: isize) -> Option<Border> {
@@ -27,14 +26,14 @@ pub fn window_border(hwnd: isize) -> Option<Border> {
 }
 
 pub fn get_active_window() -> MutexGuard<'static, isize> {
-    APP.active_window()
+    AppManager::get().active_window()
 }
 
 pub fn set_active_window(handle: isize) {
-    APP.set_active_window(handle);
+    AppManager::get().set_active_window(handle);
 }
 
-pub fn register_border_class() -> AnyResult<()> {
+pub fn register_border_class() -> anyhow::Result<()> {
     unsafe {
         let wc = WNDCLASSW {
             lpfnWndProc: Some(Border::wnd_proc),
@@ -54,7 +53,7 @@ pub fn register_border_class() -> AnyResult<()> {
     Ok(())
 }
 
-pub fn destroy_all_borders() -> AnyResult<()> {
+pub fn destroy_all_borders() -> anyhow::Result<()> {
     let mut borders = window_borders();
     info!("destroying all borders...");
 

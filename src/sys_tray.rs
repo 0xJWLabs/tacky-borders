@@ -3,7 +3,6 @@ use crate::user_config::UserConfig;
 use anyhow::bail;
 use anyhow::Context;
 use anyhow::Error;
-use anyhow::Result as AnyResult;
 use std::str::FromStr;
 use tray_icon_win::menu::Menu;
 use tray_icon_win::menu::MenuEvent;
@@ -85,13 +84,13 @@ impl From<SystemTrayEvent> for String {
 pub struct SystemTray(TrayIcon);
 
 impl SystemTray {
-    pub fn new() -> AnyResult<Self> {
+    pub fn new() -> anyhow::Result<Self> {
         let tray_icon = Self::create_tray_icon()?;
 
         Ok(Self(tray_icon))
     }
 
-    pub fn create_tray_icon() -> AnyResult<TrayIcon> {
+    pub fn create_tray_icon() -> anyhow::Result<TrayIcon> {
         let icon = match Icon::from_resource(32152, Some((64, 64))) {
             Ok(icon) => icon,
             Err(e) => {

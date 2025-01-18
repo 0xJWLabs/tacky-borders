@@ -11,6 +11,7 @@ use tray_icon_win::menu::PredefinedMenuItem;
 use tray_icon_win::Icon;
 use tray_icon_win::TrayIcon;
 use tray_icon_win::TrayIconBuilder;
+use crate::core::helpers::type_name_of_val;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SystemTrayEvent {
@@ -125,9 +126,4 @@ impl SystemTray {
 
         tray
     }
-}
-
-// Helpers
-pub fn type_name_of_val<T: ?Sized>(_val: &T) -> &'static str {
-    std::any::type_name::<T>()
 }

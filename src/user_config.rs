@@ -4,12 +4,15 @@ use crate::border_manager::reload_borders;
 use crate::colors::GlobalColor;
 use crate::core::dimension::deserialize_dimension;
 use crate::core::dimension::deserialize_optional_dimension;
+use crate::core::effects::EffectsConfig;
+use crate::core::helpers::serde_default_i32;
+use crate::core::helpers::serde_default_u64;
 use crate::core::keybindings::Keybindings;
 use crate::create_keybindings;
 use crate::error::LogIfErr;
 use crate::keyboard_hook::KEYBOARD_HOOK;
-use crate::theme_manager::deserialize_theme;
 use crate::theme_manager::ThemeManager;
+use crate::theme_manager::deserialize_theme;
 use crate::windows_api::WindowsApi;
 use anyhow::Context;
 use anyhow::anyhow;
@@ -166,6 +169,9 @@ pub struct WindowMatchConfig {
     /// Animation settings for the window borders.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub animations: Option<AnimationsConfig>,
+    /// Effect settings for the window borders.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effects: Option<EffectsConfig>,
     /// Radius of the border corners.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub border_style: Option<BorderStyle>,
@@ -234,6 +240,9 @@ pub struct GlobalRuleConfig {
     /// Animation settings for borders.
     #[serde(default)]
     pub animations: AnimationsConfig,
+    /// Effect settings for borders.
+    #[serde(default)]
+    pub effects: EffectsConfig,
     /// Delay (in milliseconds) before applying borders after initialization.
     #[serde(alias = "init_delay", default = "serde_default_u64::<250>")]
     pub initialize_delay: u64,
@@ -501,13 +510,4 @@ impl UserConfig {
             Err(err) => error!("{err}"),
         }
     }
-}
-
-// Helpers
-fn serde_default_u64<const V: u64>() -> u64 {
-    V
-}
-
-fn serde_default_i32<const V: i32>() -> i32 {
-    V
 }

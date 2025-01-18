@@ -48,6 +48,7 @@ mod user_config;
 mod window_event_hook;
 mod windows_api;
 mod windows_callback;
+mod render_resources;
 
 fn main() -> anyhow::Result<()> {
     let res = start_application();
@@ -88,7 +89,7 @@ fn start_application() -> anyhow::Result<()> {
 
     WindowsApi::process_window_handles(&Border::create).log_if_err();
 
-    debug!("tacky-borders event started");
+    debug!("[start_application] tacky-borders event started");
 
     let mut message = MSG::default();
     loop {
@@ -98,12 +99,12 @@ fn start_application() -> anyhow::Result<()> {
             let _ = WindowsApi::translate_message(&message);
             WindowsApi::dispatch_message_w(&message);
         } else if message.message == WM_QUIT {
-            debug!("tacky-borders event is shutting down gracefully.");
+            debug!("[start_application] tacky-borders is shutting down gracefully");
             break;
         } else {
             let last_error = unsafe { GetLastError() };
-            error!("unexpected termination of the message loop. Last error: {last_error:?}");
-            return Err(anyhow!("unexpected exit from message loop.".to_string()));
+            error!("[start_application] Unexpected termination of the message loop. Last error: {last_error:?}");
+            return Err(anyhow!("unexpected exit from message loop".to_string()));
         }
     }
 
@@ -111,7 +112,7 @@ fn start_application() -> anyhow::Result<()> {
 }
 
 fn exit_application() {
-    debug!("stopping hooks and posting quit message to shut down the application.");
+    debug!("[exit_application] Stopping hooks and posting quit message to shut down the application");
     if let Some(hook) = KEYBOARD_HOOK.get() {
         hook.stop().log_if_err();
     }

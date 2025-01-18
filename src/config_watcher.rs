@@ -1,12 +1,12 @@
 use anyhow::anyhow;
+use notify_win_debouncer_full::DebouncedEvent;
 use notify_win_debouncer_full::new_debouncer;
 use notify_win_debouncer_full::notify_win;
 use notify_win_debouncer_full::notify_win::RecursiveMode;
-use notify_win_debouncer_full::DebouncedEvent;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use std::time::Instant;
@@ -29,9 +29,9 @@ impl<T> ThreadHandle<T> {
         if let Some(handle) = self.0.take() {
             handle
                 .join()
-                .map_err(|e| anyhow!("thread panicked: {:?}", e))?
+                .map_err(|e| anyhow!("[join] Thread Handle: Thread panicked: {:?}", e))?
         } else {
-            Err(anyhow!("thread already joined or no thread available"))
+            Err(anyhow!("[join] Thread Handle: Already joined or no thread available"))
         }
     }
 }
@@ -40,7 +40,7 @@ impl<T> Drop for ThreadHandle<T> {
     /// Ensures that the thread is properly joined or dropped when the `ThreadHandle` is dropped.
     fn drop(&mut self) {
         if self.0.is_some() {
-            error!("ThreadHandle dropped without being joined!");
+            error!("[drop] Thread Handle: Dropped without being joined!");
         }
     }
 }
@@ -75,23 +75,21 @@ impl ConfigWatcher {
                     }
                 }
             }
-            Err(err) => error!("failed to handle events: {err:?}"),
+            Err(err) => error!("[handle_events] Config Watcher: failed to handle events (error: {err:?})"),
         }
     }
 
     pub fn start(&mut self) -> anyhow::Result<()> {
         if !self.config_path.exists() {
             return Err(anyhow!(
-                "configuration file does not exist: {}",
+                "[start] Config Watcher: Configuration file does not exist: {}",
                 self.config_path.display()
             ));
         }
 
         if self.running.swap(true, Ordering::SeqCst) {
-            return Err(anyhow!("config watcher is already running"));
+            return Err(anyhow!("[start] Config Watcher: Is already running"));
         }
-
-        debug!("configuration watcher has started.");
 
         let running = Arc::clone(&self.running);
         let config_path = self.config_path.clone();
@@ -101,16 +99,16 @@ impl ConfigWatcher {
         let handle = thread::spawn({
             move || -> anyhow::Result<()> {
                 let mut debouncer = new_debouncer(timeout, None, Self::handle_events)
-                    .map_err(|e| anyhow!("failed to create debouncer: {:?}", e))?;
+                    .map_err(|e| anyhow!("[start] Config Watcher: Failed to create debouncer (error: {:?})", e))?;
 
                 debug!(
-                    "watching configuration file: {}",
+                    "[start] Config Watcher: Watching (File: {})",
                     config_path.display().to_string()
                 );
 
                 debouncer
                     .watch(config_path.as_path(), RecursiveMode::Recursive)
-                    .map_err(|e| anyhow!("failed to watch config path: {:?}", e))?;
+                    .map_err(|e| anyhow!("[start] Config Watcher: Failed to watch config path: (error: {:?})", e))?;
 
                 let mut last_checked = Instant::now();
 
@@ -124,24 +122,26 @@ impl ConfigWatcher {
 
                 debouncer
                     .unwatch(config_path.as_path())
-                    .map_err(|e| anyhow!("failed to unwatch: {}", e))?;
+                    .map_err(|e| anyhow!("[start] Config Watcher: Failed to unwatch (error: {:?})", e))?;
 
-                debug!("configuration watcher stopped gracefully");
+                debug!("[start] Config Watcher: Stopped");
                 Ok(())
             }
         });
 
         self.thread.cast(handle);
 
+        debug!("[start] Config Watcher: Started");
+
         Ok(())
     }
 
     pub fn stop(&mut self) -> anyhow::Result<()> {
         if !self.running.load(Ordering::SeqCst) {
-            debug!("config watcher is not running; skipping cleanup");
+            debug!("[stop] Config Watcher: Is not running; skipping cleanup");
             return Ok(());
         }
-        debug!("stopping configuration watcher...");
+        debug!("[stop] Config Watcher: Stopping");
         self.running.store(false, Ordering::SeqCst);
         self.thread.join()?;
 
@@ -156,7 +156,7 @@ impl ConfigWatcher {
 impl Drop for ConfigWatcher {
     fn drop(&mut self) {
         if let Err(err) = self.stop() {
-            error!("error stopping ConfigWatcher: {err:?}");
+            debug!("[drop] Config Watcher: Error stopping ConfigWatcher (error: {err:?})");
         }
     }
 }

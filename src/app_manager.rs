@@ -234,7 +234,7 @@ fn create_directx_devices(factory: &ID2D1Factory8) -> anyhow::Result<(ID3D11Devi
         )
     }?;
 
-    debug!("DirectX feature level: {feature_level:X?}");
+    debug!("[create_directx_devices] DirectX device created successfully (feature level: {feature_level:X?})");
 
     let device = device_opt.context("Could not get D3D11 device")?;
     let dxgi_device: IDXGIDevice = device.cast().context("ID3D11Device cast")?;

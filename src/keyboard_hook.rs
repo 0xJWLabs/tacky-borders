@@ -1,3 +1,4 @@
+use crate::core::keybindings::KeybindingConfig;
 #[cfg(feature = "fast-hash")]
 use fx_hash::{FxHashMap as HashMap, FxHashMapExt};
 #[cfg(not(feature = "fast-hash"))]
@@ -10,10 +11,10 @@ use windows::Win32::Foundation::LRESULT;
 use windows::Win32::Foundation::WPARAM;
 use windows::Win32::UI::Input::KeyboardAndMouse::*;
 use windows::Win32::UI::WindowsAndMessaging::CallNextHookEx;
-use windows::Win32::UI::WindowsAndMessaging::SetWindowsHookExW;
-use windows::Win32::UI::WindowsAndMessaging::UnhookWindowsHookEx;
 use windows::Win32::UI::WindowsAndMessaging::HHOOK;
 use windows::Win32::UI::WindowsAndMessaging::KBDLLHOOKSTRUCT;
+use windows::Win32::UI::WindowsAndMessaging::SetWindowsHookExW;
+use windows::Win32::UI::WindowsAndMessaging::UnhookWindowsHookEx;
 use windows::Win32::UI::WindowsAndMessaging::WH_KEYBOARD_LL;
 use windows::Win32::UI::WindowsAndMessaging::WM_KEYDOWN;
 use windows::Win32::UI::WindowsAndMessaging::WM_SYSKEYDOWN;
@@ -30,7 +31,6 @@ macro_rules! function {
     }};
 }
 
-use crate::sys_tray::SystemTrayEvent;
 use crate::windows_api::PointerConversion;
 
 const MODIFIER_KEYS: [u16; 6] = [
@@ -52,52 +52,18 @@ pub struct ActiveKeybinding {
 
 #[derive(Debug)]
 pub struct KeyboardHook {
-    hook: Arc<Mutex<isize>>,
-    keybindings_by_trigger_key: Arc<Mutex<HashMap<u16, Vec<ActiveKeybinding>>>>,
-}
-
-#[derive(Clone)]
-pub struct KeybindingConfig {
-    pub name: String,
-    pub keybind: String,
-    pub event: Option<SystemTrayEvent>,
-}
-
-impl KeybindingConfig {
-    pub fn new(name: &str, keybind: &str, event: Option<SystemTrayEvent>) -> Self {
-        Self {
-            name: name.to_string(),
-            keybind: keybind.to_string(),
-            event,
-        }
-    }
-}
-
-impl core::fmt::Debug for KeybindingConfig {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        // Display the name and keybind
-        f.debug_struct("KeybindingConfig")
-            .field("name", &self.name)
-            .field("keybind", &self.keybind)
-            .field(
-                "event_callback",
-                &self
-                    .event
-                    .as_ref()
-                    .map_or("None", |action| action.as_function_name()),
-            )
-            .finish()
-    }
+    hook: Mutex<isize>,
+    keybindings_by_trigger_key: Mutex<HashMap<u16, Vec<ActiveKeybinding>>>,
 }
 
 impl KeyboardHook {
     /// Creates an instance of `KeyboardHook`.
-    pub fn new(keybindings: &Vec<KeybindingConfig>) -> anyhow::Result<Arc<Self>> {
+    pub fn new(keybindings: &[KeybindingConfig]) -> anyhow::Result<Arc<Self>> {
         let keyboard_hook = Arc::new(Self {
-            hook: Arc::new(Mutex::new(isize::default())),
-            keybindings_by_trigger_key: Arc::new(Mutex::new(Self::keybindings_by_trigger_key(
-                keybindings,
-            ))),
+            hook: Mutex::new(isize::default()),
+            keybindings_by_trigger_key: Mutex::new(Self::group_keybindings(
+                &keybindings.to_owned(),
+            )),
         });
 
         KEYBOARD_HOOK
@@ -111,45 +77,51 @@ impl KeyboardHook {
     ///
     /// Assumes that a message loop is currently running.
     pub fn start(&self) -> anyhow::Result<()> {
-        *self.hook.lock().unwrap() =
-            unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook_proc), None, 0) }?
-                .0
-                .as_int();
-
+        debug!("[start] Keyboard Hook: Initializing");
+        let hook = unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook_proc), None, 0) }?;
+        *self.hook.lock().unwrap() = hook.0.as_int();
+        debug!("[start] Keyboard Hook: Successfully initialized (Hook ID: {})", hook.0.as_int());
         Ok(())
     }
 
     pub fn update(&self, keybindings: &[KeybindingConfig]) {
+        debug!("[update] Keyboard Hook: Updating keybindings ({} entries)", keybindings.len());
         *self.keybindings_by_trigger_key.lock().unwrap() =
-            Self::keybindings_by_trigger_key(&keybindings.to_owned());
+            Self::group_keybindings(&keybindings.to_owned());
+        debug!("[update] Keyboard Hook: Successfully updated keybindings");
     }
 
     /// Stops the low-level keyboard hook.
     pub fn stop(&self) -> anyhow::Result<()> {
-        unsafe { UnhookWindowsHookEx(HHOOK(self.hook.lock().unwrap().as_ptr())) }?;
+        let mut hook = self.hook.lock().unwrap();
+        if *hook != isize::default() {
+            debug!("[stop] Keyboard Hook: Stopping (Hook ID: {})...", hook.as_int());
+            unsafe { UnhookWindowsHookEx(HHOOK(hook.as_ptr())) }?;
+            *hook = 0;
+            debug!("[stop] Keyboard Hook: Sucessfully stopped (Hook ID: {})...", hook.as_int());
+        } else {
+            debug!("[stop] Keyboard Hook: Not active; skipping stop");
+        }
+
         Ok(())
     }
 
-    fn keybindings_by_trigger_key(
+    fn group_keybindings(
         keybindings: &Vec<KeybindingConfig>,
     ) -> HashMap<u16, Vec<ActiveKeybinding>> {
         let mut keybinding_map = HashMap::new();
 
         for keybinding in keybindings {
-            let binding = keybinding.keybind.clone();
-
-            let vk_codes = Self::extract_vk_codes(&binding);
-
-            // Safety: A split string always has at least one element.
-            let trigger_key = *vk_codes.last().unwrap();
-
-            keybinding_map
-                .entry(trigger_key)
-                .or_insert_with(Vec::new)
-                .push(ActiveKeybinding {
-                    vk_codes,
-                    config: keybinding.clone(),
-                });
+            let vk_codes = Self::extract_vk_codes(&keybinding.keybind);
+            if let Some(&trigger_key) = vk_codes.last() {
+                keybinding_map
+                    .entry(trigger_key)
+                    .or_insert_with(Vec::new)
+                    .push(ActiveKeybinding {
+                        vk_codes,
+                        config: keybinding.clone(),
+                    });
+            }
         }
 
         keybinding_map

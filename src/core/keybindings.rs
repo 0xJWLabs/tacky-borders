@@ -1,8 +1,41 @@
 use crate::app_manager::AppManager;
-use crate::keyboard_hook::KeybindingConfig;
 use crate::sys_tray::SystemTrayEvent;
 use schema_jsonrs::JsonSchema;
 use serde::Deserialize;
+
+#[derive(Clone)]
+pub struct KeybindingConfig {
+    pub name: String,
+    pub keybind: String,
+    pub event: Option<SystemTrayEvent>,
+}
+
+impl KeybindingConfig {
+    pub fn new(name: &str, keybind: &str, event: Option<SystemTrayEvent>) -> Self {
+        Self {
+            name: name.to_string(),
+            keybind: keybind.to_string(),
+            event,
+        }
+    }
+}
+
+impl core::fmt::Debug for KeybindingConfig {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        // Display the name and keybind
+        f.debug_struct("KeybindingConfig")
+            .field("name", &self.name)
+            .field("keybind", &self.keybind)
+            .field(
+                "event_callback",
+                &self
+                    .event
+                    .as_ref()
+                    .map_or("None", |action| action.as_function_name()),
+            )
+            .finish()
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Deserialize, JsonSchema)]
 #[serde(default)]
@@ -58,7 +91,7 @@ pub fn create_keybindings() -> anyhow::Result<Vec<KeybindingConfig>> {
         ),
     ];
 
-    debug!("keybindings created: {bindings:#?}");
+    debug!("[create_keybindings] Keybindings created: {bindings:#?}");
 
     Ok(bindings)
 }

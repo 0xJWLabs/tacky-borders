@@ -1,21 +1,21 @@
 use schema_jsonrs::JsonSchema;
-use serde::de::Error as SerdeError;
-use serde::de::Visitor;
 use serde::Deserialize;
 use serde::Deserializer;
+use serde::de::Error as SerdeError;
+use serde::de::Visitor;
 
 #[derive(Clone, PartialEq, Debug, JsonSchema)]
-/// Represents a duration, which can be either a finite number (f32) or a non-empty string.
-pub enum Duration {
+/// Represents a number, which can be either a finite number (f32) or a non-empty string.
+pub enum Value {
     Number(f32),
     Text(String),
 }
 
-/// Visitor for deserializing `Duration`.
-struct DurationVisitor;
+/// Visitor for deserializing `Value`.
+struct ValueVisitor;
 
-impl Visitor<'_> for DurationVisitor {
-    type Value = Duration;
+impl Visitor<'_> for ValueVisitor {
+    type Value = Value;
 
     fn expecting(&self, formatter: &mut core::fmt::Formatter) -> core::fmt::Result {
         formatter.write_str("a finite number or a non-empty string")
@@ -57,7 +57,7 @@ impl Visitor<'_> for DurationVisitor {
         if value.trim().is_empty() {
             Err(E::custom("string cannot be empty"))
         } else {
-            Ok(Duration::Text(value.to_owned()))
+            Ok(Value::Text(value.to_owned()))
         }
     }
 
@@ -68,27 +68,27 @@ impl Visitor<'_> for DurationVisitor {
         if value.trim().is_empty() {
             Err(E::custom("string cannot be empty"))
         } else {
-            Ok(Duration::Text(value))
+            Ok(Value::Text(value))
         }
     }
 }
 
-impl<'de> Deserialize<'de> for Duration {
+impl<'de> Deserialize<'de> for Value {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        deserializer.deserialize_any(DurationVisitor)
+        deserializer.deserialize_any(ValueVisitor)
     }
 }
 
-/// Validates a number and converts it into a `Duration::Number`.
-fn validate_number<E>(value: f64) -> Result<Duration, E>
+/// Validates a number and converts it into a `Value::Value`.
+fn validate_number<E>(value: f64) -> Result<Value, E>
 where
     E: SerdeError,
 {
     if value.is_finite() {
-        Ok(Duration::Number(value as f32))
+        Ok(Value::Number(value as f32))
     } else {
         Err(E::custom("invalid number: must be finite"))
     }

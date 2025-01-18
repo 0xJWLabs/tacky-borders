@@ -5,8 +5,8 @@ use crate::colors::Color;
 use crate::colors::ColorImpl;
 use crate::colors::GlobalColorImpl;
 use crate::core::animation::AnimationKind;
-use crate::core::effects::EffectManager;
 use crate::core::rect::Rect;
+use crate::effect::manager::EffectManager;
 use crate::error::LogIfErr;
 use crate::render_resources::RenderResources;
 use crate::user_config::BorderStyle;
@@ -57,6 +57,7 @@ use windows::Win32::Graphics::Direct2D::D2D1_DEVICE_CONTEXT_OPTIONS_NONE;
 use windows::Win32::Graphics::Direct2D::D2D1_INTERPOLATION_MODE_LINEAR;
 use windows::Win32::Graphics::Direct2D::D2D1_ROUNDED_RECT;
 use windows::Win32::Graphics::Direct2D::ID2D1Brush;
+use windows::Win32::Graphics::Direct2D::ID2D1CommandList;
 use windows::Win32::Graphics::Direct2D::ID2D1DeviceContext7;
 use windows::Win32::Graphics::DirectComposition::DCompositionCreateDevice;
 use windows::Win32::Graphics::DirectComposition::IDCompositionDevice;
@@ -470,11 +471,11 @@ impl Border {
         self.offset = config_offset;
 
         self.animation_manager = AnimationManager::try_from(animations_config.clone())?;
-        self.effect_manager = effects_config.to_effect_manager();
+        self.effect_manager = EffectManager::try_from(effects_config.clone())?;
 
         let max_active_padding = self
             .effect_manager
-            .active
+            .active()
             .iter()
             .max_by_key(|params| {
                 // Try to find the effect params with the largest required padding
@@ -493,7 +494,7 @@ impl Border {
             .unwrap_or(0.0);
         let max_inactive_padding = self
             .effect_manager
-            .inactive
+            .inactive()
             .iter()
             .max_by_key(|params| {
                 // Try to find the effect params with the largest required padding
@@ -625,10 +626,10 @@ impl Border {
         let d2d_context = self.render_resources.d2d_context()?;
 
         self.active_color
-            .to_d2d1_brush(&d2d_context, &self.window_rect.into(), &brush_properties)
+            .to_d2d1_brush(d2d_context, &self.window_rect.into(), &brush_properties)
             .log_if_err();
         self.inactive_color
-            .to_d2d1_brush(&d2d_context, &self.window_rect.into(), &brush_properties)
+            .to_d2d1_brush(d2d_context, &self.window_rect.into(), &brush_properties)
             .log_if_err();
 
         Ok(())
@@ -802,6 +803,14 @@ impl Border {
         }
     }
 
+    fn current_command_list(&self) -> anyhow::Result<&ID2D1CommandList> {
+        if self.is_window_active {
+            self.effect_manager.active_command_list()
+        } else {
+            self.effect_manager.inactive_command_list()
+        }
+    }
+
     fn update_render_resources(&mut self) -> anyhow::Result<()> {
         let d2d_context = self.render_resources.d2d_context()?;
 
@@ -829,8 +838,7 @@ impl Border {
         self.create_bitmaps(screen_width, screen_height)
             .context("could not create bitmaps and effects")?;
 
-        let effect_manager = &mut self.effect_manager;
-        effect_manager
+        self.effect_manager
             .create_command_list(&self.render_resources)
             .context("could not create command list")?;
 
@@ -995,13 +1003,14 @@ impl Border {
                 .factory()
                 .CreateRoundedRectangleGeometry(&render_rect_adjusted)
                 .context("render_rect_geometry")?;
+
             let window_rect_geometry = app_manager
                 .factory()
                 .CreateRectangleGeometry(&D2D_RECT_F {
                     left: 0.0,
                     top: 0.0,
-                    right: (self.window_rect.right - self.window_rect.left) as f32,
-                    bottom: (self.window_rect.bottom - self.window_rect.top) as f32,
+                    right: rect_width,
+                    bottom: rect_height,
                 })
                 .context("window_rect_geometry")?;
 
@@ -1053,7 +1062,7 @@ impl Border {
             d2d_context.SetTarget(target_bitmap);
 
             // Retrieve our command list (includes border_bitmap, mask_bitmap, and effects)
-            let command_list = self.effect_manager.get_current_command_list(&self)?;
+            let command_list = self.current_command_list()?;
 
             // Draw to the target_bitmap
             d2d_context.BeginDraw();

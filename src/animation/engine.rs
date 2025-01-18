@@ -1,11 +1,11 @@
 use super::AnimationConfig;
 use crate::border_manager::Border;
 use crate::colors::ColorImpl;
-use crate::core::animation::parse_duration_str;
 use crate::core::animation::AnimationEasing;
 use crate::core::animation::AnimationEasingImpl;
 use crate::core::animation::AnimationKind;
-use crate::core::duration::Duration;
+use crate::core::animation::parse_duration_str;
+use crate::core::value::Value;
 use anyhow::anyhow;
 use std::str::FromStr;
 use std::time::Duration as StdDuration;
@@ -173,10 +173,8 @@ impl TryFrom<AnimationConfig> for AnimationEngine {
 
         // Parse or default the duration.
         let duration = match value.duration {
-            Some(Duration::Number(value)) => value,
-            Some(Duration::Text(ref value)) => {
-                parse_duration_str(value).unwrap_or(default_duration)
-            } // Default to 1.0 if parsing fails
+            Some(Value::Number(value)) => value,
+            Some(Value::Text(ref value)) => parse_duration_str(value).unwrap_or(default_duration), // Default to 1.0 if parsing fails
             None => default_duration, // Default duration
         };
 

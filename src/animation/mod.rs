@@ -1,4 +1,4 @@
-use crate::core::duration::Duration;
+use crate::core::value::Value;
 use schema_jsonrs::JsonSchema;
 use serde::Deserialize;
 
@@ -16,6 +16,6 @@ pub struct AnimationsConfig {
 #[derive(Clone, PartialEq, Debug, Deserialize, JsonSchema)]
 pub struct AnimationConfig {
     pub kind: String,
-    pub duration: Option<Duration>,
+    pub duration: Option<Value>,
     pub easing: Option<String>,
 }

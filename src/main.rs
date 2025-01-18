@@ -9,6 +9,7 @@ extern crate log;
 extern crate sp_log2;
 
 use core::keybindings::create_keybindings;
+use std::fs::write;
 
 use anyhow::anyhow;
 use app_manager::AppManager;
@@ -17,6 +18,7 @@ use border_manager::register_border_class;
 use error::LogIfErr;
 use keyboard_hook::KEYBOARD_HOOK;
 use keyboard_hook::KeyboardHook;
+use schema_jsonrs::schema_for;
 use sp_log2::ColorChoice;
 use sp_log2::CombinedLogger;
 use sp_log2::ConfigBuilder;
@@ -40,15 +42,16 @@ mod border_manager;
 mod colors;
 mod config_watcher;
 mod core;
+mod effect;
 mod error;
 mod keyboard_hook;
+mod render_resources;
 mod sys_tray;
 mod theme_manager;
 mod user_config;
 mod window_event_hook;
 mod windows_api;
 mod windows_callback;
-mod render_resources;
 
 fn main() -> anyhow::Result<()> {
     let res = start_application();
@@ -64,6 +67,10 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn start_application() -> anyhow::Result<()> {
+    let schema = schema_for!(UserConfig);
+    let res = serde_jsonc2::to_string_pretty(&schema)?;
+
+    write("./test_schema.json", res).log_if_err();
     if let Err(e) = &initialize_logger() {
         error!("logger initialization failed: {e}");
     };
@@ -103,7 +110,9 @@ fn start_application() -> anyhow::Result<()> {
             break;
         } else {
             let last_error = unsafe { GetLastError() };
-            error!("[start_application] Unexpected termination of the message loop. Last error: {last_error:?}");
+            error!(
+                "[start_application] Unexpected termination of the message loop. Last error: {last_error:?}"
+            );
             return Err(anyhow!("unexpected exit from message loop".to_string()));
         }
     }
@@ -112,7 +121,9 @@ fn start_application() -> anyhow::Result<()> {
 }
 
 fn exit_application() {
-    debug!("[exit_application] Stopping hooks and posting quit message to shut down the application");
+    debug!(
+        "[exit_application] Stopping hooks and posting quit message to shut down the application"
+    );
     if let Some(hook) = KEYBOARD_HOOK.get() {
         hook.stop().log_if_err();
     }

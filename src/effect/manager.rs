@@ -1,78 +1,53 @@
-use crate::{border_manager::Border, render_resources::RenderResources};
-
-use super::helpers::serde_default_f32;
 use anyhow::Context;
-use schema_jsonrs::JsonSchema;
-use serde::Deserialize;
-use windows::{Foundation::Numerics::Matrix3x2, Win32::Graphics::Direct2D::{CLSID_D2D12DAffineTransform, CLSID_D2D1AlphaMask, CLSID_D2D1Composite, CLSID_D2D1GaussianBlur, CLSID_D2D1Opacity, CLSID_D2D1Shadow, Common::D2D1_COMPOSITE_MODE_SOURCE_OVER, ID2D1CommandList, ID2D1Effect, D2D1_2DAFFINETRANSFORM_PROP_TRANSFORM_MATRIX, D2D1_DIRECTIONALBLUR_OPTIMIZATION_SPEED, D2D1_GAUSSIANBLUR_PROP_OPTIMIZATION, D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION, D2D1_INTERPOLATION_MODE_LINEAR, D2D1_OPACITY_PROP_OPACITY, D2D1_PROPERTY_TYPE_ENUM, D2D1_PROPERTY_TYPE_FLOAT, D2D1_PROPERTY_TYPE_MATRIX_3X2, D2D1_SHADOW_PROP_BLUR_STANDARD_DEVIATION, D2D1_SHADOW_PROP_OPTIMIZATION}};
+use windows::{
+    Foundation::Numerics::Matrix3x2,
+    Win32::Graphics::Direct2D::{
+        CLSID_D2D1AlphaMask, CLSID_D2D1Composite, CLSID_D2D1GaussianBlur, CLSID_D2D1Opacity,
+        CLSID_D2D1Shadow, CLSID_D2D12DAffineTransform, Common::D2D1_COMPOSITE_MODE_SOURCE_OVER,
+        D2D1_2DAFFINETRANSFORM_PROP_TRANSFORM_MATRIX, D2D1_DIRECTIONALBLUR_OPTIMIZATION_SPEED,
+        D2D1_GAUSSIANBLUR_PROP_OPTIMIZATION, D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION,
+        D2D1_INTERPOLATION_MODE_LINEAR, D2D1_OPACITY_PROP_OPACITY, D2D1_PROPERTY_TYPE_ENUM,
+        D2D1_PROPERTY_TYPE_FLOAT, D2D1_PROPERTY_TYPE_MATRIX_3X2,
+        D2D1_SHADOW_PROP_BLUR_STANDARD_DEVIATION, D2D1_SHADOW_PROP_OPTIMIZATION, ID2D1CommandList,
+        ID2D1Effect,
+    },
+};
 
-#[derive(Debug, Default, Deserialize, Clone, PartialEq, JsonSchema)]
-pub struct EffectsConfig {
-    pub active: Vec<Effect>,
-    pub inactive: Vec<Effect>,
-    pub enabled: bool,
-}
+use crate::{core::effect::EffectKind, render_resources::RenderResources};
 
-impl EffectsConfig {
-    pub fn to_effect_manager(&self) -> EffectManager {
-        if self.enabled {
-            EffectManager {
-                active: self.active.clone(),
-                inactive: self.inactive.clone(),
-                ..Default::default()
-            }
-        } else {
-            EffectManager::default()
-        }
-    }
-}
+use super::{EffectsConfig, engine::EffectEngine};
 
 #[derive(Debug, Default, Clone)]
 pub struct EffectManager {
-    pub active: Vec<Effect>,
-    pub inactive: Vec<Effect>,
-    pub active_command_list: Option<ID2D1CommandList>,
-    pub inactive_command_list: Option<ID2D1CommandList>,
+    active: Vec<EffectEngine>,
+    inactive: Vec<EffectEngine>,
+    active_command_list: Option<ID2D1CommandList>,
+    inactive_command_list: Option<ID2D1CommandList>,
 }
 
 impl EffectManager {
+    pub fn active(&self) -> &Vec<EffectEngine> {
+        &self.active
+    }
+
+    pub fn inactive(&self) -> &Vec<EffectEngine> {
+        &self.inactive
+    }
+
     pub fn is_enabled(&self) -> bool {
         !self.active.is_empty() || !self.inactive.is_empty()
     }
-}
 
-#[derive(Debug, Clone, Deserialize, PartialEq, JsonSchema)]
-pub struct Effect {
-    #[serde(alias = "type")]
-    pub effect_type: EffectType,
-    #[serde(default = "serde_default_f32::<8>")]
-    pub standard_deviation: f32,
-    #[serde(default = "serde_default_f32::<1>")]
-    pub opacity: f32,
-    #[serde(default)]
-    pub translation: Translation,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, JsonSchema)]
-pub enum EffectType {
-    Glow,
-    Shadow,
-}
-
-#[derive(Debug, Default, Clone, Copy, Deserialize, PartialEq, JsonSchema)]
-pub struct Translation {
-    pub x: f32,
-    pub y: f32,
-}
-
-impl EffectManager {
-    pub fn create_command_list(&mut self, render_resources: &RenderResources) -> anyhow::Result<()> {
+    pub fn create_command_list(
+        &mut self,
+        render_resources: &RenderResources,
+    ) -> anyhow::Result<()> {
         let d2d_context = render_resources.d2d_context()?;
         let border_bitmap = render_resources.border_bitmap()?;
         let mask_bitmap = render_resources.mask_bitmap()?;
 
         let create_single_list =
-            |effect_params_vec: &Vec<Effect>| -> anyhow::Result<ID2D1CommandList> {
+            |effect_params_vec: &Vec<EffectEngine>| -> anyhow::Result<ID2D1CommandList> {
                 unsafe {
                     // Open a command list to record draw operations
                     let command_list = d2d_context
@@ -85,8 +60,8 @@ impl EffectManager {
                     let mut effects_vec: Vec<ID2D1Effect> = Vec::new();
 
                     for effect_params in effect_params_vec.iter() {
-                        let effect = match effect_params.effect_type {
-                            EffectType::Glow => {
+                        let effect = match effect_params.kind {
+                            EffectKind::Glow => {
                                 let blur_effect = d2d_context
                                     .CreateEffect(&CLSID_D2D1GaussianBlur)
                                     .context("blur_effect")?;
@@ -108,7 +83,7 @@ impl EffectManager {
 
                                 blur_effect
                             }
-                            EffectType::Shadow => {
+                            EffectKind::Shadow => {
                                 let shadow_effect = d2d_context
                                     .CreateEffect(&CLSID_D2D1Shadow)
                                     .context("shadow_effect")?;
@@ -193,7 +168,7 @@ impl EffectManager {
                             index as u32,
                             &effect
                                 .GetOutput()
-                                .context("could not get effect output: {index}")?,
+                                .context(format!("could not get effect output: {}", index))?,
                             false,
                         );
                     }
@@ -247,16 +222,45 @@ impl EffectManager {
         Ok(())
     }
 
-    pub fn get_current_command_list(&self, border: &Border) -> anyhow::Result<&ID2D1CommandList> {
-        match border.is_window_active {
-            true => self
-                .active_command_list
-                .as_ref()
-                .context("could not get active_command_list"),
-            false => self
-                .inactive_command_list
-                .as_ref()
-                .context("could not get inactive_command_list"),
+    pub fn active_command_list(&self) -> anyhow::Result<&ID2D1CommandList> {
+        self.active_command_list
+            .as_ref()
+            .context("could not get active_command_list")
+    }
+
+    pub fn inactive_command_list(&self) -> anyhow::Result<&ID2D1CommandList> {
+        self.inactive_command_list
+            .as_ref()
+            .context("could not get inactive_command_list")
+    }
+}
+
+impl TryFrom<EffectsConfig> for EffectManager {
+    type Error = anyhow::Error;
+
+    fn try_from(value: EffectsConfig) -> Result<Self, Self::Error> {
+        let active: Vec<EffectEngine> = value
+            .active
+            .iter()
+            .cloned() // Convert &EffectConfig to EffectConfig
+            .map(EffectEngine::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let inactive: Vec<EffectEngine> = value
+            .inactive
+            .iter()
+            .cloned() // Convert &EffectConfig to EffectConfig
+            .map(EffectEngine::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
+
+        if value.enabled {
+            Ok(EffectManager {
+                active,
+                inactive,
+                ..Default::default()
+            })
+        } else {
+            Ok(EffectManager::default())
         }
     }
 }

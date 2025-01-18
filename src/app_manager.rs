@@ -106,7 +106,7 @@ impl AppManager {
 
     /// Returns whether the configuration file watcher is currently running.
     pub fn config_watcher_is_running(&self) -> bool {
-        self.config_watcher.read().map_or(false, |w| w.is_running())
+        self.config_watcher.read().is_ok_and(|w| w.is_running())
     }
 
     /// Returns a read-only lock for the user configuration.
@@ -204,7 +204,9 @@ impl AppManager {
 }
 
 /// Helper function to create Direct3D and Direct2D devices.
-fn create_directx_devices(factory: &ID2D1Factory8) -> anyhow::Result<(ID3D11Device, IDXGIDevice, ID2D1Device7)> {
+fn create_directx_devices(
+    factory: &ID2D1Factory8,
+) -> anyhow::Result<(ID3D11Device, IDXGIDevice, ID2D1Device7)> {
     let creation_flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_DEBUG;
 
     let feature_levels = [
@@ -234,11 +236,15 @@ fn create_directx_devices(factory: &ID2D1Factory8) -> anyhow::Result<(ID3D11Devi
         )
     }?;
 
-    debug!("[create_directx_devices] DirectX device created successfully (feature level: {feature_level:X?})");
+    debug!(
+        "[create_directx_devices] DirectX device created successfully (feature level: {feature_level:X?})"
+    );
 
     let device = device_opt.context("Could not get D3D11 device")?;
     let dxgi_device: IDXGIDevice = device.cast().context("ID3D11Device cast")?;
-    let d2d_device = unsafe { factory.CreateDevice(&dxgi_device) }.context("Failed to create D2D device")?;
+    let d2d_device =
+        unsafe { factory.CreateDevice(&dxgi_device) }.context("Failed to create D2D device")?;
 
     Ok((device, dxgi_device, d2d_device))
 }
+

@@ -47,11 +47,28 @@
             "unminimize_delay",
             "restore_delay"
           ]
+        },
+        {
+          "required": [
+            "standard_deviation",
+            "radius"
+          ]
+        }
+      ]
+    },
+    "Alias_1": {
+      "anyOf": [
+        {
+          "required": [
+            "standard_deviation",
+            "radius"
+          ]
         }
       ]
     },
     "AnimationConfig": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "duration": {
           "anyOf": [
@@ -83,6 +100,7 @@
     },
     "AnimationsConfig": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "active": {
           "type": [
@@ -347,6 +365,7 @@
     "ColorMapping": {
       "description": "A structure that defines a gradient mapping, which contains a list of color stops and a direction.",
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "colors": {
           "description": "A list of colors in the gradient, represented as hexadecimal color strings.",
@@ -376,13 +395,128 @@
       "oneOf": [
         {
           "type": "number",
-          "description": "The speed of the animation (a numeric value)."
+          "description": "The duration as a number, e.g., 300"
         },
         {
           "type": "string",
           "pattern": "^[\\d.]+(ms|s)$",
           "description": "The duration as a string, e.g., '3s' or '3ms'."
         }
+      ]
+    },
+    "EffectConfig": {
+      "description": "Configuration for a single effect, including its kind, opacity, and translation.",
+      "type": "object",
+      "not": {
+        "$ref": "#/$defs/Alias_1"
+      },
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "description": "The type or kind of effect (e.g., \"fade\", \"zoom\").",
+          "type": "string"
+        },
+        "opacity": {
+          "description": "The opacity of the effect, with a default value of 1.0 (fully opaque).",
+          "type": "number",
+          "format": "float",
+          "default": 1.0
+        },
+        "standard_deviation": {
+          "description": "Optional field representing the standard deviation (or radius) of the effect.\n It can be either a number or a string representing length (e.g., \"5px\").",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Length"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "radius": {
+          "description": "Optional field representing the standard deviation (or radius) of the effect.\n It can be either a number or a string representing length (e.g., \"5px\").",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Length"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "translation": {
+          "description": "The translation applied to the effect, with default values set to (0.0, 0.0).",
+          "$ref": "#/$defs/EffectTranslationConfig"
+        }
+      },
+      "required": [
+        "kind"
+      ]
+    },
+    "EffectKind": {
+      "description": "Represents the type or category of an effect, determining its behavior and visual characteristics. The kind defines how the effect is applied to an element, influencing animations such as fading, glowing, or shadowing.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "glow",
+            "Glow"
+          ],
+          "description": "A 'glow' effect causes an element to emit a soft, glowing light. This effect can be used to highlight or emphasize elements by making them appear as if they are radiating light. Typically used for emphasis or to give a sense of energy or focus."
+        },
+        {
+          "type": "string",
+          "enum": [
+            "shadow",
+            "Shadow"
+          ],
+          "description": "A 'shadow' effect applies a shadow around the element, simulating depth or a 3D appearance. The shadow can have various properties such as blur, spread, and offset. This effect is often used to give the element a lifted or elevated look in the interface."
+        }
+      ]
+    },
+    "EffectTranslationConfig": {
+      "description": "Configuration for the translation of an effect, including both x and y coordinates.",
+      "type": "object",
+      "properties": {
+        "x": {
+          "description": "The translation on the x-axis.\n Default is a `0.0` if no value is provided.",
+          "$ref": "#/$defs/Length"
+        },
+        "y": {
+          "description": "The translation on the y-axis.\n Default is a `0.0` if no value is provided.",
+          "$ref": "#/$defs/Length"
+        }
+      },
+      "additionalProperties": false
+    },
+    "EffectsConfig": {
+      "description": "Configuration for multiple effects, including active and inactive effects.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "active": {
+          "description": "A list of active effects.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EffectConfig"
+          }
+        },
+        "enabled": {
+          "description": "Indicates whether effects are enabled or not.",
+          "type": "boolean"
+        },
+        "inactive": {
+          "description": "A list of inactive effects.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EffectConfig"
+          }
+        }
+      },
+      "required": [
+        "active",
+        "inactive",
+        "enabled"
       ]
     },
     "GlobalColor": {
@@ -404,6 +538,7 @@
       "not": {
         "$ref": "#/$defs/Alias"
       },
+      "additionalProperties": false,
       "properties": {
         "active_color": {
           "description": "Default color for active window borders.",
@@ -426,6 +561,10 @@
           "description": "Default width of the window borders.",
           "$ref": "#/$defs/BorderWidth",
           "default": 2
+        },
+        "effects": {
+          "description": "Effect settings for borders.",
+          "$ref": "#/$defs/EffectsConfig"
         },
         "inactive_color": {
           "description": "Default color for inactive window borders.",
@@ -455,6 +594,7 @@
     },
     "GradientCoordinates": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "end": {
           "description": "The [x, y] coordinates for the end point of the gradient.",
@@ -497,6 +637,7 @@
     },
     "Keybindings": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "exit": {
           "type": "string",
@@ -514,6 +655,20 @@
           "default": "f8"
         }
       }
+    },
+    "Length": {
+      "description": "Represents a length or radius, which can be either a finite number (f32) or a non-empty string.",
+      "oneOf": [
+        {
+          "type": "number",
+          "description": "The length or radius as a number, e.g., 3"
+        },
+        {
+          "type": "string",
+          "pattern": "^[\\d.]+(px|in|cm|mm|pt|pc)$",
+          "description": "The length or radius as a string, e.g., '3px' or '0.3in'."
+        }
+      ]
     },
     "MatchKind": {
       "description": "Specifies the type of match used for window identification.",
@@ -561,6 +716,7 @@
       "not": {
         "$ref": "#/$defs/Alias"
       },
+      "additionalProperties": false,
       "properties": {
         "active_color": {
           "description": "Color for the border when the window is active.",
@@ -611,6 +767,17 @@
           "anyOf": [
             {
               "$ref": "#/$defs/BorderWidth"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "effects": {
+          "description": "Effect settings for the window borders.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EffectsConfig"
             },
             {
               "type": "null"

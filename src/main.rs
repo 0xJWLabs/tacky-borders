@@ -67,10 +67,6 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn start_application() -> anyhow::Result<()> {
-    let schema = schema_for!(UserConfig);
-    let res = serde_jsonc2::to_string_pretty(&schema)?;
-
-    write("./test_schema.json", res).log_if_err();
     if let Err(e) = &initialize_logger() {
         error!("logger initialization failed: {e}");
     };

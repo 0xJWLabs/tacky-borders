@@ -413,7 +413,7 @@
       "additionalProperties": false,
       "properties": {
         "kind": {
-          "description": "The type or kind of effect (e.g., \"fade\", \"zoom\").",
+          "description": "The type or kind of effect (e.g., \"glow\", \"shadow\").",
           "type": "string"
         },
         "opacity": {

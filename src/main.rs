@@ -8,17 +8,14 @@
 extern crate log;
 extern crate sp_log2;
 
-use core::keybindings::create_keybindings;
-use std::fs::write;
-
 use anyhow::anyhow;
 use app_manager::AppManager;
 use border_manager::Border;
 use border_manager::register_border_class;
+use core::keybindings::create_keybindings;
 use error::LogIfErr;
 use keyboard_hook::KEYBOARD_HOOK;
 use keyboard_hook::KeyboardHook;
-use schema_jsonrs::schema_for;
 use sp_log2::ColorChoice;
 use sp_log2::CombinedLogger;
 use sp_log2::ConfigBuilder;

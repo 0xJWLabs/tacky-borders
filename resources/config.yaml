@@ -1,4 +1,4 @@
-$schema: "https://raw.githubusercontent.com/GlazeBar/tacky-borders/refs/heads/main/schema.json"
+$schema: "https://raw.githubusercontent.com/0xJWLabs/tacky-borders/refs/heads/main/schema.json"
 
 # Allow auto reload on config changes
 monitor_config_changes: true
@@ -42,29 +42,29 @@ global:
   #     - "Radius(num)": Applies a custom radius where "num" is a positive number defining the pixel radius of the corners.
   border_style: "Auto"  # or "Radius(10)" for custom 10px radius, or "Round", "SmallRound", etc.
 
-  # active_color: Specifies the color properties for the active window border.
-  # Acceptable formats:
-  #   1. String:
-  #      - Hex: "#RRGGBB" or "#RRGGBBAA".
-  #      - CSS Functions: `rgb(...)` or `rgba(...)`.
-  #      - Named Colors: Use predefined names from CSS (see: https://www.w3.org/TR/css-color-4/#named-colors).
-  #      - Theme Reference: A color from the active theme.
-  #   2. Gradient Map: Defines a linear gradient with the following properties:
-  #      - colors: An array of color values (e.g., ["#89b4fa", "#cba6f7"]).
-  #      - direction: The start and end points of the gradient as normalized coordinates:
-  #        - start: [x, y] (e.g., [0.0, 0.0]).
-  #        - end: [x, y] (e.g., [1.0, 0.0]).
-  # Examples:
+  # Active Window Border Color
+  # - Specifies the border color for the active (focused) window.
+  # - Acceptable formats:
+  #   1. **String**:
+  #    - Hex: "#RRGGBB" or "#RRGGBBAA".
+  #    - CSS Functions: `rgb(...)` or `rgba(...)`.
+  #    - Named Colors: Use predefined names from CSS (see: https://www.w3.org/TR/css-color-4/#named-colors).
+  #    - Theme Reference: A color from the active theme.
+  #   2. **Gradient Map**: Defines a linear gradient with the following properties:
+  #    - `colors`: An array of color values (e.g., `["#89b4fa", "#cba6f7"]`).
+  #    - `direction`: The start and end points of the gradient as normalized coordinates:
+  #    - `start`: `[x, y]` (e.g., `[0.0, 0.0]`).
+  #    - `end`: `[x, y]` (e.g., `[1.0, 0.0]`).
+  # - Examples:
   #   - Single Color:
   #       active_color: "#ff0000"
   #   - Gradient Map:
-  #       active_color:
-  #         colors:
-  #           - "#89b4fa"
-  #           - "#cba6f7"
-  #         direction:
-  #           start: [0.0, 0.0]
-  #           end: [1.0, 0.0]
+  #     active_color: 
+  #       colors: ["#89b4fa", "#cba6f7"]
+  #       direction: 
+  #         start: [0.0, 0.0]
+  #         end: [1.0, 0.0]
+
   active_color:
     colors:
       - "#000000"
@@ -80,13 +80,36 @@ global:
   #   - This can also be specified as a string or a gradient map, similar to active_color.
   inactive_color: "#d2d2d2"
 
-  # animations: Configures the animations applied to window borders.
+  # Animations
+  # - Configures the animations applied to window borders.
   #   - active: Defines animations for active window transitions.
   #     - Each animation specifies its type (kind), duration, and easing function.
   #   - inactive: Defines animations for inactive window transitions.
   #     - Uses the same format as active animations.
   #   - fps: Sets the frame rate for animations (default: 60 FPS).
   # Example of an animation: { kind: "fade", duration: "450ms", easing: "EaseInOut" }
+  #
+  # Animation
+  # - kind: Type of animation (e.g., "fade", "spiral", "reverse-spiral").
+  #   - The `kind` value can be written in various casing conventions:
+  #     - PascalCase (e.g., "Fade", "Spiral", "ReverseSpiral"): Common for classes or components.
+  #     - camelCase (e.g., "fadeEffect", "spiral", "reverseSpiral"): Common in JavaScript for variable names and functions.
+  #     - snake_case (e.g., "fade_effect", "spiral", "reverse_spiral"): Often used in Python or older codebases.
+  #     - kebab-case (e.g., "fade-effect", "spiral", "reverse-spiral"): Common in CSS and HTML attributes.
+  # - duration: Duration of the animation.
+  #   - It can be represented as a number (for milliseconds) or a string with units:
+  #     - A number (e.g., 450): Interpreted as milliseconds.
+  #     - A string with "ms" (e.g., "450ms"): Specifies milliseconds.
+  #     - A string with "s" (e.g., "3s"): Specifies seconds.
+  # - easing: Easing function to control animation pacing.
+  #   - Easing can be specified in various formats:
+  #     - Common CSS easing functions (e.g., "ease-in", "ease-in-out", "ease-out", "linear").
+  #     - Easing functions can be written in different casing conventions:
+  #       - PascalCase (e.g., "EaseIn", "EaseInOut").
+  #       - camelCase (e.g., "easeIn", "easeInOut").
+  #       - snake_case (e.g., "ease_in", "ease_in_out").
+  #       - kebab-case (e.g., "ease-in", "ease-in-out").
+  #     - CSS `cubic-bezier()` function strings (e.g., "cubic-bezier(0.42, 0.0, 0.58, 1.0)").
   animations:
     active:
       - kind: "fade"
@@ -103,6 +126,60 @@ global:
         duration: "1800ms"
         easing: "cubic-bezier(0.42, 0.0, 0.58, 1.0)"
     fps: 60
+
+  # Effects
+  # - Configures the effects applied to window borders.
+  #   - active: Defines effects for the active window.
+  #     - Each effect specifies its type (kind), standard deviation (radius), opacity, and optional translation.
+  #   - inactive: Defines effects for the inactive window.
+  #     - Uses the same format as active effects.
+  #   - enabled: Enable or disable effects.
+  # Example of an effect: { kind: "glow", radius: "4px", opacity: 1.0 }
+  #
+  # Effect
+  # - kind: Type of effect (e.g., "glow", "shadow").
+  #   - The `kind` value can be written in various casing conventions:
+  #     - PascalCase (e.g., "Glow", "Shadow"): Common for classes or components.
+  #     - camelCase (e.g., "glow", "shadow"): Common in JavaScript for variable names and functions.
+  #     - snake_case (e.g., "glow", "shadow"): Often used in Python or older codebases.
+  #     - kebab-case (e.g., "glow", "shadow"): Common in CSS and HTML attributes.
+  # - radius: The standard deviation (radius) for the effect (e.g., "4px", "10px", "2em").
+  #   - The value can be a string with various units, such as:
+  #     - px: pixels (e.g., "4px", "10px").
+  #     - in: inches (e.g., "1in", "2in").
+  #     - cm: centimeters (e.g., "2cm", "5cm").
+  #     - mm: millimeters (e.g., "5mm", "10mm").
+  #     - pt: points (e.g., "10pt", "12pt").
+  #     - pc: picas (e.g., "1pc", "2pc").
+  #     - em: relative to the font size (e.g., "2em").
+  #   - It determines the size of the effect (e.g., the radius of a glow or shadow).
+  # - opacity: Opacity of the effect, typically a value between 0.0 and 1.0 (e.g., "1.0", "0.5").
+  #   - This value controls the transparency of the effect.
+  # - translation: Defines translation (position offset) for the effect.
+  #   - It can be represented in two ways:
+  #     - As a string (e.g., "10px 20px", "-5px 10px").
+  #     - Or as an object with `x` and `y` properties (e.g., { x: "10px", y: "5px" }, { x: "0", y: "10px" }).
+  #       - Both `x` and `y` can be strings (e.g., `"10px"`, `"-5px"`, `"0"`, `"1in"`, `"2cm"`) or numbers (e.g., `0`, `10`).
+  #       - The supported units for `translation` include:
+  #         - px: pixels (e.g., "10px", "-5px").
+  #         - in: inches (e.g., "0.5in", "-1in").
+  #         - cm: centimeters (e.g., "2cm", "0.5cm").
+  #         - mm: millimeters (e.g., "5mm", "-10mm").
+  #         - pt: points (e.g., "10pt", "2pt").
+  #         - pc: picas (e.g., "1pc", "0.5pc").
+  #   - This defines the position shift for the effect, typically used for shadows or glows.
+  # - enabled: A boolean value (true or false) that enables or disables the effect.
+  #   - If set to `true`, the effect is applied; if `false`, the effect is disabled.
+  effects:
+    active:
+      - kind: "glow"
+        radius: "4px"
+        opacity: 1.0
+    inactive:
+      - kind: "glow"
+        radius: "4px"
+        opacity: 1.0
+    enabled: true
 
   # initialize_delay: The initial delay (in milliseconds) before applying animations when the window is first rendered. 
   #             A reduced delay can be used to account for animations like fade, which take additional time.
@@ -129,3 +206,13 @@ window_rules:
       value: "Zebar"
       strategy: "Equals"
       enabled: false
+  - match:
+      kind: "Title"
+      value: "Picture-in-Picture"
+      strategy: "Equals"
+      enabled: false
+  - match:
+      kind: "Class"
+      name: "XamlExplorerHostIslandWindow"
+      strategy: "Equals"
+      enabled: False

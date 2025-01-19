@@ -55,64 +55,82 @@ The following auto-generated `config.jsonc` is included as reference:
 
 ```jsonc
 {
-  "$schema": "https://raw.githubusercontent.com/GlazeBar/tacky-borders/refs/heads/main/schema.json",
-  // allow auto reload on config changes
+  "$schema": "https://raw.githubusercontent.com/0xJWLabs/tacky-borders/refs/heads/main/schema.json",
+  // Enables automatic reloading when the configuration file is modified.
+  // If set to `true`, the application will detect changes and apply them dynamically
+  // without requiring a restart. Useful for rapid customization.
   "monitor_config_changes": true,
-  "theme": null, // Theme name from themes stored in `%USERPROFILES%/.config/tacky-borders/themes`
+  // Specifies the theme file to be used for styling window borders.
+  // This can be an absolute path or a theme name within `.config/tacky-borders/theme`.
+  // If set to `null`, no theme will be applied, and the global settings will be used.
+  "theme": null,
   "keybindings": {
-    // reload: Binds the reload action to the specified key (default: f8).
-    // - Pressing this key will trigger the reloading process, typically refreshing content or settings.
+    // Reload Keybinding:
+    // - Defines the key used to reload the configuration.
+    // - Default: "f8"
+    // - Pressing this key applies any changes made to the config file.
     "reload": "f8",
-    // open_config: Binds the action to open the configuration/settings to the specified key (default: f9).
-    // - Pressing this key will open the configuration menu or editor settings for customization.
+    // Open Config Keybinding:
+    // - Specifies the key to open the configuration file for editing.
+    // - Default: "f9"
+    // - Pressing this key should launch the default editor with this configuration file.
     "open_config": "f9",
-    // exit: Binds the exit or quit action to the specified key (default: f10).
-    // - Pressing this key will close the application or exit the current session.
+    // Exit Keybinding:
+    // - Defines the key that closes the application.
+    // - Default: "f10"
+    // - Pressing this key will terminate the running process.
     "exit": "f10"
   },
   "global": {
-    // border_width: Specifies the thickness of the window border in pixels.
-    //   - Example: 2 sets the border to 2 pixels wide.
-    //   - You can also use string values like "2px".
-    "border_width": 2, // Also accepts "2px"
-    // border_offset: Adjusts the position of the border relative to the window.
-    //   - Negative values shrink the border inward (reducing the visible area).
-    //   - Positive values expand the border outward (increasing its coverage).
-    //   - You can also use string values like "2px"
-    // Example: -1 shrinks the border slightly inside the window.
-    "border_offset": -1, // Also accepts "-1px"
-    // border_style: Controls the shape of the window's border corners.
-    //   - Use numeric values for custom corner rounding in pixels (e.g., 5 applies a 5-pixel radius).
-    //   - Use predefined styles for consistent results:
-    //     - "Auto": Automatically calculates a suitable radius based on the window's dimensions.
-    //     - "Round": Fully rounded corners using a default radius.
-    //     - "SmallRound": Smaller rounded corners with a default radius.
-    //     - "Square": No rounding, resulting in square corners.
-    //     - "Radius(num)": Applies a custom radius where "num" is a positive number defining the pixel radius of the corners.
-    "border_style": "Auto", // or "Radius(10)" for custom 10px radius, or "Round", "SmallRound", etc.
-    // active_color: Specifies the color properties for the active window border.
-    //   - Acceptable formats:
-    //     1. **String**:
-    //        - Hex: "#RRGGBB" or "#RRGGBBAA".
-    //        - CSS Functions: `rgb(...)` or `rgba(...)`.
-    //        - Named Colors: Use predefined names from CSS (see: https://www.w3.org/TR/css-color-4/#named-colors).
-    //        - Theme Reference: A color from the active theme.
-    //     2. **Gradient Map**: Defines a linear gradient with the following properties:
-    //        - `colors`: An array of color values (e.g., `["#89b4fa", "#cba6f7"]`).
-    //        - `direction`: The start and end points of the gradient as normalized coordinates:
-    //          - `start`: `[x, y]` (e.g., `[0.0, 0.0]`).
-    //          - `end`: `[x, y]` (e.g., `[1.0, 0.0]`).
-    //   - **Examples**:
-    //     - Single Color:
+    // Border Width:
+    // - Defines the thickness of the window border in pixels.
+    // - Accepts both numerical values (e.g., `2`) and pixel-based strings (e.g., "2px").
+    // - Example:
+    //   - `2` -> 2px border thickness
+    //   - "3px" -> 3px border thickness (equivalent to `3`)
+    "border_width": 2,
+    // Border Offset:
+    // - Determines how much the border is shifted relative to the window edges.
+    // - Negative values pull the border inward, reducing its visible area.
+    // - Positive values push the border outward, making it appear larger.
+    // - Accepts pixel-based strings (e.g., "-1px") in addition to numeric values.
+    // - Example:
+    //   - `-1` -> The border moves 1px inward.
+    //   - `2` -> The border expands 2px outward.
+    "border_offset": -1,
+    // Border Style:
+    // - Defines the shape and curvature of window corners.
+    // - Possible values:
+    //   - "Auto": Automatically determines a suitable radius.
+    //   - "Round": Fully rounded corners.
+    //   - "SmallRound": Slightly rounded corners.
+    //   - "Square": No rounding (sharp corners).
+    //   - "Radius(num)": Custom corner radius in pixels (e.g., "Radius(10)" for a 10px corner radius).
+    "border_style": "Auto",
+    // Active Window Border Color
+    // - Specifies the border color for the active (focused) window.
+    // - Acceptable formats:
+    //   1. **String**:
+    //    - Hex: "#RRGGBB" or "#RRGGBBAA".
+    //    - CSS Functions: `rgb(...)` or `rgba(...)`.
+    //    - Named Colors: Use predefined names from CSS (see: https://www.w3.org/TR/css-color-4/#named-colors).
+    //    - Theme Reference: A color from the active theme.
+    //   2. **Gradient Map**: Defines a linear gradient with the following properties:
+    //    - `colors`: An array of color values (e.g., `["#89b4fa", "#cba6f7"]`).
+    //    - `direction`: The start and end points of the gradient as normalized coordinates:
+    //    - `start`: `[x, y]` (e.g., `[0.0, 0.0]`).
+    //    - `end`: `[x, y]` (e.g., `[1.0, 0.0]`).
+    // - Examples:
+    //   - Single Color:
     //       active_color: "#ff0000"
-    //     - Gradient Map:
-    //       active_color: {
-    //         "colors": ["#89b4fa", "#cba6f7"],
-    //         "direction": {
-    //           "start": [0.0, 0.0],
-    //           "end": [1.0, 0.0]
-    //         }
+    //   - Gradient Map:
+    //     active_color: {
+    //       "colors": ["#89b4fa", "#cba6f7"],
+    //       "direction": {
+    //         "start": [0.0, 0.0],
+    //         "end": [1.0, 0.0]
     //       }
+    //     }
     "active_color": {
       "colors": [
         "#000000",
@@ -129,15 +147,39 @@ The following auto-generated `config.jsonc` is included as reference:
         ]
       }
     },
-    //   - This can also be specified as a string or a gradient map, similar to active_color.
+    // Inactive Window Border Color:
+    // - Works similarly to `active_color`, but applies to unfocused windows.
     "inactive_color": "#d2d2d2",
-    // animations: Configures the animations applied to window borders.
+    // Animations
+    // - Configures the animations applied to window borders.
     //   - active: Defines animations for active window transitions.
     //     - Each animation specifies its type (kind), duration, and easing function.
     //   - inactive: Defines animations for inactive window transitions.
     //     - Uses the same format as active animations.
     //   - fps: Sets the frame rate for animations (default: 60 FPS).
     // Example of an animation: { kind: "fade", duration: "450ms", easing: "EaseInOut" }
+    //
+    // Animation
+    // - kind: Type of animation (e.g., "fade", "spiral", "reverse-spiral").
+    //   - The `kind` value can be written in various casing conventions:
+    //     - PascalCase (e.g., "Fade", "Spiral", "ReverseSpiral"): Common for classes or components.
+    //     - camelCase (e.g., "fadeEffect", "spiral", "reverseSpiral"): Common in JavaScript for variable names and functions.
+    //     - snake_case (e.g., "fade_effect", "spiral", "reverse_spiral"): Often used in Python or older codebases.
+    //     - kebab-case (e.g., "fade-effect", "spiral", "reverse-spiral"): Common in CSS and HTML attributes.
+    // - duration: Duration of the animation.
+    //   - It can be represented as a number (for milliseconds) or a string with units:
+    //     - A number (e.g., 450): Interpreted as milliseconds.
+    //     - A string with "ms" (e.g., "450ms"): Specifies milliseconds.
+    //     - A string with "s" (e.g., "3s"): Specifies seconds.
+    // - easing: Easing function to control animation pacing.
+    //   - Easing can be specified in various formats:
+    //     - Common CSS easing functions (e.g., "ease-in", "ease-in-out", "ease-out", "linear").
+    //     - Easing functions can be written in different casing conventions:
+    //       - PascalCase (e.g., "EaseIn", "EaseInOut").
+    //       - camelCase (e.g., "easeIn", "easeInOut").
+    //       - snake_case (e.g., "ease_in", "ease_in_out").
+    //       - kebab-case (e.g., "ease-in", "ease-in-out").
+    //     - CSS `cubic-bezier()` function strings (e.g., "cubic-bezier(0.42, 0.0, 0.58, 1.0)").
     "animations": {
       "active": [
         {
@@ -165,10 +207,69 @@ The following auto-generated `config.jsonc` is included as reference:
       ],
       "fps": 60
     },
+    // Effects
+    // - Configures the effects applied to window borders.
+    //   - active: Defines effects for the active window.
+    //     - Each effect specifies its type (kind), standard deviation (radius), opacity, and optional translation.
+    //   - inactive: Defines effects for the inactive window.
+    //     - Uses the same format as active effects.
+    //   - enabled: Enable or disable effects.
+    // Example of an effect: { kind: "glow", radius: "4px", opacity: 1.0 }
+    //
+    // Effect
+    // - kind: Type of effect (e.g., "glow", "shadow").
+    //   - The `kind` value can be written in various casing conventions:
+    //     - PascalCase (e.g., "Glow", "Shadow"): Common for classes or components.
+    //     - camelCase (e.g., "glow", "shadow"): Common in JavaScript for variable names and functions.
+    //     - snake_case (e.g., "glow", "shadow"): Often used in Python or older codebases.
+    //     - kebab-case (e.g., "glow", "shadow"): Common in CSS and HTML attributes.
+    // - radius: The standard deviation (radius) for the effect (e.g., "4px", "10px", "2em").
+    //   - The value can be a string with various units, such as:
+    //     - px: pixels (e.g., "4px", "10px").
+    //     - in: inches (e.g., "1in", "2in").
+    //     - cm: centimeters (e.g., "2cm", "5cm").
+    //     - mm: millimeters (e.g., "5mm", "10mm").
+    //     - pt: points (e.g., "10pt", "12pt").
+    //     - pc: picas (e.g., "1pc", "2pc").
+    //     - em: relative to the font size (e.g., "2em").
+    //   - It determines the size of the effect (e.g., the radius of a glow or shadow).
+    // - opacity: Opacity of the effect, typically a value between 0.0 and 1.0 (e.g., "1.0", "0.5").
+    //   - This value controls the transparency of the effect.
+    // - translation: Defines translation (position offset) for the effect.
+    //   - It can be represented in two ways:
+    //     - As a string (e.g., "10px 20px", "-5px 10px").
+    //     - Or as an object with `x` and `y` properties (e.g., { x: "10px", y: "5px" }, { x: "0", y: "10px" }).
+    //       - Both `x` and `y` can be strings (e.g., `"10px"`, `"-5px"`, `"0"`, `"1in"`, `"2cm"`) or numbers (e.g., `0`, `10`).
+    //       - The supported units for `translation` include:
+    //         - px: pixels (e.g., "10px", "-5px").
+    //         - in: inches (e.g., "0.5in", "-1in").
+    //         - cm: centimeters (e.g., "2cm", "0.5cm").
+    //         - mm: millimeters (e.g., "5mm", "-10mm").
+    //         - pt: points (e.g., "10pt", "2pt").
+    //         - pc: picas (e.g., "1pc", "0.5pc").
+    //   - This defines the position shift for the effect, typically used for shadows or glows.
+    // - enabled: A boolean value (true or false) that enables or disables the effect.
+    //   - If set to `true`, the effect is applied; if `false`, the effect is disabled.
+    "effects": {
+      "active": [
+        {
+          "kind": "glow",
+          "radius": "4px",
+          "opacity": 1.0
+        }
+      ],
+      "inactive": [
+        {
+          "kind": "glow",
+          "radius": "4px",
+          "opacity": 1.0
+        }
+      ],
+      "enabled": true
+    },
     // initialize_delay: The initial delay (in milliseconds) before applying animations when the window is first rendered. 
     //             A reduced delay can be used to account for animations like fade, which take additional time.
     // restore_delay: The delay (in milliseconds) before applying animations when a minimized window is restored.
-    // Note: Recommended to make it 0 if there is no windows animation.
     "initialize_delay": 150,
     "restore_delay": 100
   },
@@ -213,6 +314,22 @@ The following auto-generated `config.jsonc` is included as reference:
       "match": {
         "kind": "Title",
         "value": "Zebar",
+        "strategy": "Equals",
+        "enabled": false
+      }
+    },
+    {
+      "match": {
+        "kind": "Title",
+        "value": "Picture-in-Picture",
+        "strategy": "Equals",
+        "enabled": false
+      }
+    },
+    {
+      "match": {
+        "kind": "Class",
+        "value": "XamlExplorerHostIslandWindow",
         "strategy": "Equals",
         "enabled": false
       }

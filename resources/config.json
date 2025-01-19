@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/GlazeBar/tacky-borders/refs/heads/main/schema.json",
+  "$schema": "https://raw.githubusercontent.com/0xJWLabs/tacky-borders/refs/heads/main/schema.json",
   "monitor_config_changes": true,
   "theme": null,
   "keybindings": {
@@ -55,6 +55,23 @@
       ],
       "fps": 60
     },
+    "effects": {
+      "active": [
+        {
+          "kind": "glow",
+          "radius": "4px",
+          "opacity": 1.0
+        }
+      ],
+      "inactive": [
+        {
+          "kind": "glow",
+          "radius": "4px",
+          "opacity": 1.0
+        }
+      ],
+      "enabled": true
+    },
     "initialize_delay": 150,
     "restore_delay": 100
   },
@@ -79,6 +96,22 @@
       "match": {
         "kind": "Title",
         "value": "Zebar",
+        "strategy": "Equals",
+        "enabled": false
+      }
+    },
+    {
+      "match": {
+        "kind": "Title",
+        "value": "Picture-in-Picture",
+        "strategy": "Equals",
+        "enabled": false
+      }
+    },
+    {
+      "match": {
+        "kind": "Class",
+        "value": "XamlExplorerHostIslandWindow",
         "strategy": "Equals",
         "enabled": false
       }

@@ -491,9 +491,8 @@ impl UserConfig {
         if old_config != *new_config {
             reload_borders();
             if let Some(hook) = KEYBOARD_HOOK.get() {
-                if let Ok(bindings) = KeybindingConfig::from_config(&new_config.keybindings) {
-                    hook.update(&bindings);
-                }
+                let bindings = Vec::<KeybindingConfig>::from(&new_config.keybindings);
+                hook.update(&bindings);
             }
             return true;
         }
@@ -530,7 +529,9 @@ where
     D: Deserializer<'de>,
 {
     let value = Value::deserialize(deserializer)?;
-    value.as_i32().ok_or_else(|| de::Error::custom("Invalid Value"))
+    value
+        .as_i32()
+        .ok_or_else(|| de::Error::custom("Invalid Value"))
 }
 
 /// Deserializes an optional dimension value.
@@ -541,3 +542,4 @@ where
     let value = Option::<Value>::deserialize(deserializer)?;
     Ok(value.and_then(|v| v.as_i32()))
 }
+

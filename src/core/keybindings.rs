@@ -69,23 +69,32 @@ impl Default for Keybindings {
     }
 }
 
-impl KeybindingConfig {
-    pub fn from_config(config: &Keybindings) -> anyhow::Result<Vec<Self>> {
-        let bindings = vec![
-            KeybindingConfig::new(
-                "Reload",
-                config.reload.as_str(),
-                Some(SystemTrayEvent::ReloadConfig),
-            ),
-            KeybindingConfig::new(
-                "Open Config",
-                config.open_config.as_str(),
-                Some(SystemTrayEvent::OpenConfig),
-            ),
-            KeybindingConfig::new("Exit", config.exit.as_str(), Some(SystemTrayEvent::Exit)),
-        ];
-        debug!("[create_keybindings] Keybindings: Created ({bindings:#?})");
-        Ok(bindings)
+fn create_keybindings(value: &Keybindings) -> Vec<KeybindingConfig> {
+    let bindings = vec![
+        KeybindingConfig::new(
+            "Reload",
+            value.reload.as_str(),
+            Some(SystemTrayEvent::ReloadConfig),
+        ),
+        KeybindingConfig::new(
+            "Open Config",
+            value.open_config.as_str(),
+            Some(SystemTrayEvent::OpenConfig),
+        ),
+        KeybindingConfig::new("Exit", value.exit.as_str(), Some(SystemTrayEvent::Exit)),
+    ];
+    debug!("[create_keybindings] Keybindings: Created ({bindings:#?})");
+    bindings
+}
+
+impl From<Keybindings> for Vec<KeybindingConfig> {
+    fn from(value: Keybindings) -> Self {
+        create_keybindings(&value)
     }
 }
 
+impl From<&Keybindings> for Vec<KeybindingConfig> {
+    fn from(value: &Keybindings) -> Self {
+        create_keybindings(value)
+    }
+}

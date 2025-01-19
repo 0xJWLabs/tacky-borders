@@ -76,7 +76,7 @@ fn start_application() -> anyhow::Result<()> {
         .log_if_err_message("could not make process dpi aware", false);
 
     let config = AppManager::get().config().clone();
-    let bindings = KeybindingConfig::from_config(&config.keybindings).map_err_with_log()?;
+    let bindings = Vec::<KeybindingConfig>::from(&config.keybindings);
     let window_event_hook = WindowEventHook::new().map_err_with_log()?;
     let keyboard_hook = KeyboardHook::new(&bindings).map_err_with_log()?;
 

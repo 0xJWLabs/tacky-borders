@@ -4,10 +4,10 @@ use crate::border_manager::reload_borders;
 use crate::colors::GlobalColor;
 use crate::core::helpers::serde_default_i32;
 use crate::core::helpers::serde_default_u64;
+use crate::core::keybindings::KeybindingConfig;
 use crate::core::keybindings::Keybindings;
 use crate::core::value::Value;
 use crate::core::value::ValueConversion;
-use crate::create_keybindings;
 use crate::effect::EffectsConfig;
 use crate::error::LogIfErr;
 use crate::keyboard_hook::KEYBOARD_HOOK;
@@ -491,7 +491,7 @@ impl UserConfig {
         if old_config != *new_config {
             reload_borders();
             if let Some(hook) = KEYBOARD_HOOK.get() {
-                if let Ok(bindings) = create_keybindings() {
+                if let Ok(bindings) = KeybindingConfig::from_config(&new_config.keybindings) {
                     hook.update(&bindings);
                 }
             }

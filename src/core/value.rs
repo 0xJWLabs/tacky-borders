@@ -7,14 +7,18 @@ use serde::de::Visitor;
 use super::helpers::parse_duration_str;
 use super::helpers::parse_length_str;
 
+/// Enum representing a `Value` that can either be a finite number or a non-empty string.
 #[derive(Clone, PartialEq, Debug, JsonSchema)]
-/// Represents a number, which can be either a finite number (f32) or a non-empty string.
 pub enum Value {
+    /// A finite number (f64).
     Number(f64),
+
+    /// A non-empty string.
     String(String),
 }
 
-/// Visitor for deserializing `Value`.
+/// Visitor implementation for deserializing `Value`.
+/// This handles deserializing both numbers and strings from any representation.
 struct ValueVisitor;
 
 impl Visitor<'_> for ValueVisitor {
@@ -85,7 +89,8 @@ impl<'de> Deserialize<'de> for Value {
     }
 }
 
-/// Validates a number and converts it into a `Value::Value`.
+/// Validates a number and converts it into a `Value::Number`.
+/// Ensures that the number is finite (not `NaN`, `infinity`, etc.).
 fn validate_number<E>(value: f64) -> Result<Value, E>
 where
     E: SerdeError,
@@ -107,6 +112,8 @@ pub trait ValueConversion {
 }
 
 impl ValueConversion for Value {
+    /// Converts the `Value` to an `Option<i64>`. 
+    /// If the value is a number, it converts it to `i64`; if it's a string, it tries to parse it.
     fn as_i64(&self) -> Option<i64> {
         match self {
             Value::Number(num) => Some(*num as i64),
@@ -114,14 +121,19 @@ impl ValueConversion for Value {
         }
     }
 
+    /// Converts the `Value` to an `Option<i32>`. 
+    /// This is derived by converting the `i64` version of the value.
     fn as_i32(&self) -> Option<i32> {
         self.as_i64().map(|n| n as i32)
     }
 
+    /// Converts the `Value` to an `Option<f32>`.
     fn as_f32(&self) -> Option<f32> {
         self.as_f64().map(|n| n as f32)
     }
 
+    /// Converts the `Value` to an `Option<f64>`. 
+    /// If it's a number, it returns it as is; if it's a string, it tries to parse it.
     fn as_f64(&self) -> Option<f64> {
         match self {
             Value::Number(num) => Some(*num),
@@ -129,6 +141,8 @@ impl ValueConversion for Value {
         }
     }
 
+    /// Converts the `Value` to an `Option<f64>` representing a duration.
+    /// If it's a number, it returns it as is; if it's a string, it tries to parse it as a duration.
     fn as_duration(&self) -> Option<f64> {
         match self {
             Value::Number(num) => Some(*num),
@@ -137,7 +151,7 @@ impl ValueConversion for Value {
     }
 }
 
-/// Blanket implementation for `Option<Value>`
+/// Blanket implementation for `Option<Value>` that delegates conversion methods to the contained `Value`.
 impl<T: ValueConversion> ValueConversion for Option<T> {
     fn as_i64(&self) -> Option<i64> {
         self.as_ref()?.as_i64()

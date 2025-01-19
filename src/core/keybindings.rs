@@ -1,4 +1,3 @@
-use crate::app_manager::AppManager;
 use crate::sys_tray::SystemTrayEvent;
 use schema_jsonrs::JsonSchema;
 use serde::Deserialize;
@@ -70,28 +69,14 @@ impl Default for Keybindings {
     }
 }
 
-pub fn create_keybindings() -> anyhow::Result<Vec<KeybindingConfig>> {
-    let config = AppManager::get().config().clone();
-
-    let bindings = vec![
-        KeybindingConfig::new(
-            SystemTrayEvent::OpenConfig.into(),
-            config.keybindings.open_config.clone().as_str(),
-            Some(SystemTrayEvent::OpenConfig),
-        ),
-        KeybindingConfig::new(
-            SystemTrayEvent::ReloadConfig.into(),
-            config.keybindings.reload.clone().as_str(),
-            Some(SystemTrayEvent::ReloadConfig),
-        ),
-        KeybindingConfig::new(
-            SystemTrayEvent::Exit.into(),
-            config.keybindings.exit.clone().as_str(),
-            Some(SystemTrayEvent::Exit),
-        ),
-    ];
-
-    debug!("[create_keybindings] Keybindings created: {bindings:#?}");
-
-    Ok(bindings)
+impl KeybindingConfig {
+    pub fn from_config(config: &Keybindings) -> anyhow::Result<Vec<Self>> {
+        let bindings = vec![
+            KeybindingConfig::new("Reload", config.reload.as_str(), Some(SystemTrayEvent::ReloadConfig)),
+            KeybindingConfig::new("Open Config", config.open_config.as_str(), Some(SystemTrayEvent::OpenConfig)),
+            KeybindingConfig::new("Exit", config.exit.as_str(), Some(SystemTrayEvent::Exit)),
+        ];
+        debug!("[create_keybindings] Keybindings created: {bindings:#?}");
+        Ok(bindings)
+    }
 }

@@ -34,7 +34,11 @@ use windows::Win32::Graphics::Dwm::DWMWCP_DONOTROUND;
 use windows::Win32::Graphics::Dwm::DWMWCP_ROUND;
 use windows::Win32::Graphics::Dwm::DWMWCP_ROUNDSMALL;
 
-/// Default configuration content stored as a YAML string.
+#[cfg(feature = "yml")]
+const DEFAULT_CONFIG: &str = include_str!("../resources/config.yaml");
+
+#[cfg(not(feature = "yml"))]
+#[cfg(feature = "json")]
 const DEFAULT_CONFIG: &str = include_str!("../resources/config.jsonc");
 
 pub static CONFIG_FORMAT: LazyLock<RwLock<ConfigFormat>> =
@@ -364,7 +368,13 @@ impl UserConfig {
 
     /// Creates a default configuration file in the specified directory.
     pub fn create_default_config(config_dir: &Path) -> anyhow::Result<PathBuf> {
+        #[cfg(feature = "yml")]
+        let path = config_dir.join("config.yaml");
+
+        #[cfg(not(feature = "yml"))]
+        #[cfg(feature = "json")]
         let path = config_dir.join("config.jsonc");
+
         write(path.clone(), DEFAULT_CONFIG.as_bytes())
             .with_context(|| format!("failed to write default config to {}", path.display()))?;
 
@@ -473,7 +483,7 @@ impl UserConfig {
     /// - If a keyboard hook is available, the keybindings are refreshed and applied.
     pub fn reload() -> bool {
         let app_manager = AppManager::get();
-        debug!("reloading application configuration and restarting borders.");
+        debug!("[reload] UserConfig: Reloading and restarting borders");
         let old_config = app_manager.config().clone();
         Self::update();
         let new_config = app_manager.config();

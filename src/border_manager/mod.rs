@@ -55,7 +55,7 @@ pub fn register_border_class() -> anyhow::Result<()> {
 
 pub fn destroy_all_borders() -> anyhow::Result<()> {
     let mut borders = window_borders();
-    info!("destroying all borders...");
+    info!("[destroy_all_borders] Borders: Destroying");
 
     for (_, border) in borders.iter() {
         WindowsApi::destroy_window(border.border_window)
@@ -71,7 +71,7 @@ pub fn destroy_all_borders() -> anyhow::Result<()> {
 
 pub fn reload_borders() {
     if destroy_all_borders().is_ok() {
-        info!("reloading borders...");
+        info!("[reload_borders] Borders: Destroyed successfully");
 
         WindowsApi::process_window_handles(&Border::create).log_if_err();
     }

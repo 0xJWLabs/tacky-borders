@@ -2,11 +2,11 @@ use crate::animation::AnimationsConfig;
 use crate::app_manager::AppManager;
 use crate::border_manager::reload_borders;
 use crate::colors::GlobalColor;
-use crate::core::dimension::deserialize_dimension;
-use crate::core::dimension::deserialize_optional_dimension;
 use crate::core::helpers::serde_default_i32;
 use crate::core::helpers::serde_default_u64;
 use crate::core::keybindings::Keybindings;
+use crate::core::value::Value;
+use crate::core::value::ValueConversion;
 use crate::create_keybindings;
 use crate::effect::EffectsConfig;
 use crate::error::LogIfErr;
@@ -223,7 +223,7 @@ pub struct GlobalRuleConfig {
     /// Default width of the window borders.
     #[serde(
         deserialize_with = "deserialize_dimension",
-        default = "serde_default_i32::<2>"
+        default = "serde_default_i32::<1>"
     )]
     pub border_width: i32,
     /// Default offset for the window borders.
@@ -520,4 +520,24 @@ impl UserConfig {
             Err(err) => error!("{err}"),
         }
     }
+}
+
+// Deserializer
+
+/// Deserializes a dimension value.
+pub fn deserialize_dimension<'de, D>(deserializer: D) -> Result<i32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+    value.as_i32().ok_or_else(|| de::Error::custom("Invalid Value"))
+}
+
+/// Deserializes an optional dimension value.
+pub fn deserialize_optional_dimension<'de, D>(deserializer: D) -> Result<Option<i32>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Option::<Value>::deserialize(deserializer)?;
+    Ok(value.and_then(|v| v.as_i32()))
 }

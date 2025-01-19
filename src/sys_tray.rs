@@ -15,16 +15,16 @@ use crate::core::helpers::type_name_of_val;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SystemTrayEvent {
+    Exit,
     OpenConfig,
     ReloadConfig,
-    Exit,
 }
 
 impl SystemTrayEvent {
     pub fn execute(&self) {
         match self {
-            SystemTrayEvent::OpenConfig => UserConfig::open(),
             SystemTrayEvent::Exit => exit_application(),
+            SystemTrayEvent::OpenConfig => UserConfig::open(),
             SystemTrayEvent::ReloadConfig => {
                 let _ = UserConfig::reload();
             }
@@ -33,8 +33,8 @@ impl SystemTrayEvent {
 
     pub fn as_function_name(&self) -> &'static str {
         match self {
-            SystemTrayEvent::OpenConfig => type_name_of_val(&UserConfig::open),
             SystemTrayEvent::Exit => type_name_of_val(&exit_application),
+            SystemTrayEvent::OpenConfig => type_name_of_val(&UserConfig::open),
             SystemTrayEvent::ReloadConfig => type_name_of_val(&UserConfig::reload),
         }
     }
@@ -67,9 +67,9 @@ impl FromStr for SystemTrayEvent {
 impl From<SystemTrayEvent> for &'static str {
     fn from(value: SystemTrayEvent) -> Self {
         match value {
+            SystemTrayEvent::Exit => "exit",
             SystemTrayEvent::OpenConfig => "open_config",
             SystemTrayEvent::ReloadConfig => "reload_config",
-            SystemTrayEvent::Exit => "exit",
         }
     }
 }

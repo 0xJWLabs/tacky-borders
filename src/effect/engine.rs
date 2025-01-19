@@ -1,9 +1,6 @@
 use super::{EffectConfig, EffectTranslationConfig};
 use crate::core::helpers::parse_length_str;
-use crate::core::{
-    effect::{EffectKind, EffectTranslation},
-    value::Value,
-};
+use crate::core::value::ValueConversion;
 use anyhow::anyhow;
 use std::str::FromStr;
 
@@ -15,6 +12,30 @@ pub struct EffectEngine {
     pub translation: EffectTranslation,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum EffectKind {
+    Glow,
+    Shadow,
+}
+
+impl FromStr for EffectKind {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "glow" => Ok(EffectKind::Glow),
+            "shadow" => Ok(EffectKind::Shadow),
+            _ => Err("Unknown effect type"),
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct EffectTranslation {
+    pub x: f32,
+    pub y: f32,
+}
+
 impl TryFrom<EffectConfig> for EffectEngine {
     type Error = anyhow::Error;
 
@@ -22,12 +43,7 @@ impl TryFrom<EffectConfig> for EffectEngine {
         let kind = EffectKind::from_str(value.kind.as_str())
             .map_err(|_| anyhow!("invalid or missing animation kind"))?;
 
-        let standard_deviation = match value.standard_deviation {
-            Some(Value::Number(val)) => val,
-            Some(Value::Text(val)) => parse_length_str(&val)
-                .ok_or_else(|| anyhow!("invalid length string for standard_deviation"))?,
-            None => 8.0,
-        };
+        let standard_deviation = value.standard_deviation.as_f32().unwrap_or(8.0);
 
         let translation = match value.translation {
             EffectTranslationConfig::String(translation) => {
@@ -40,8 +56,8 @@ impl TryFrom<EffectConfig> for EffectEngine {
                     let y_str = data[1];
 
                     EffectTranslation {
-                        x: parse_length_str(x_str).unwrap_or_default(),
-                        y: parse_length_str(y_str).unwrap_or_default(),
+                        x: parse_length_str(x_str).unwrap_or_default() as f32,
+                        y: parse_length_str(y_str).unwrap_or_default() as f32,
                     }
                 } else {
                     // Handle case where translation string doesn't have both x and y values.
@@ -54,14 +70,8 @@ impl TryFrom<EffectConfig> for EffectEngine {
             EffectTranslationConfig::Struct(ref translation) => {
                 // Extract x and y from the EffectTranslationStruct
                 EffectTranslation {
-                    x: match translation.x {
-                        Value::Number(val) => val, // Convert Value::Number to f64
-                        Value::Text(ref val) => parse_length_str(val).unwrap_or_default(),
-                    },
-                    y: match translation.y {
-                        Value::Number(val) => val, // Convert Value::Number to f64
-                        Value::Text(ref val) => parse_length_str(val).unwrap_or_default(),
-                    },
+                    x: translation.x.as_f32().unwrap_or_default(),
+                    y: translation.y.as_f32().unwrap_or_default(),
                 }
             }
         };

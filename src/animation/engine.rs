@@ -4,8 +4,7 @@ use crate::colors::ColorImpl;
 use crate::core::animation::AnimationEasing;
 use crate::core::animation::AnimationEasingImpl;
 use crate::core::animation::AnimationKind;
-use crate::core::animation::parse_duration_str;
-use crate::core::value::Value;
+use crate::core::value::ValueConversion;
 use anyhow::anyhow;
 use std::str::FromStr;
 use std::time::Duration as StdDuration;
@@ -171,12 +170,7 @@ impl TryFrom<AnimationConfig> for AnimationEngine {
         let easing = AnimationEasing::from_str(value.easing.clone().unwrap_or_default().as_str())
             .unwrap_or_default();
 
-        // Parse or default the duration.
-        let duration = match value.duration {
-            Some(Value::Number(value)) => value,
-            Some(Value::Text(ref value)) => parse_duration_str(value).unwrap_or(default_duration), // Default to 1.0 if parsing fails
-            None => default_duration, // Default duration
-        };
+        let duration = value.duration.as_duration().unwrap_or(default_duration) as f32;
 
         // Return the constructed Animation struct.
         Ok(AnimationEngine {

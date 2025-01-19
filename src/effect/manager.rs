@@ -13,9 +13,12 @@ use windows::{
     },
 };
 
-use crate::{core::effect::EffectKind, render_resources::RenderResources};
+use crate::render_resources::RenderResources;
 
-use super::{EffectsConfig, engine::EffectEngine};
+use super::{
+    EffectsConfig,
+    engine::{EffectEngine, EffectKind},
+};
 
 #[derive(Debug, Default, Clone)]
 pub struct EffectManager {

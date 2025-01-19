@@ -1,7 +1,7 @@
 use anyhow::Context;
 use windows::Win32::Graphics::{
     Direct2D::{ID2D1Bitmap1, ID2D1DeviceContext7},
-    DirectComposition::{IDCompositionDevice, IDCompositionTarget, IDCompositionVisual},
+    DirectComposition::IDCompositionTarget,
     Dxgi::IDXGISwapChain1,
 };
 
@@ -12,9 +12,7 @@ pub struct RenderResources {
     pub target_bitmap: Option<ID2D1Bitmap1>,
     pub border_bitmap: Option<ID2D1Bitmap1>,
     pub mask_bitmap: Option<ID2D1Bitmap1>,
-    pub d_comp_device: Option<IDCompositionDevice>,
-    pub d_comp_target: Option<IDCompositionTarget>,
-    pub d_comp_visual: Option<IDCompositionVisual>,
+    pub composition_target: Option<IDCompositionTarget>,
 }
 
 impl RenderResources {

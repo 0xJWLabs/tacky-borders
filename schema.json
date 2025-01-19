@@ -475,6 +475,20 @@
       ]
     },
     "EffectTranslationConfig": {
+      "description": "Configuration for defining the translation of an effect. This can either be a string specifying the translation in a two-dimensional format (e.g., '10px 20px') or a structured object with `x` and `y` values for fine-grained control.",
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[\\d.]+(px|in|cm|mm|pt|pc)\\s+[\\d.]+(px|in|cm|mm|pt|pc)$",
+          "description": "A string representing translation in the format 'x-axis value y-axis value', where both values are followed by valid CSS length units such as px, in, cm, mm, pt, or pc. For example, '10px 20px'."
+        },
+        {
+          "$ref": "#/$defs/EffectTranslationStruct",
+          "description": "An object specifying translation with individual `x` and `y` properties, each representing a translation value with a valid CSS length unit."
+        }
+      ]
+    },
+    "EffectTranslationStruct": {
       "description": "Configuration for the translation of an effect, including both x and y coordinates.",
       "type": "object",
       "properties": {

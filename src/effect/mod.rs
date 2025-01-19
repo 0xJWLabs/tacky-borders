@@ -39,17 +39,33 @@ pub struct EffectConfig {
     pub translation: EffectTranslationConfig,
 }
 
+/// Enum representing the configuration for effect translation.
+/// This enum can either hold a structured translation configuration (`EffectTranslationStruct`),
+/// or a simple string value.
+#[derive(Debug, Clone, Deserialize, PartialEq, JsonSchema)]
+pub enum EffectTranslationConfig {
+    Struct(EffectTranslationStruct),
+    String(String),
+}
+
+impl Default for EffectTranslationConfig {
+    fn default() -> Self {
+        EffectTranslationConfig::Struct(Default::default())
+    }
+}
+
 /// Configuration for the translation of an effect, including both x and y coordinates.
+/// This struct is used when the translation is more complex, involving both `x` and `y` axes.
 #[derive(Debug, Clone, Deserialize, PartialEq, JsonSchema)]
 #[serde(default)] // Apply the default values provided in `default_translation` to both x and y.
-pub struct EffectTranslationConfig {
-    /// The translation on the x-axis.
-    /// Default is a `Value::Number(0.0)` if no value is provided.
+pub struct EffectTranslationStruct {
+    /// The translation along the x-axis.
+    /// If no value is provided during deserialization, it defaults to `0.0`.
     #[serde(default = "default_translation")]
     pub x: Value,
 
-    /// The translation on the y-axis.
-    /// Default is a `Value::Number(0.0)` if no value is provided.
+    /// The translation along the y-axis.
+    /// If no value is provided during deserialization, it defaults to `0.0`.
     #[serde(default = "default_translation")]
     pub y: Value,
 }
@@ -61,9 +77,9 @@ fn default_translation() -> Value {
 }
 
 /// Default implementation for `EffectTranslationConfig`. This will ensure that both x and y have the default translation.
-impl Default for EffectTranslationConfig {
+impl Default for EffectTranslationStruct {
     fn default() -> Self {
-        EffectTranslationConfig {
+        EffectTranslationStruct {
             x: default_translation(),
             y: default_translation(),
         }

@@ -1,4 +1,4 @@
-use super::EffectConfig;
+use super::{EffectConfig, EffectTranslationConfig};
 use crate::core::helpers::parse_length_str;
 use crate::core::{
     effect::{EffectKind, EffectTranslation},
@@ -29,15 +29,41 @@ impl TryFrom<EffectConfig> for EffectEngine {
             None => 8.0,
         };
 
-        let translation = EffectTranslation {
-            x: match value.translation.x {
-                Value::Number(val) => val,
-                Value::Text(ref val) => parse_length_str(val).unwrap_or_default(),
-            },
-            y: match value.translation.y {
-                Value::Number(val) => val,
-                Value::Text(ref val) => parse_length_str(val).unwrap_or_default(),
-            },
+        let translation = match value.translation {
+            EffectTranslationConfig::String(translation) => {
+                // Split the string by whitespace into components for x and y.
+                let data = translation.split_ascii_whitespace().collect::<Vec<&str>>();
+
+                // Ensure there are at least two elements (x and y).
+                if data.len() >= 2 {
+                    let x_str = data[0];
+                    let y_str = data[1];
+
+                    EffectTranslation {
+                        x: parse_length_str(x_str).unwrap_or_default(),
+                        y: parse_length_str(y_str).unwrap_or_default(),
+                    }
+                } else {
+                    // Handle case where translation string doesn't have both x and y values.
+                    EffectTranslation {
+                        x: 0.0, // Default value if parsing fails or if there are not enough components.
+                        y: 0.0,
+                    }
+                }
+            }
+            EffectTranslationConfig::Struct(ref translation) => {
+                // Extract x and y from the EffectTranslationStruct
+                EffectTranslation {
+                    x: match translation.x {
+                        Value::Number(val) => val, // Convert Value::Number to f64
+                        Value::Text(ref val) => parse_length_str(val).unwrap_or_default(),
+                    },
+                    y: match translation.y {
+                        Value::Number(val) => val, // Convert Value::Number to f64
+                        Value::Text(ref val) => parse_length_str(val).unwrap_or_default(),
+                    },
+                }
+            }
         };
 
         Ok(Self {

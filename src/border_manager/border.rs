@@ -596,9 +596,7 @@ impl Border {
             // because Rust borrow checker be mad elsewhere in the code :P
             self.render_resources.d2d_context = Some(d2d_context);
             self.render_resources.swap_chain = Some(swap_chain);
-            self.render_resources.d_comp_device = Some(d_comp_device);
-            self.render_resources.d_comp_target = Some(d_comp_target);
-            self.render_resources.d_comp_visual = Some(d_comp_visual);
+            self.render_resources.composition_target = Some(d_comp_target);
         }
 
         self.create_bitmaps(screen_width, screen_height)

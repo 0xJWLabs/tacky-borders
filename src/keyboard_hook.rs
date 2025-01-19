@@ -19,18 +19,6 @@ use windows::Win32::UI::WindowsAndMessaging::WH_KEYBOARD_LL;
 use windows::Win32::UI::WindowsAndMessaging::WM_KEYDOWN;
 use windows::Win32::UI::WindowsAndMessaging::WM_SYSKEYDOWN;
 
-#[macro_export]
-macro_rules! function {
-    () => {{
-        fn f() {}
-        fn type_name_of<T>(_: T) -> &'static str {
-            std::any::type_name::<T>()
-        }
-        let name = type_name_of(f);
-        name.strip_suffix("::f").unwrap()
-    }};
-}
-
 use crate::windows_api::PointerConversion;
 
 const MODIFIER_KEYS: [u16; 6] = [
@@ -80,12 +68,18 @@ impl KeyboardHook {
         debug!("[start] Keyboard Hook: Initializing");
         let hook = unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook_proc), None, 0) }?;
         *self.hook.lock().unwrap() = hook.0.as_int();
-        debug!("[start] Keyboard Hook: Successfully initialized (Hook ID: {})", hook.0.as_int());
+        debug!(
+            "[start] Keyboard Hook: Successfully initialized (Hook ID: {})",
+            hook.0.as_int()
+        );
         Ok(())
     }
 
     pub fn update(&self, keybindings: &[KeybindingConfig]) {
-        debug!("[update] Keyboard Hook: Updating keybindings ({} entries)", keybindings.len());
+        debug!(
+            "[update] Keyboard Hook: Updating keybindings ({} entries)",
+            keybindings.len()
+        );
         *self.keybindings_by_trigger_key.lock().unwrap() =
             Self::group_keybindings(&keybindings.to_owned());
         debug!("[update] Keyboard Hook: Successfully updated keybindings");
@@ -95,10 +89,16 @@ impl KeyboardHook {
     pub fn stop(&self) -> anyhow::Result<()> {
         let mut hook = self.hook.lock().unwrap();
         if *hook != isize::default() {
-            debug!("[stop] Keyboard Hook: Stopping (Hook ID: {})...", hook.as_int());
+            debug!(
+                "[stop] Keyboard Hook: Stopping (Hook ID: {})...",
+                hook.as_int()
+            );
             unsafe { UnhookWindowsHookEx(HHOOK(hook.as_ptr())) }?;
             *hook = 0;
-            debug!("[stop] Keyboard Hook: Sucessfully stopped (Hook ID: {})...", hook.as_int());
+            debug!(
+                "[stop] Keyboard Hook: Sucessfully stopped (Hook ID: {})...",
+                hook.as_int()
+            );
         } else {
             debug!("[stop] Keyboard Hook: Not active; skipping stop");
         }

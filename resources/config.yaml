@@ -23,15 +23,15 @@ global:
   # border_width: Specifies the thickness of the window border in pixels.
   #   - Example: 2 sets the border to 2 pixels wide.
   #   - You can also use string values like "2px".
-  border_width: 2  # Also accepts "2px"
-  
+  border_width: "2px"
+
   # border_offset: Adjusts the position of the border relative to the window.
   #   - Negative values shrink the border inward (reducing the visible area).
   #   - Positive values expand the border outward (increasing its coverage).
   #   - You can also use string values like "2px"
   # Example: -1 shrinks the border slightly inside the window.
-  border_offset: -1  # Also accepts "-1px"
-  
+  border_offset: "-1px"
+
   # border_style: Controls the shape of the window's border corners.
   #   - Use numeric values for custom corner rounding in pixels (e.g., 5 applies a 5-pixel radius).
   #   - Use predefined styles for consistent results:
@@ -40,7 +40,7 @@ global:
   #     - "SmallRound": Smaller rounded corners with a default radius.
   #     - "Square": No rounding, resulting in square corners.
   #     - "Radius(num)": Applies a custom radius where "num" is a positive number defining the pixel radius of the corners.
-  border_style: "Auto"  # or "Radius(10)" for custom 10px radius, or "Round", "SmallRound", etc.
+  border_style: "Auto" # or "Radius(10)" for custom 10px radius, or "Round", "SmallRound", etc.
 
   # Active Window Border Color
   # - Specifies the border color for the active (focused) window.
@@ -59,9 +59,9 @@ global:
   #   - Single Color:
   #       active_color: "#ff0000"
   #   - Gradient Map:
-  #     active_color: 
+  #     active_color:
   #       colors: ["#89b4fa", "#cba6f7"]
-  #       direction: 
+  #       direction:
   #         start: [0.0, 0.0]
   #         end: [1.0, 0.0]
 
@@ -181,7 +181,7 @@ global:
         opacity: 1.0
     enabled: true
 
-  # initialize_delay: The initial delay (in milliseconds) before applying animations when the window is first rendered. 
+  # initialize_delay: The initial delay (in milliseconds) before applying animations when the window is first rendered.
   #             A reduced delay can be used to account for animations like fade, which take additional time.
   # restore_delay: The delay (in milliseconds) before applying animations when a minimized window is restored.
   initialize_delay: 150

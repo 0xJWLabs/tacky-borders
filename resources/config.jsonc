@@ -32,7 +32,7 @@
     // - Example:
     //   - `2` -> 2px border thickness
     //   - "3px" -> 3px border thickness (equivalent to `3`)
-    "border_width": 2,
+    "border_width": "2px",
     // Border Offset:
     // - Determines how much the border is shifted relative to the window edges.
     // - Negative values pull the border inward, reducing its visible area.
@@ -41,7 +41,7 @@
     // - Example:
     //   - `-1` -> The border moves 1px inward.
     //   - `2` -> The border expands 2px outward.
-    "border_offset": -1,
+    "border_offset": "-1px",
     // Border Style:
     // - Defines the shape and curvature of window corners.
     // - Possible values:

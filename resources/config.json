@@ -8,8 +8,8 @@
     "exit": "f10"
   },
   "global": {
-    "border_width": 2,
-    "border_offset": -1,
+    "border_width": "2px",
+    "border_offset": "-1px",
     "border_style": "Auto",
     "active_color": {
       "colors": [

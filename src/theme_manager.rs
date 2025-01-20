@@ -1,10 +1,10 @@
 use core::fmt;
-use std::fs::DirBuilder;
-use serde::de;
-use serde::Deserializer;
-use serde::Deserialize;
-use std::path::Path;
 use schema_jsonrs::JsonSchema;
+use serde::Deserialize;
+use serde::Deserializer;
+use serde::de;
+use std::fs::DirBuilder;
+use std::path::Path;
 
 use crate::user_config::UserConfig;
 
@@ -28,7 +28,8 @@ impl fmt::Debug for ThemeManager {
                         .finish()
                 }
             }
-            None => f.debug_struct("ThemeManager")
+            None => f
+                .debug_struct("ThemeManager")
                 .field("theme_name", &"None")
                 .field("path", &"None")
                 .finish(),
@@ -71,47 +72,57 @@ pub fn deserialize_theme<'de, D>(deserializer: D) -> Result<ThemeManager, D::Err
 where
     D: Deserializer<'de>,
 {
-    // First, attempt to deserialize the theme as a String.
     let theme_name: Option<String> = Option::deserialize(deserializer)?;
 
     match theme_name {
         Some(theme_name) => {
-            let config_dir = match UserConfig::get_config_dir() {
-                Ok(dir) => dir,
-                Err(e) => {
-                    return Err(de::Error::custom(format!(
-                        "failed to retrieve the config directory: {}",
-                        e
-                    )))
-                }
-            };
+            let config_dir = UserConfig::get_config_dir().map_err(|e| {
+                de::Error::custom(format!("failed to retrieve the config directory: {}", e))
+            })?;
 
             let theme_dir = config_dir.join("themes");
 
-            // If the themes directory does not exist, create it.
+            // Ensure theme directory exists, creating it if necessary.
             if !theme_dir.exists() {
-                if let Err(e) = create_theme_directory(&theme_dir) {
-                    return Err(de::Error::custom(format!(
-                        "failed to create themes directory: {}",
-                        e
-                    )));
-                }
+                create_theme_directory(&theme_dir).map_err(|e| {
+                    de::Error::custom(format!("failed to create themes directory: {}", e))
+                })?;
 
-                // If the directory is created, no theme file exists yet.
                 return Err(de::Error::custom(format!(
                     "theme '{}' is not found in the newly created themes directory",
                     theme_name
                 )));
             }
 
-            // Check if the theme file (with .json or .jsonc extension) exists.
-            let theme_json_path = theme_dir.join(format!("{}.json", theme_name));
-            let theme_jsonc_path = theme_dir.join(format!("{}.jsonc", theme_name));
+            // Helper to check if a theme file exists and return its path.
+            fn get_theme_path(
+                theme_dir: &std::path::Path,
+                theme_name: &str,
+            ) -> Option<std::path::PathBuf> {
+                let extensions = ["json", "jsonc"];
+                #[cfg(feature = "yml")]
+                {
+                    let yaml_path = theme_dir.join(format!("{}.yaml", theme_name));
+                    if yaml_path.exists() {
+                        return Some(yaml_path);
+                    }
+                }
 
-            if theme_json_path.exists() {
-                Ok(ThemeManager(Some(theme_json_path.to_string_lossy().into_owned())))
-            } else if theme_jsonc_path.exists() {
-                Ok(ThemeManager(Some(theme_jsonc_path.to_string_lossy().into_owned())))
+                for ext in extensions.iter() {
+                    let path = theme_dir.join(format!("{}.{}", theme_name, ext));
+                    if path.exists() {
+                        return Some(path);
+                    }
+                }
+
+                None
+            }
+
+            // Try to find the theme file with any valid extension.
+            if let Some(theme_path) = get_theme_path(&theme_dir, &theme_name) {
+                Ok(ThemeManager(Some(
+                    theme_path.to_string_lossy().into_owned(),
+                )))
             } else {
                 Err(de::Error::custom(format!(
                     "theme '{}' is not found in the themes directory",

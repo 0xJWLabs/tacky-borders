@@ -24,34 +24,49 @@ If you'd like to build the application manually:
 
 2. Clone this repository:
 
-    ```sh
-    git clone https://github.com/GlazeBar/tacky-borders.git
+    ```bash
+    git clone https://github.com/0xJWLabs/tacky-borders.git
     ```
 
 3. Navigate into the project directory:
 
-    ```sh
+    ```bash
     cd tacky-borders
     ```
 
 4. Build or run the project:
 
-    ```sh
+    ```bash
     cargo build --release
     ```
 
     or
 
-    ```sh
+    ```bash
     cargo run
     ```
 
 ## Configuration
 
-The config file is located in `%USERPROFILE%/.config/tacky-borders/`. You can easily modified the configuration by right clicking 
-on the tray icon and hitting "Open Config" or by triggering `open_config` keybinding.
+The configuration file for Tacky Borders can be found in one of the following locations:
 
-The following auto-generated `config.jsonc` is included as reference:
+- `%USERPROFILE%/.config/tacky-borders/`
+- `%USERPROFILE%/.tacky-borders/` (alternative location)
+
+To easily modify the configuration, you can:
+
+1. **Right-click** on the tray icon and select **"Open Config"**.
+2. Use the `open_config` keybinding to open the configuration file directly.
+
+The configuration file is auto-generated and named `config.jsonc` by default, but you can also use the following formats for your config file:
+
+- **JSONC** (`config.jsonc`)
+- **JSON** (`config.json`)
+- **YAML** (`config.yaml`)
+
+### Default Configuration
+
+Here's an example of the default `config.jsonc`:
 
 ```jsonc
 {
@@ -384,10 +399,18 @@ Below is an example of a theme file:
 ```
 
 #### Storing Themes
-Place your theme files under the following directory for tacky-borders to recognize them:
-```text
-%USERPROFILE%/.config/tacky-borders/themes/{theme-name}.json(c)
-```
+
+Place your theme files in the following directory, depending on where your Tacky Borders configuration is located:
+
+- If your config is in `%USERPROFILE%/.config/tacky-borders/`:
+  - `%USERPROFILE%/.config/tacky-borders/themes/{theme-name}.json(c)`
+  - `%USERPROFILE%/.config/tacky-borders/themes/{theme-name}.yaml`
+
+- If your config is in `%USERPROFILE%/.tacky-borders/`:
+  - `%USERPROFILE%/.tacky-borders/themes/{theme-name}.json(c)`
+  - `%USERPROFILE%/.tacky-borders/themes/{theme-name}.yaml`
+
+Replace `{theme-name}` with the name of your theme. You can use either **JSON** (`.json`), **JSONC** (`.jsonc`), or **YAML** (`.yaml`) formats for theme files.
 
 ## Screenshots
 ![tacky-borders](./resources/screenshot.png)

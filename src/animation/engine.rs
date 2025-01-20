@@ -170,7 +170,7 @@ impl TryFrom<AnimationConfig> for AnimationEngine {
         let easing = AnimationEasing::from_str(value.easing.clone().unwrap_or_default().as_str())
             .unwrap_or_default();
 
-        let duration = value.duration.as_duration().unwrap_or(default_duration) as f32;
+        let duration = value.duration.as_duration_f32().unwrap_or(default_duration);
 
         // Return the constructed Animation struct.
         Ok(AnimationEngine {

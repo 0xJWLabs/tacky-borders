@@ -530,7 +530,7 @@ where
 {
     let value = Value::deserialize(deserializer)?;
     value
-        .as_i32()
+        .as_length_i32()
         .ok_or_else(|| de::Error::custom("Invalid Value"))
 }
 
@@ -540,6 +540,5 @@ where
     D: Deserializer<'de>,
 {
     let value = Option::<Value>::deserialize(deserializer)?;
-    Ok(value.and_then(|v| v.as_i32()))
+    Ok(value.and_then(|v| v.as_length_i32()))
 }
-

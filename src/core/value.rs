@@ -102,74 +102,160 @@ where
     }
 }
 
-/// Trait for converting `Value` into various types.
+macro_rules! as_type {
+    ($val:expr, $target_type:ty) => {
+        // Safely convert using `as` for primitive types
+        $val as $target_type
+    };
+}
+
 pub trait ValueConversion {
-    fn as_i64(&self) -> Option<i64>;
-    fn as_i32(&self) -> Option<i32>;
-    fn as_f32(&self) -> Option<f32>;
-    fn as_f64(&self) -> Option<f64>;
-    fn as_duration(&self) -> Option<f64>;
+    fn as_length_f32(&self) -> Option<f32>;
+    fn as_length_i32(&self) -> Option<i32>;
+    fn as_length_f64(&self) -> Option<f64>;
+    fn as_length_i64(&self) -> Option<i64>;
+    fn as_length_u32(&self) -> Option<u32>;
+    fn as_length_u64(&self) -> Option<u64>;
+    fn as_duration_f32(&self) -> Option<f32>;
+    fn as_duration_i32(&self) -> Option<i32>;
+    fn as_duration_f64(&self) -> Option<f64>;
+    fn as_duration_i64(&self) -> Option<i64>;
+    fn as_duration_u32(&self) -> Option<u32>;
+    fn as_duration_u64(&self) -> Option<u64>;
 }
 
 impl ValueConversion for Value {
-    /// Converts the `Value` to an `Option<i64>`. 
-    /// If the value is a number, it converts it to `i64`; if it's a string, it tries to parse it.
-    fn as_i64(&self) -> Option<i64> {
+    fn as_length_f32(&self) -> Option<f32> {
         match self {
-            Value::Number(num) => Some(*num as i64),
-            Value::String(s) => parse_length_str(s).map(|n| n as i64),
+            Value::Number(num) => Some(as_type!(*num, f32)),
+            Value::String(s) => parse_length_str(s).map(|n| as_type!(n, f32)),
         }
     }
 
-    /// Converts the `Value` to an `Option<i32>`. 
-    /// This is derived by converting the `i64` version of the value.
-    fn as_i32(&self) -> Option<i32> {
-        self.as_i64().map(|n| n as i32)
-    }
-
-    /// Converts the `Value` to an `Option<f32>`.
-    fn as_f32(&self) -> Option<f32> {
-        self.as_f64().map(|n| n as f32)
-    }
-
-    /// Converts the `Value` to an `Option<f64>`. 
-    /// If it's a number, it returns it as is; if it's a string, it tries to parse it.
-    fn as_f64(&self) -> Option<f64> {
+    fn as_length_i32(&self) -> Option<i32> {
         match self {
-            Value::Number(num) => Some(*num),
-            Value::String(s) => parse_length_str(s),
+            Value::Number(num) => Some(as_type!(*num, i32)),
+            Value::String(s) => parse_length_str(s).map(|n| as_type!(n, i32)),
         }
     }
 
-    /// Converts the `Value` to an `Option<f64>` representing a duration.
-    /// If it's a number, it returns it as is; if it's a string, it tries to parse it as a duration.
-    fn as_duration(&self) -> Option<f64> {
+    fn as_length_f64(&self) -> Option<f64> {
         match self {
-            Value::Number(num) => Some(*num),
-            Value::String(s) => parse_duration_str(s),
+            Value::Number(num) => Some(as_type!(*num, f64)),
+            Value::String(s) => parse_length_str(s).map(|n| as_type!(n, f64)),
+        }
+    }
+
+    fn as_length_i64(&self) -> Option<i64> {
+        match self {
+            Value::Number(num) => Some(as_type!(*num, i64)),
+            Value::String(s) => parse_length_str(s).map(|n| as_type!(n, i64)),
+        }
+    }
+
+    fn as_length_u32(&self) -> Option<u32> {
+        match self {
+            Value::Number(num) => Some(as_type!(*num, u32)),
+            Value::String(s) => parse_length_str(s).map(|n| as_type!(n, u32)),
+        }
+    }
+
+    fn as_length_u64(&self) -> Option<u64> {
+        match self {
+            Value::Number(num) => Some(as_type!(*num, u64)),
+            Value::String(s) => parse_length_str(s).map(|n| as_type!(n, u64)),
+        }
+    }
+
+    fn as_duration_f32(&self) -> Option<f32> {
+        match self {
+            Value::Number(num) => Some(as_type!(*num, f32)),
+            Value::String(s) => parse_duration_str(s).map(|n| as_type!(n, f32)),
+        }
+    }
+
+    fn as_duration_i32(&self) -> Option<i32> {
+        match self {
+            Value::Number(num) => Some(as_type!(*num, i32)),
+            Value::String(s) => parse_duration_str(s).map(|n| as_type!(n, i32)),
+        }
+    }
+
+    fn as_duration_f64(&self) -> Option<f64> {
+        match self {
+            Value::Number(num) => Some(as_type!(*num, f64)),
+            Value::String(s) => parse_duration_str(s).map(|n| as_type!(n, f64)),
+        }
+    }
+
+    fn as_duration_i64(&self) -> Option<i64> {
+        match self {
+            Value::Number(num) => Some(as_type!(*num, i64)),
+            Value::String(s) => parse_duration_str(s).map(|n| as_type!(n, i64)),
+        }
+    }
+
+    fn as_duration_u32(&self) -> Option<u32> {
+        match self {
+            Value::Number(num) => Some(as_type!(*num, u32)),
+            Value::String(s) => parse_duration_str(s).map(|n| as_type!(n, u32)),
+        }
+    }
+
+    fn as_duration_u64(&self) -> Option<u64> {
+        match self {
+            Value::Number(num) => Some(as_type!(*num, u64)),
+            Value::String(s) => parse_duration_str(s).map(|n| as_type!(n, u64)),
         }
     }
 }
 
-/// Blanket implementation for `Option<Value>` that delegates conversion methods to the contained `Value`.
 impl<T: ValueConversion> ValueConversion for Option<T> {
-    fn as_i64(&self) -> Option<i64> {
-        self.as_ref()?.as_i64()
+    fn as_length_f32(&self) -> Option<f32> {
+        self.as_ref()?.as_length_f32()
     }
 
-    fn as_i32(&self) -> Option<i32> {
-        self.as_ref()?.as_i32()
+    fn as_length_i32(&self) -> Option<i32> {
+        self.as_ref()?.as_length_i32()
     }
 
-    fn as_f32(&self) -> Option<f32> {
-        self.as_ref()?.as_f32()
+    fn as_length_f64(&self) -> Option<f64> {
+        self.as_ref()?.as_length_f64()
     }
 
-    fn as_f64(&self) -> Option<f64> {
-        self.as_ref()?.as_f64()
+    fn as_length_i64(&self) -> Option<i64> {
+        self.as_ref()?.as_length_i64()
     }
 
-    fn as_duration(&self) -> Option<f64> {
-        self.as_ref()?.as_duration()
+    fn as_length_u32(&self) -> Option<u32> {
+        self.as_ref()?.as_length_u32()
+    }
+
+    fn as_length_u64(&self) -> Option<u64> {
+        self.as_ref()?.as_length_u64()
+    }
+
+    fn as_duration_f32(&self) -> Option<f32> {
+        self.as_ref()?.as_duration_f32()
+    }
+
+    fn as_duration_i32(&self) -> Option<i32> {
+        self.as_ref()?.as_duration_i32()
+    }
+
+    fn as_duration_f64(&self) -> Option<f64> {
+        self.as_ref()?.as_duration_f64()
+    }
+
+    fn as_duration_i64(&self) -> Option<i64> {
+        self.as_ref()?.as_duration_i64()
+    }
+
+    fn as_duration_u32(&self) -> Option<u32> {
+        self.as_ref()?.as_duration_u32()
+    }
+
+    fn as_duration_u64(&self) -> Option<u64> {
+        self.as_ref()?.as_duration_u64()
     }
 }

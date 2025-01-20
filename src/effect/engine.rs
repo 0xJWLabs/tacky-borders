@@ -43,7 +43,7 @@ impl TryFrom<EffectConfig> for EffectEngine {
         let kind = EffectKind::from_str(value.kind.as_str())
             .map_err(|_| anyhow!("invalid or missing animation kind"))?;
 
-        let standard_deviation = value.standard_deviation.as_f32().unwrap_or(8.0);
+        let standard_deviation = value.standard_deviation.as_length_f32().unwrap_or(8.0);
 
         let translation = match value.translation {
             EffectTranslationConfig::String(translation) => {
@@ -70,8 +70,8 @@ impl TryFrom<EffectConfig> for EffectEngine {
             EffectTranslationConfig::Struct(ref translation) => {
                 // Extract x and y from the EffectTranslationStruct
                 EffectTranslation {
-                    x: translation.x.as_f32().unwrap_or_default(),
-                    y: translation.y.as_f32().unwrap_or_default(),
+                    x: translation.x.as_length_f32().unwrap_or_default(),
+                    y: translation.y.as_length_f32().unwrap_or_default(),
                 }
             }
         };

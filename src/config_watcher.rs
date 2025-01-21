@@ -31,7 +31,9 @@ impl<T> ThreadHandle<T> {
                 .join()
                 .map_err(|e| anyhow!("[join] Thread Handle: Thread panicked: {:?}", e))?
         } else {
-            Err(anyhow!("[join] Thread Handle: Already joined or no thread available"))
+            Err(anyhow!(
+                "[join] Thread Handle: Already joined or no thread available"
+            ))
         }
     }
 }
@@ -75,7 +77,9 @@ impl ConfigWatcher {
                     }
                 }
             }
-            Err(err) => error!("[handle_events] Config Watcher: failed to handle events (error: {err:?})"),
+            Err(err) => {
+                error!("[handle_events] Config Watcher: failed to handle events (error: {err:?})")
+            }
         }
     }
 
@@ -98,8 +102,13 @@ impl ConfigWatcher {
 
         let handle = thread::spawn({
             move || -> anyhow::Result<()> {
-                let mut debouncer = new_debouncer(timeout, None, Self::handle_events)
-                    .map_err(|e| anyhow!("[start] Config Watcher: Failed to create debouncer (error: {:?})", e))?;
+                let mut debouncer =
+                    new_debouncer(timeout, None, Self::handle_events).map_err(|e| {
+                        anyhow!(
+                            "[start] Config Watcher: Failed to create debouncer (error: {:?})",
+                            e
+                        )
+                    })?;
 
                 debug!(
                     "[start] Config Watcher: Watching (File: {})",
@@ -108,7 +117,12 @@ impl ConfigWatcher {
 
                 debouncer
                     .watch(config_path.as_path(), RecursiveMode::Recursive)
-                    .map_err(|e| anyhow!("[start] Config Watcher: Failed to watch config path: (error: {:?})", e))?;
+                    .map_err(|e| {
+                        anyhow!(
+                            "[start] Config Watcher: Failed to watch config path: (error: {:?})",
+                            e
+                        )
+                    })?;
 
                 let mut last_checked = Instant::now();
 
@@ -120,9 +134,9 @@ impl ConfigWatcher {
                     last_checked = Instant::now();
                 }
 
-                debouncer
-                    .unwatch(config_path.as_path())
-                    .map_err(|e| anyhow!("[start] Config Watcher: Failed to unwatch (error: {:?})", e))?;
+                debouncer.unwatch(config_path.as_path()).map_err(|e| {
+                    anyhow!("[start] Config Watcher: Failed to unwatch (error: {:?})", e)
+                })?;
 
                 debug!("[start] Config Watcher: Stopped");
                 Ok(())

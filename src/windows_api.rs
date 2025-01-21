@@ -525,7 +525,7 @@ impl WindowsApi {
 
         let process_name = exe_path
             .split('\\')
-            .last()
+            .next_back()
             .and_then(|file_name| file_name.split('.').next()) // Extract the file name without extension
             .unwrap_or("") // Fallback to empty string if parsing fails
             .trim_end_matches('\0')

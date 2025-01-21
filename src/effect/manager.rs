@@ -16,27 +16,69 @@ use windows::{
 
 use super::{EffectsConfig, engine::EffectKind, wrapper::EffectEngineVec};
 
+/// Manages effects for custom window borders created using Direct2D.
+///
+/// The `EffectManager` struct is responsible for handling the creation and management of effects that can be applied
+/// to custom window borders, such as glow, shadow, and opacity effects. These effects are stored in two collections:
+/// `active` for effects that are currently applied to the border, and `inactive` for effects that are available but
+/// not active. It also manages the command lists needed for rendering the active and inactive effects in Direct2D.
+///
+/// This struct is designed to dynamically enable or disable effects and handle the Direct2D command list operations
+/// required to render these effects onto a window border.
 #[derive(Debug, Default, Clone)]
 pub struct EffectManager {
+    /// A collection of active effects applied to the custom window border.
+    ///
+    /// These effects are the ones that are currently being rendered onto the window's border. They may include
+    /// effects like glow and shadow.
     active: EffectEngineVec,
+
+    /// A collection of inactive effects that are defined but not currently being applied to the border.
+    ///
+    /// These effects are available to be enabled dynamically based on the specific rendering context or user preference.
     inactive: EffectEngineVec,
+
+    /// The command list used to record drawing operations for the active effects on the window border.
+    ///
+    /// This list stores the sequence of drawing operations (e.g., applying glow, shadow, etc.) for the active effects.
     active_command_list: Option<ID2D1CommandList>,
+
+    /// The command list used to record drawing operations for the inactive effects.
+    ///
+    /// This list contains the operations for effects that are not active but can be used when switched to active.
     inactive_command_list: Option<ID2D1CommandList>,
 }
 
 impl EffectManager {
+    /// Returns a reference to the active effects engine vector.
     pub fn active(&self) -> &EffectEngineVec {
         &self.active
     }
 
+    /// Returns a reference to the inactive effects engine vector.
     pub fn inactive(&self) -> &EffectEngineVec {
         &self.inactive
     }
 
+    /// Checks if there are any active or inactive effects.
+    /// Returns `true` if there are effects to apply, otherwise `false`.
     pub fn is_enabled(&self) -> bool {
         !self.active.is_empty() || !self.inactive.is_empty()
     }
 
+    /// Creates command lists for active and inactive effects if any are enabled.
+    /// Command lists are used to record drawing operations for effects to be applied to bitmaps.
+    ///
+    /// # Arguments
+    ///
+    /// * `d2d_context` - A reference to the Direct2D device context.
+    /// * `border_bitmap` - A reference to the bitmap representing the border.
+    /// * `mask_bitmap` - A reference to the bitmap used as a mask.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if command lists are created successfully.
+    /// * `Err(anyhow::Error)` if there is an error during creation.
     pub fn create_command_lists_if_enabled(
         &mut self,
         d2d_context: &ID2D1DeviceContext7,
@@ -232,12 +274,24 @@ impl EffectManager {
         Ok(())
     }
 
+    /// Returns a reference to the active command list.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(&ID2D1CommandList)` if the active command list exists.
+    /// * `Err(anyhow::Error)` if the active command list does not exist.
     pub fn active_command_list(&self) -> anyhow::Result<&ID2D1CommandList> {
         self.active_command_list
             .as_ref()
             .context("could not get active_command_list")
     }
 
+    /// Returns a reference to the inactive command list.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(&ID2D1CommandList)` if the inactive command list exists.
+    /// * `Err(anyhow::Error)` if the inactive command list does not exist.
     pub fn inactive_command_list(&self) -> anyhow::Result<&ID2D1CommandList> {
         self.inactive_command_list
             .as_ref()
@@ -264,6 +318,19 @@ impl TryFrom<EffectsConfig> for EffectManager {
     }
 }
 
+/// Creates an opacity effect for a given Direct2D effect and opacity level.
+/// The opacity effect applies transparency to an existing effect.
+///
+/// # Arguments
+///
+/// * `d2d_context` - A reference to the Direct2D device context.
+/// * `effect` - The effect to which opacity will be applied.
+/// * `opacity` - The opacity level to apply (0.0 for fully transparent, 1.0 for fully opaque).
+///
+/// # Returns
+///
+/// * `Ok(ID2D1Effect)` if the opacity effect is created successfully.
+/// * `Err(anyhow::Error)` if there is an error during creation.
 fn create_opacity_effect(
     d2d_context: &ID2D1DeviceContext7,
     effect: &ID2D1Effect,

@@ -43,6 +43,7 @@ pub struct EffectConfig {
 /// This enum can either hold a structured translation configuration (`EffectTranslationStruct`),
 /// or a simple string value.
 #[derive(Debug, Clone, Deserialize, PartialEq, JsonSchema)]
+#[serde(untagged)]
 pub enum EffectTranslationConfig {
     Struct(EffectTranslationStruct),
     String(String),
@@ -85,3 +86,4 @@ impl Default for EffectTranslationStruct {
         }
     }
 }
+

@@ -9,7 +9,7 @@ use windows::{
         D2D1_INTERPOLATION_MODE_LINEAR, D2D1_OPACITY_PROP_OPACITY, D2D1_PROPERTY_TYPE_ENUM,
         D2D1_PROPERTY_TYPE_FLOAT, D2D1_PROPERTY_TYPE_MATRIX_3X2,
         D2D1_SHADOW_PROP_BLUR_STANDARD_DEVIATION, D2D1_SHADOW_PROP_OPTIMIZATION, ID2D1CommandList,
-        ID2D1Effect,
+        ID2D1DeviceContext7, ID2D1Effect,
     },
 };
 
@@ -110,51 +110,65 @@ impl EffectManager {
                             }
                         };
 
-                        let effect_with_opacity = d2d_context
-                            .CreateEffect(&CLSID_D2D1Opacity)
-                            .context("effect_with_opacity")?;
-                        effect_with_opacity.SetInput(
-                            0,
-                            &effect
-                                .GetOutput()
-                                .context("could not get _ effect output")?,
-                            false,
-                        );
-                        effect_with_opacity
-                            .SetValue(
-                                D2D1_OPACITY_PROP_OPACITY.0 as u32,
-                                D2D1_PROPERTY_TYPE_FLOAT,
-                                &effect_params.opacity.to_le_bytes(),
-                            )
-                            .context("effect_with_opacity.SetValue()")?;
+                        let full_opacities_count = effect_params.opacity as u32; // Full opacity effects (e.g., 2 for opacity 2.5)
+                        let remainder_opacity = effect_params.opacity - full_opacities_count as f32; // Remainder opacity (e.g., 0.5 for 2.5)
+                        let mut effect_opacity_vec = Vec::new();
 
-                        let effect_with_opacity_translation = d2d_context
-                            .CreateEffect(&CLSID_D2D12DAffineTransform)
-                            .context("effect_with_opacity_translation")?;
-                        effect_with_opacity_translation.SetInput(
-                            0,
-                            &effect_with_opacity
-                                .GetOutput()
-                                .context("could not get effect_with_opacity output")?,
-                            false,
-                        );
-                        let translation_matrix = Matrix3x2::translation(
-                            effect_params.translation.x,
-                            effect_params.translation.y,
-                        );
-                        let translation_matrix_bytes: &[u8] = std::slice::from_raw_parts(
-                            &translation_matrix as *const Matrix3x2 as *const u8,
-                            size_of::<Matrix3x2>(),
-                        );
-                        effect_with_opacity_translation
-                            .SetValue(
-                                D2D1_2DAFFINETRANSFORM_PROP_TRANSFORM_MATRIX.0 as u32,
-                                D2D1_PROPERTY_TYPE_MATRIX_3X2,
-                                translation_matrix_bytes,
-                            )
-                            .context("effect_with_opacity_translation.SetValue()")?;
+                        if full_opacities_count >= 1 {
+                            // Create full opacity effects
+                            for _ in 0..full_opacities_count {
+                                effect_opacity_vec.push(create_opacity_effect(
+                                    d2d_context,
+                                    &effect,
+                                    1.0,
+                                )?);
+                            }
 
-                        effects_vec.push(effect_with_opacity_translation);
+                            // If there's any remainder opacity (e.g., 0.5 for opacity 2.5)
+                            if remainder_opacity > 0.0 {
+                                effect_opacity_vec.push(create_opacity_effect(
+                                    d2d_context,
+                                    &effect,
+                                    remainder_opacity,
+                                )?);
+                            }
+                        } else {
+                            effect_opacity_vec.push(create_opacity_effect(
+                                d2d_context,
+                                &effect,
+                                effect_params.opacity,
+                            )?);
+                        }
+
+                        for effect_with_opacity in effect_opacity_vec {
+                            let effect_with_opacity_translation = d2d_context
+                                .CreateEffect(&CLSID_D2D12DAffineTransform)
+                                .context("effect_with_opacity_translation")?;
+                            effect_with_opacity_translation.SetInput(
+                                0,
+                                &effect_with_opacity
+                                    .GetOutput()
+                                    .context("could not get effect_with_opacity output")?,
+                                false,
+                            );
+                            let translation_matrix = Matrix3x2::translation(
+                                effect_params.translation.x,
+                                effect_params.translation.y,
+                            );
+                            let translation_matrix_bytes: &[u8] = std::slice::from_raw_parts(
+                                &translation_matrix as *const Matrix3x2 as *const u8,
+                                size_of::<Matrix3x2>(),
+                            );
+                            effect_with_opacity_translation
+                                .SetValue(
+                                    D2D1_2DAFFINETRANSFORM_PROP_TRANSFORM_MATRIX.0 as u32,
+                                    D2D1_PROPERTY_TYPE_MATRIX_3X2,
+                                    translation_matrix_bytes,
+                                )
+                                .context("effect_with_opacity_translation.SetValue()")?;
+
+                            effects_vec.push(effect_with_opacity_translation);
+                        }
                     }
 
                     // Create a composite effect and link it to the above effects
@@ -265,5 +279,33 @@ impl TryFrom<EffectsConfig> for EffectManager {
         } else {
             Ok(EffectManager::default())
         }
+    }
+}
+
+fn create_opacity_effect(
+    d2d_context: &ID2D1DeviceContext7,
+    effect: &ID2D1Effect,
+    opacity: f32,
+) -> anyhow::Result<ID2D1Effect> {
+    unsafe {
+        let effect_with_opacity = d2d_context
+            .CreateEffect(&CLSID_D2D1Opacity)
+            .context("effect_with_opacity")?;
+
+        effect_with_opacity.SetInput(
+            0,
+            &effect.GetOutput().context("could not get effect output")?,
+            false,
+        );
+
+        effect_with_opacity
+            .SetValue(
+                D2D1_OPACITY_PROP_OPACITY.0 as u32,
+                D2D1_PROPERTY_TYPE_FLOAT,
+                &opacity.to_le_bytes(),
+            )
+            .context("effect_with_opacity.SetValue()")?;
+
+        Ok(effect_with_opacity)
     }
 }

@@ -11,7 +11,6 @@ use crate::windows_callback::enum_windows;
 use anyhow::Context;
 use anyhow::anyhow;
 use regex::Regex;
-use windows::Win32::UI::HiDpi::GetDpiForSystem;
 use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::ffi::c_void;
@@ -61,6 +60,7 @@ use windows::Win32::System::Threading::PROCESS_NAME_WIN32;
 use windows::Win32::System::Threading::PROCESS_QUERY_LIMITED_INFORMATION;
 use windows::Win32::System::Threading::QueryFullProcessImageNameW;
 use windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2;
+use windows::Win32::UI::HiDpi::GetDpiForSystem;
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::HiDpi::SetProcessDpiAwarenessContext;
 use windows::Win32::UI::Input::Ime::ImmDisableIME;
@@ -350,7 +350,10 @@ impl WindowsApi {
         }
     }
 
-    pub fn enum_windows(callback: WNDENUMPROC, callback_data_address: isize) -> windows::core::Result<()> {
+    pub fn enum_windows(
+        callback: WNDENUMPROC,
+        callback_data_address: isize,
+    ) -> windows::core::Result<()> {
         unsafe { EnumWindows(callback, LPARAM(callback_data_address)) }
     }
 
@@ -601,7 +604,9 @@ impl WindowsApi {
         Ok(handles)
     }
 
-    pub fn process_window_handles(callback: &dyn Fn(isize, WindowRuleConfig)) -> anyhow::Result<()> {
+    pub fn process_window_handles(
+        callback: &dyn Fn(isize, WindowRuleConfig),
+    ) -> anyhow::Result<()> {
         let handles = Self::collect_window_handles()?;
 
         handles.iter().for_each(|&hwnd| {

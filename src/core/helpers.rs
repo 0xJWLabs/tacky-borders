@@ -15,6 +15,10 @@ pub fn serde_default_f32<const V: i32>() -> f32 {
     V as f32
 }
 
+pub fn serde_default_bool<const V: bool>() -> bool {
+    V
+}
+
 pub fn parse_length_str(s: &str) -> Option<f64> {
     if let Some(s) = s.strip_suffix("px") {
         return s.parse().ok();
@@ -53,5 +57,3 @@ pub fn parse_duration_str(s: &str) -> Option<f64> {
 
     s.parse().ok()
 }
-
-

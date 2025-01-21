@@ -38,10 +38,8 @@ impl AnimationEngineVec {
     }
 
     pub fn insert(&mut self, item: AnimationEngine) -> Option<AnimationEngine> {
-        for animation in self.0.iter_mut() {
-            if animation.kind == item.kind {
-                return Some(std::mem::replace(animation, item));
-            }
+        if let Some(position) = self.0.iter_mut().position(|animation| animation.kind == item.kind) {
+            return Some(std::mem::replace(&mut self.0[position], item));
         }
         self.0.push(item);
         None
@@ -154,7 +152,7 @@ impl TryFrom<Vec<AnimationConfig>> for AnimationEngineVec {
         value
             .into_iter()
             .try_fold(AnimationEngineVec::new(), |mut acc, animation_value| {
-                let animation = AnimationEngine::try_from(animation_value)?; // Assuming `transform` returns `Result<Animation, anyhow::Error>`
+                let animation = AnimationEngine::try_from(animation_value)?; // Assuming `try_from` returns `Result<AnimationEngine, anyhow::Error>`
                 acc.insert(animation); // Assuming `insert` is defined for AnimationEngineVec
                 Ok(acc)
             })

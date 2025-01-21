@@ -2,38 +2,34 @@ use anyhow::Context;
 use windows::{
     Foundation::Numerics::Matrix3x2,
     Win32::Graphics::Direct2D::{
-        CLSID_D2D1AlphaMask, CLSID_D2D1Composite, CLSID_D2D1GaussianBlur, CLSID_D2D1Opacity,
-        CLSID_D2D1Shadow, CLSID_D2D12DAffineTransform, Common::D2D1_COMPOSITE_MODE_SOURCE_OVER,
+        CLSID_D2D1Composite, CLSID_D2D1GaussianBlur, CLSID_D2D1Opacity, CLSID_D2D1Shadow,
+        CLSID_D2D12DAffineTransform,
+        Common::{D2D1_COMPOSITE_MODE_DESTINATION_OUT, D2D1_COMPOSITE_MODE_SOURCE_OVER},
         D2D1_2DAFFINETRANSFORM_PROP_TRANSFORM_MATRIX, D2D1_DIRECTIONALBLUR_OPTIMIZATION_SPEED,
         D2D1_GAUSSIANBLUR_PROP_OPTIMIZATION, D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION,
         D2D1_INTERPOLATION_MODE_LINEAR, D2D1_OPACITY_PROP_OPACITY, D2D1_PROPERTY_TYPE_ENUM,
         D2D1_PROPERTY_TYPE_FLOAT, D2D1_PROPERTY_TYPE_MATRIX_3X2,
-        D2D1_SHADOW_PROP_BLUR_STANDARD_DEVIATION, D2D1_SHADOW_PROP_OPTIMIZATION, ID2D1CommandList,
-        ID2D1DeviceContext7, ID2D1Effect,
+        D2D1_SHADOW_PROP_BLUR_STANDARD_DEVIATION, D2D1_SHADOW_PROP_OPTIMIZATION, ID2D1Bitmap1,
+        ID2D1CommandList, ID2D1DeviceContext7, ID2D1Effect,
     },
 };
 
-use crate::render_resources::RenderResources;
-
-use super::{
-    EffectsConfig,
-    engine::{EffectEngine, EffectKind},
-};
+use super::{EffectsConfig, engine::EffectKind, wrapper::EffectEngineVec};
 
 #[derive(Debug, Default, Clone)]
 pub struct EffectManager {
-    active: Vec<EffectEngine>,
-    inactive: Vec<EffectEngine>,
+    active: EffectEngineVec,
+    inactive: EffectEngineVec,
     active_command_list: Option<ID2D1CommandList>,
     inactive_command_list: Option<ID2D1CommandList>,
 }
 
 impl EffectManager {
-    pub fn active(&self) -> &Vec<EffectEngine> {
+    pub fn active(&self) -> &EffectEngineVec {
         &self.active
     }
 
-    pub fn inactive(&self) -> &Vec<EffectEngine> {
+    pub fn inactive(&self) -> &EffectEngineVec {
         &self.inactive
     }
 
@@ -41,16 +37,18 @@ impl EffectManager {
         !self.active.is_empty() || !self.inactive.is_empty()
     }
 
-    pub fn create_command_list(
+    pub fn create_command_lists_if_enabled(
         &mut self,
-        render_resources: &RenderResources,
+        d2d_context: &ID2D1DeviceContext7,
+        border_bitmap: &ID2D1Bitmap1,
+        mask_bitmap: &ID2D1Bitmap1,
     ) -> anyhow::Result<()> {
-        let d2d_context = render_resources.d2d_context()?;
-        let border_bitmap = render_resources.border_bitmap()?;
-        let mask_bitmap = render_resources.mask_bitmap()?;
+        if !self.is_enabled() {
+            return Ok(());
+        }
 
         let create_single_list =
-            |effect_params_vec: &Vec<EffectEngine>| -> anyhow::Result<ID2D1CommandList> {
+            |effect_params_vec: &EffectEngineVec| -> anyhow::Result<ID2D1CommandList> {
                 unsafe {
                     // Open a command list to record draw operations
                     let command_list = d2d_context
@@ -172,7 +170,6 @@ impl EffectManager {
                     }
 
                     // Create a composite effect and link it to the above effects
-                    // TODO: if no effects are selected, I will get an invalid graph config error
                     let composite_effect = d2d_context
                         .CreateEffect(&CLSID_D2D1Composite)
                         .context("composite_effect")?;
@@ -191,32 +188,28 @@ impl EffectManager {
                     }
                     composite_effect.SetInput(effects_vec.len() as u32, border_bitmap, false);
 
-                    // Create an alpha mask effect to mask out the inner rect
-                    let mask_effect = d2d_context
-                        .CreateEffect(&CLSID_D2D1AlphaMask)
-                        .context("mask_effect")?;
-                    mask_effect.SetInput(
-                        0,
-                        &composite_effect
-                            .GetOutput()
-                            .context("could not get composite output")?,
-                        false,
-                    );
-                    mask_effect.SetInput(1, mask_bitmap, false);
-
                     // Begin recording commands to the command list
                     d2d_context.BeginDraw();
                     d2d_context.Clear(None);
 
                     // Record the composite effect
                     d2d_context.DrawImage(
-                        &mask_effect
+                        &composite_effect
                             .GetOutput()
-                            .context("could not get mask output")?,
+                            .context("could not get composite output")?,
                         None,
                         None,
                         D2D1_INTERPOLATION_MODE_LINEAR,
                         D2D1_COMPOSITE_MODE_SOURCE_OVER,
+                    );
+
+                    // Use COMPOSITE_MODE_DESTINATION_OUT to inverse mask out the inner rect
+                    d2d_context.DrawImage(
+                        mask_bitmap,
+                        None,
+                        None,
+                        D2D1_INTERPOLATION_MODE_LINEAR,
+                        D2D1_COMPOSITE_MODE_DESTINATION_OUT,
                     );
 
                     d2d_context.EndDraw(None, None)?;
@@ -256,19 +249,8 @@ impl TryFrom<EffectsConfig> for EffectManager {
     type Error = anyhow::Error;
 
     fn try_from(value: EffectsConfig) -> Result<Self, Self::Error> {
-        let active: Vec<EffectEngine> = value
-            .active
-            .iter()
-            .cloned() // Convert &EffectConfig to EffectConfig
-            .map(EffectEngine::try_from)
-            .collect::<Result<Vec<_>, _>>()?;
-
-        let inactive: Vec<EffectEngine> = value
-            .inactive
-            .iter()
-            .cloned() // Convert &EffectConfig to EffectConfig
-            .map(EffectEngine::try_from)
-            .collect::<Result<Vec<_>, _>>()?;
+        let active = EffectEngineVec::try_from(value.active)?;
+        let inactive = EffectEngineVec::try_from(value.inactive)?;
 
         if value.enabled {
             Ok(EffectManager {

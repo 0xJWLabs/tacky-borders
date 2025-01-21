@@ -8,35 +8,34 @@ use anyhow::Context;
 use fx_hash::{FxHashMap as HashMap, FxHashMapExt};
 #[cfg(not(feature = "fast-hash"))]
 use std::collections::HashMap;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::sync::OnceLock;
 use std::sync::RwLock;
 use std::sync::RwLockReadGuard;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::time::Duration;
+use windows::core::Interface;
 use windows::Win32::Foundation::HMODULE;
-use windows::Win32::Graphics::Direct2D::D2D1_FACTORY_TYPE_MULTI_THREADED;
 use windows::Win32::Graphics::Direct2D::D2D1CreateFactory;
 use windows::Win32::Graphics::Direct2D::ID2D1Device7;
 use windows::Win32::Graphics::Direct2D::ID2D1Factory8;
+use windows::Win32::Graphics::Direct2D::D2D1_FACTORY_TYPE_MULTI_THREADED;
 use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE;
 use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL;
-use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_9_1;
-use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_9_2;
-use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_9_3;
 use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_10_0;
 use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_10_1;
 use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_11_0;
 use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_11_1;
-use windows::Win32::Graphics::Direct3D11::D3D11_CREATE_DEVICE_BGRA_SUPPORT;
-use windows::Win32::Graphics::Direct3D11::D3D11_CREATE_DEVICE_DEBUG;
-use windows::Win32::Graphics::Direct3D11::D3D11_SDK_VERSION;
+use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_9_1;
+use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_9_2;
+use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_9_3;
 use windows::Win32::Graphics::Direct3D11::D3D11CreateDevice;
 use windows::Win32::Graphics::Direct3D11::ID3D11Device;
+use windows::Win32::Graphics::Direct3D11::D3D11_CREATE_DEVICE_BGRA_SUPPORT;
+use windows::Win32::Graphics::Direct3D11::D3D11_SDK_VERSION;
 use windows::Win32::Graphics::Dxgi::IDXGIDevice;
-use windows::core::Interface;
 
 /// A global instance of the AppManager initialized lazily.
 static APP_MANAGER: OnceLock<AppManager> = OnceLock::new();
@@ -60,8 +59,6 @@ pub struct AppManager {
     dxgi_device: IDXGIDevice,
     /// Direct2D device used for drawing
     d2d_device: ID2D1Device7,
-    /// Direct2D factory for creating device and context
-    factory: ID2D1Factory8,
 }
 
 unsafe impl Send for AppManager {}
@@ -136,11 +133,6 @@ impl AppManager {
         &self.dxgi_device
     }
 
-    /// Returns a reference to the Direct2D factory.
-    pub fn factory(&self) -> &ID2D1Factory8 {
-        &self.factory
-    }
-
     /// Returns whether the polling of the active window is enabled.
     pub fn is_polling_active_window(&self) -> bool {
         self.is_polling_active_window.load(Ordering::SeqCst)
@@ -198,7 +190,6 @@ impl AppManager {
             device,
             dxgi_device,
             d2d_device,
-            factory,
         }
     }
 }
@@ -207,7 +198,7 @@ impl AppManager {
 fn create_directx_devices(
     factory: &ID2D1Factory8,
 ) -> anyhow::Result<(ID3D11Device, IDXGIDevice, ID2D1Device7)> {
-    let creation_flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_DEBUG;
+    let creation_flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
 
     let feature_levels = [
         D3D_FEATURE_LEVEL_11_1,
@@ -247,4 +238,3 @@ fn create_directx_devices(
 
     Ok((device, dxgi_device, d2d_device))
 }
-

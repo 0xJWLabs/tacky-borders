@@ -1,20 +1,25 @@
-use crate::core::{helpers::serde_default_f32, value::Value};
+use crate::core::{helpers::serde_default_bool, helpers::serde_default_f32, value::Value};
+use engine::EffectTranslationStruct;
 use schema_jsonrs::JsonSchema;
 use serde::Deserialize;
 
 pub mod engine;
 pub mod manager;
+pub mod wrapper;
 
 /// Configuration for multiple effects, including active and inactive effects.
 #[derive(Debug, Default, Deserialize, Clone, PartialEq, JsonSchema)]
 pub struct EffectsConfig {
     /// A list of active effects.
+    #[serde(default)]
     pub active: Vec<EffectConfig>,
 
     /// A list of inactive effects.
+    #[serde(default)]
     pub inactive: Vec<EffectConfig>,
 
     /// Indicates whether effects are enabled or not.
+    #[serde(default = "serde_default_bool::<true>")]
     pub enabled: bool,
 }
 
@@ -54,36 +59,3 @@ impl Default for EffectTranslationConfig {
         EffectTranslationConfig::Struct(Default::default())
     }
 }
-
-/// Configuration for the translation of an effect, including both x and y coordinates.
-/// This struct is used when the translation is more complex, involving both `x` and `y` axes.
-#[derive(Debug, Clone, Deserialize, PartialEq, JsonSchema)]
-#[serde(default)] // Apply the default values provided in `default_translation` to both x and y.
-pub struct EffectTranslationStruct {
-    /// The translation along the x-axis.
-    /// If no value is provided during deserialization, it defaults to `0.0`.
-    #[serde(default = "default_translation")]
-    pub x: Value,
-
-    /// The translation along the y-axis.
-    /// If no value is provided during deserialization, it defaults to `0.0`.
-    #[serde(default = "default_translation")]
-    pub y: Value,
-}
-
-/// Default value for `EffectTranslationConfig::x` and `EffectTranslationConfig::y`.
-/// Both x and y will default to `Value::Number(0.0)` if not specified.
-fn default_translation() -> Value {
-    Value::Number(0.0)
-}
-
-/// Default implementation for `EffectTranslationConfig`. This will ensure that both x and y have the default translation.
-impl Default for EffectTranslationStruct {
-    fn default() -> Self {
-        EffectTranslationStruct {
-            x: default_translation(),
-            y: default_translation(),
-        }
-    }
-}
-

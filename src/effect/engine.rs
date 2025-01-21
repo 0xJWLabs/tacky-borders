@@ -1,7 +1,9 @@
 use super::{EffectConfig, EffectTranslationConfig};
 use crate::core::helpers::parse_length_str;
-use crate::core::value::ValueConversion;
+use crate::core::value::{Value, ValueConversion};
 use anyhow::anyhow;
+use schema_jsonrs::JsonSchema;
+use serde::Deserialize;
 use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -28,12 +30,6 @@ impl FromStr for EffectKind {
             _ => Err("Unknown effect type"),
         }
     }
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
-pub struct EffectTranslation {
-    pub x: f32,
-    pub y: f32,
 }
 
 impl TryFrom<EffectConfig> for EffectEngine {
@@ -82,5 +78,43 @@ impl TryFrom<EffectConfig> for EffectEngine {
             opacity: value.opacity,
             translation,
         })
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct EffectTranslation {
+    pub x: f32,
+    pub y: f32,
+}
+
+/// Configuration for the translation of an effect, including both x and y coordinates.
+/// This struct is used when the translation is more complex, involving both `x` and `y` axes.
+#[derive(Debug, Clone, Deserialize, PartialEq, JsonSchema)]
+#[serde(default)] // Apply the default values provided in `default_translation` to both x and y.
+pub struct EffectTranslationStruct {
+    /// The translation along the x-axis.
+    /// If no value is provided during deserialization, it defaults to `0.0`.
+    #[serde(default = "default_translation")]
+    pub x: Value,
+
+    /// The translation along the y-axis.
+    /// If no value is provided during deserialization, it defaults to `0.0`.
+    #[serde(default = "default_translation")]
+    pub y: Value,
+}
+
+/// Default value for `EffectTranslationConfig::x` and `EffectTranslationConfig::y`.
+/// Both x and y will default to `Value::Number(0.0)` if not specified.
+fn default_translation() -> Value {
+    Value::Number(0.0)
+}
+
+/// Default implementation for `EffectTranslationConfig`. This will ensure that both x and y have the default translation.
+impl Default for EffectTranslationStruct {
+    fn default() -> Self {
+        EffectTranslationStruct {
+            x: default_translation(),
+            y: default_translation(),
+        }
     }
 }

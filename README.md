@@ -1,10 +1,11 @@
-# Tacky-Borders
+# Tacky Borders
 
 Bring sleek, customizable borders to your Windows desktop.
 
-Use the original [tacky-borders](https://github.com/lukeyou05/tacky-borders) please!
+![tacky-borders](./resources/screenshot.png)
 
-https://github.com/user-attachments/assets/6520880d-b831-4652-b19d-34aa9b07f7cb
+> [!NOTE]  
+> For stability, it is recommended to use the original [tacky-borders](https://github.com/lukeyou05/tacky-borders)
 
 ## Installation
 
@@ -63,6 +64,8 @@ The configuration file is auto-generated and named `config.jsonc` by default, bu
 - **JSONC** (`config.jsonc`)
 - **JSON** (`config.json`)
 - **YAML** (`config.yaml`)
+
+https://github.com/user-attachments/assets/aca85fe9-c4e6-4309-a2e0-428665aecd2b
 
 ### Default Configuration
 
@@ -412,12 +415,10 @@ Place your theme files in the following directory, depending on where your Tacky
 
 Replace `{theme-name}` with the name of your theme. You can use either **JSON** (`.json`), **JSONC** (`.jsonc`), or **YAML** (`.yaml`) formats for theme files.
 
-## Screenshots
-![tacky-borders](./resources/screenshot.png)
-
 ## Credits
 This project makes use of the following open-source library:
-- [Bezier-Easing](https://github.com/gre/bezier-easing) by Gaëtan Renaudeau
+- [Bezier Easing](https://github.com/gre/bezier-easing) by Gaëtan Renaudeau
+- [Original Tacky Borders](https://github.com/lukeyou05/tacky-borders) by Lukeyou05!
 
 ## License
 

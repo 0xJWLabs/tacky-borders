@@ -2,6 +2,7 @@ use std::mem::ManuallyDrop;
 
 use anyhow::Context;
 use windows::Win32::Foundation::FALSE;
+use windows::Win32::Graphics::Direct2D::{D2D1_BITMAP_OPTIONS, D2D1_BITMAP_OPTIONS_NONE};
 use windows::Win32::Graphics::Dxgi::DXGI_SWAP_CHAIN_FLAG;
 use windows::Win32::Graphics::{
     Direct2D::{
@@ -92,9 +93,14 @@ impl RenderResources {
         let screen_width = (m_info.rcMonitor.right - m_info.rcMonitor.left) as u32;
         let screen_height = (m_info.rcMonitor.bottom - m_info.rcMonitor.top) as u32;
 
+        let bitmap_size = D2D_SIZE_U {
+            width: screen_width + ((border_width + window_padding) * 2) as u32,
+            height: screen_height + ((border_width + window_padding) * 2) as u32,
+        };
+
         let swap_chain_desc = DXGI_SWAP_CHAIN_DESC1 {
-            Width: screen_width + ((border_width + window_padding) * 2) as u32,
-            Height: screen_height + ((border_width + window_padding) * 2) as u32,
+            Width: bitmap_size.width,
+            Height: bitmap_size.height,
             Format: DXGI_FORMAT_B8G8R8A8_UNORM,
             Stereo: FALSE,
             SampleDesc: DXGI_SAMPLE_DESC {
@@ -136,14 +142,7 @@ impl RenderResources {
             d_comp_device.Commit().context("d_comp_device.Commit()")?;
 
             self.bitmaps
-                .create(
-                    &d2d_context,
-                    &swap_chain,
-                    screen_width,
-                    screen_height,
-                    border_width,
-                    window_padding,
-                )
+                .create(&d2d_context, &swap_chain, &bitmap_size)
                 .context("could not create bitmaps")?;
 
             self.d2d_context = Some(d2d_context);
@@ -174,11 +173,16 @@ impl RenderResources {
         let screen_width = (m_info.rcMonitor.right - m_info.rcMonitor.left) as u32;
         let screen_height = (m_info.rcMonitor.bottom - m_info.rcMonitor.top) as u32;
 
+        let bitmap_size = D2D_SIZE_U {
+            width: screen_width + ((border_width + window_padding) * 2) as u32,
+            height: screen_height + ((border_width + window_padding) * 2) as u32,
+        };
+
         unsafe {
             swap_chain.ResizeBuffers(
                 2,
-                screen_width + ((border_width + window_padding) * 2) as u32,
-                screen_height + ((border_width + window_padding) * 2) as u32,
+                bitmap_size.width,
+                bitmap_size.height,
                 DXGI_FORMAT_B8G8R8A8_UNORM,
                 DXGI_SWAP_CHAIN_FLAG::default(),
             )
@@ -189,14 +193,7 @@ impl RenderResources {
         // reference count, so it's not actually cloning the object itself. Unfortunately, I need
         // to do it because Rust's borrow checker is a little stupid.
         self.bitmaps
-            .create(
-                &d2d_context.clone(),
-                &swap_chain.clone(),
-                screen_width,
-                screen_height,
-                border_width,
-                window_padding,
-            )
+            .create(&d2d_context.clone(), &swap_chain.clone(), &bitmap_size)
             .context("could not create bitmaps")?;
 
         Ok(())
@@ -204,17 +201,9 @@ impl RenderResources {
 }
 
 impl Bitmaps {
-    fn create(
-        &mut self,
-        d2d_context: &ID2D1DeviceContext7,
-        swap_chain: &IDXGISwapChain1,
-        screen_width: u32,
-        screen_height: u32,
-        border_width: i32,
-        window_padding: i32,
-    ) -> anyhow::Result<()> {
-        let bitmap_properties = D2D1_BITMAP_PROPERTIES1 {
-            bitmapOptions: D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
+    fn create_bitmap_properties(extra: Option<D2D1_BITMAP_OPTIONS>) -> D2D1_BITMAP_PROPERTIES1 {
+        D2D1_BITMAP_PROPERTIES1 {
+            bitmapOptions: D2D1_BITMAP_OPTIONS_TARGET | extra.unwrap_or(D2D1_BITMAP_OPTIONS_NONE),
             pixelFormat: D2D1_PIXEL_FORMAT {
                 format: DXGI_FORMAT_B8G8R8A8_UNORM,
                 alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED,
@@ -222,7 +211,17 @@ impl Bitmaps {
             dpiX: 96.0,
             dpiY: 96.0,
             colorContext: ManuallyDrop::new(None),
-        };
+        }
+    }
+
+    fn create(
+        &mut self,
+        d2d_context: &ID2D1DeviceContext7,
+        swap_chain: &IDXGISwapChain1,
+        bitmap_size: &D2D_SIZE_U,
+    ) -> anyhow::Result<()> {
+        let bitmap_properties =
+            Self::create_bitmap_properties(Some(D2D1_BITMAP_OPTIONS_CANNOT_DRAW));
 
         let dxgi_back_buffer: IDXGISurface =
             unsafe { swap_chain.GetBuffer(0) }.context("dxgi_back_buffer")?;
@@ -235,52 +234,14 @@ impl Bitmaps {
         unsafe { d2d_context.SetTarget(&target_bitmap) };
 
         // We create two bitmaps because the first (target_bitmap) cannot be used for effects
-        let bitmap_properties = D2D1_BITMAP_PROPERTIES1 {
-            bitmapOptions: D2D1_BITMAP_OPTIONS_TARGET,
-            pixelFormat: D2D1_PIXEL_FORMAT {
-                format: DXGI_FORMAT_B8G8R8A8_UNORM,
-                alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED,
-            },
-            dpiX: 96.0,
-            dpiY: 96.0,
-            colorContext: ManuallyDrop::new(None),
-        };
-        let border_bitmap = unsafe {
-            d2d_context.CreateBitmap(
-                D2D_SIZE_U {
-                    width: screen_width + ((border_width + window_padding) * 2) as u32,
-                    height: screen_height + ((border_width + window_padding) * 2) as u32,
-                },
-                None,
-                0,
-                &bitmap_properties,
-            )
-        }
-        .context("border_bitmap")?;
+        let bitmap_properties = Self::create_bitmap_properties(None);
+        let border_bitmap =
+            unsafe { d2d_context.CreateBitmap(*bitmap_size, None, 0, &bitmap_properties) }
+                .context("border_bitmap")?;
 
-        // Aaaand yet another for the mask
-        let bitmap_properties = D2D1_BITMAP_PROPERTIES1 {
-            bitmapOptions: D2D1_BITMAP_OPTIONS_TARGET,
-            pixelFormat: D2D1_PIXEL_FORMAT {
-                format: DXGI_FORMAT_B8G8R8A8_UNORM,
-                alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED,
-            },
-            dpiX: 96.0,
-            dpiY: 96.0,
-            colorContext: ManuallyDrop::new(None),
-        };
-        let mask_bitmap = unsafe {
-            d2d_context.CreateBitmap(
-                D2D_SIZE_U {
-                    width: screen_width + ((border_width + window_padding) * 2) as u32,
-                    height: screen_height + ((border_width + window_padding) * 2) as u32,
-                },
-                None,
-                0,
-                &bitmap_properties,
-            )
-        }
-        .context("mask_bitmap")?;
+        let mask_bitmap =
+            unsafe { d2d_context.CreateBitmap(*bitmap_size, None, 0, &bitmap_properties) }
+                .context("mask_bitmap")?;
 
         self.target_bitmap = Some(target_bitmap);
         self.border_bitmap = Some(border_bitmap);

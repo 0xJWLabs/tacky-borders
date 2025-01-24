@@ -28,6 +28,7 @@ use std::fs::read_to_string;
 use std::fs::write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::LazyLock;
 use std::sync::RwLock;
 use windows::Win32::Graphics::Dwm::DWMWCP_DEFAULT;
@@ -129,7 +130,7 @@ impl BorderStyle {
 }
 
 /// Specifies the type of match used for window identification.
-#[derive(Debug, Deserialize, Serialize, PartialEq, Clone, JsonSchema)]
+#[derive(Debug, Serialize, PartialEq, Clone, JsonSchema)]
 pub enum MatchKind {
     /// Match based on the window title.
     Title,
@@ -139,8 +140,31 @@ pub enum MatchKind {
     Process,
 }
 
+impl FromStr for MatchKind {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "title" => Ok(MatchKind::Title),
+            "class" => Ok(MatchKind::Class),
+            "process" => Ok(MatchKind::Process),
+            _ => Err(anyhow!("MatchKind {s} does not exist")),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for MatchKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        s.parse().map_err(serde::de::Error::custom)
+    }
+}
+
 /// Defines the strategy for matching a value against a criterion.
-#[derive(Debug, Deserialize, PartialEq, Clone, JsonSchema)]
+#[derive(Debug, PartialEq, Clone, JsonSchema)]
 pub enum MatchStrategy {
     /// Match values that are exactly equal.
     Equals,
@@ -148,6 +172,29 @@ pub enum MatchStrategy {
     Regex,
     /// Match values that contain the specified substring.
     Contains,
+}
+
+impl FromStr for MatchStrategy {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "contains" => Ok(MatchStrategy::Contains),
+            "equals" => Ok(MatchStrategy::Equals),
+            "regex" => Ok(MatchStrategy::Regex),
+            _ => Err(anyhow!("MatchStrategy {s} does not exist")),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for MatchStrategy {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        s.parse().map_err(serde::de::Error::custom)
+    }
 }
 
 impl MatchStrategy {

@@ -705,17 +705,26 @@
         {
           "description": "Match based on the window title.",
           "type": "string",
-          "const": "Title"
+          "enum": [
+            "Title",
+            "title"
+          ]
         },
         {
           "description": "Match based on the class name of the window.",
           "type": "string",
-          "const": "Class"
+          "enum": [
+            "Class",
+            "class"
+          ]
         },
         {
           "description": "Match based on the process name or executable associated with the window.",
           "type": "string",
-          "const": "Process"
+          "enum": [
+            "Process",
+            "process"
+          ]
         }
       ]
     },
@@ -725,17 +734,26 @@
         {
           "description": "Match values that are exactly equal.",
           "type": "string",
-          "const": "Equals"
+          "enum": [
+            "Equals",
+            "equals"
+          ]
         },
         {
           "description": "Match values using a regular expression.",
           "type": "string",
-          "const": "Regex"
+          "enum": [
+            "Regex",
+            "regex"
+          ]
         },
         {
           "description": "Match values that contain the specified substring.",
           "type": "string",
-          "const": "Contains"
+          "enum": [
+            "Contains",
+            "contains"
+          ]
         }
       ]
     },

@@ -16,6 +16,7 @@ use crate::theme_manager::deserialize_theme;
 use crate::windows_api::WindowsApi;
 use anyhow::Context;
 use anyhow::anyhow;
+use regex::Regex;
 use schema_jsonrs::JsonSchema;
 use serde::Deserialize;
 use serde::Deserializer;
@@ -147,6 +148,23 @@ pub enum MatchStrategy {
     Regex,
     /// Match values that contain the specified substring.
     Contains,
+}
+
+impl MatchStrategy {
+    #[must_use]
+    pub fn is_match(&self, value_1: &str, value_2: &str) -> bool {
+        match self {
+            MatchStrategy::Equals => value_1
+                .to_ascii_lowercase()
+                .eq(value_2.to_ascii_lowercase().as_str()),
+            MatchStrategy::Contains => value_1
+                .to_ascii_lowercase()
+                .contains(value_2.to_ascii_lowercase().as_str()),
+            MatchStrategy::Regex => Regex::new(value_2)
+                .map(|re| re.captures(value_1).is_some())
+                .unwrap_or(false),
+        }
+    }
 }
 
 /// Represents criteria used to match windows for applying specific configurations.

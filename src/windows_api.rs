@@ -5,12 +5,10 @@ use crate::border_manager::Border;
 use crate::core::rect::Rect;
 use crate::error::LogIfErr;
 use crate::user_config::MatchKind;
-use crate::user_config::MatchStrategy;
 use crate::user_config::WindowRuleConfig;
 use crate::windows_callback::enum_windows;
 use anyhow::Context;
 use anyhow::anyhow;
-use regex::Regex;
 use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::ffi::c_void;
@@ -577,17 +575,10 @@ impl WindowsApi {
                 continue;
             };
 
-            let has_match = match rule.match_window.match_strategy {
-                Some(MatchStrategy::Equals) | None => {
-                    window_name.to_lowercase().eq(&match_value.to_lowercase())
-                }
-                Some(MatchStrategy::Contains) => window_name
-                    .to_lowercase()
-                    .contains(&match_value.to_lowercase()),
-                Some(MatchStrategy::Regex) => Regex::new(match_value)
-                    .unwrap()
-                    .captures(window_name)
-                    .is_some(),
+            let has_match = if let Some(strategy) = &rule.match_window.match_strategy {
+                strategy.is_match(window_name, match_value)
+            } else {
+                window_name.to_lowercase().eq(&match_value.to_lowercase())
             };
 
             if has_match {

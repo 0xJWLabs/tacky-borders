@@ -64,10 +64,22 @@ impl Rect {
         self.0.bottom += margin;
     }
 
+    #[must_use]
+    pub fn x(&self) -> i32 {
+        self.0.left
+    }
+
+    #[must_use]
+    pub fn y(&self) -> i32 {
+        self.0.top
+    }
+
+    #[must_use]
     pub fn width(&self) -> i32 {
         self.0.right - self.0.left
     }
 
+    #[must_use]
     pub fn height(&self) -> i32 {
         self.0.bottom - self.0.top
     }

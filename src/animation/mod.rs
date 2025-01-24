@@ -1,3 +1,5 @@
+use crate::core::helpers::serde_default_bool;
+use crate::core::helpers::serde_default_i32;
 use crate::core::value::Value;
 use schema_jsonrs::JsonSchema;
 use serde::Deserialize;
@@ -28,7 +30,14 @@ pub struct AnimationsConfig {
 
     /// The frame rate for the animations, specified in frames per second (FPS).
     /// This controls how smoothly the animations are rendered during transitions of custom window borders.
-    pub fps: Option<i32>,
+    #[serde(default = "serde_default_i32::<60>")]
+    pub fps: i32,
+
+    /// Indicates whether animations are enabled or not.
+    /// This boolean flag determines whether any animations in `active` or `inactive` should be applied.
+    /// It defaults to `true`, indicating that animations are enabled by default.
+    #[serde(default = "serde_default_bool::<true>")]
+    pub enabled: bool,
 }
 
 /// Configuration for a single animation applied to custom window borders, including its type, duration, and easing function.

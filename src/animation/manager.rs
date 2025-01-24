@@ -1,7 +1,7 @@
 use std::time::Instant;
 
-use super::wrapper::AnimationEngineVec;
 use super::AnimationsConfig;
+use super::wrapper::AnimationEngineVec;
 use crate::core::timer::CustomTimer;
 use crate::error::LogIfErr;
 use serde::Deserialize;
@@ -34,6 +34,7 @@ impl AnimationManager {
     pub const fn fps(&self) -> f32 {
         self.fps as f32
     }
+
     pub fn get_active_animation(&self) -> &AnimationEngineVec {
         &self.active
     }
@@ -79,13 +80,18 @@ impl AnimationManager {
 impl TryFrom<AnimationsConfig> for AnimationManager {
     type Error = anyhow::Error;
     fn try_from(value: AnimationsConfig) -> Result<AnimationManager, Self::Error> {
-        let active = AnimationEngineVec::try_from(value.active.clone().unwrap_or_default())?;
-        let inactive = AnimationEngineVec::try_from(value.inactive.clone().unwrap_or_default())?;
-        Ok(AnimationManager {
-            active,
-            inactive,
-            fps: value.fps.unwrap_or(60),
-            ..Default::default()
-        })
+        if value.enabled {
+            let active = AnimationEngineVec::try_from(value.active.clone().unwrap_or_default())?;
+            let inactive =
+                AnimationEngineVec::try_from(value.inactive.clone().unwrap_or_default())?;
+            return Ok(AnimationManager {
+                active,
+                inactive,
+                fps: value.fps,
+                ..Default::default()
+            });
+        }
+
+        Ok(AnimationManager::default())
     }
 }

@@ -109,7 +109,8 @@
           ],
           "items": {
             "$ref": "#/$defs/AnimationConfig"
-          }
+          },
+          "minItems": 0
         },
         "fps": {
           "type": [
@@ -125,7 +126,15 @@
           ],
           "items": {
             "$ref": "#/$defs/AnimationConfig"
-          }
+          },
+          "minItems": 0
+        },
+        "enabled": {
+          "description": "Indicates whether effects are enabled or not.",
+          "type": [
+            "boolean",
+            "null"
+          ]
         }
       }
     },
@@ -414,7 +423,7 @@
       "properties": {
         "kind": {
           "description": "The type or kind of effect (e.g., \"glow\", \"shadow\").",
-          "type": "string"
+          "$ref": "#/$defs/EffectKind"
         },
         "opacity": {
           "description": "The opacity of the effect, with a default value of 1.0 (fully opaque).",
@@ -510,28 +519,34 @@
       "properties": {
         "active": {
           "description": "A list of active effects.",
-          "type": "array",
+          "type": [
+            "array",
+            "null"
+          ],
           "items": {
             "$ref": "#/$defs/EffectConfig"
-          }
+          },
+          "minItems": 0
         },
         "enabled": {
           "description": "Indicates whether effects are enabled or not.",
-          "type": "boolean"
+          "type": [
+            "boolean",
+            "null"
+          ]
         },
         "inactive": {
           "description": "A list of inactive effects.",
-          "type": "array",
+          "type": [
+            "array",
+            "null"
+          ],
           "items": {
             "$ref": "#/$defs/EffectConfig"
-          }
+          },
+          "minItems": 0
         }
-      },
-      "required": [
-        "active",
-        "inactive",
-        "enabled"
-      ]
+      }
     },
     "GlobalColor": {
       "description": "The `GlobalColor` enum represents a global color that can be either a color string (e.g., a hex color code or a color name)\n or a mapping to a gradient definition.",

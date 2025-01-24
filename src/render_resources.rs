@@ -3,6 +3,9 @@ use std::mem::ManuallyDrop;
 use anyhow::Context;
 use windows::Win32::Foundation::FALSE;
 use windows::Win32::Graphics::Direct2D::{D2D1_BITMAP_OPTIONS, D2D1_BITMAP_OPTIONS_NONE};
+use windows::Win32::Graphics::DirectComposition::{
+    DCompositionCreateDevice3, IDCompositionDesktopDevice,
+};
 use windows::Win32::Graphics::Dxgi::DXGI_SWAP_CHAIN_FLAG;
 use windows::Win32::Graphics::{
     Direct2D::{
@@ -11,7 +14,7 @@ use windows::Win32::Graphics::{
         D2D1_BITMAP_OPTIONS_TARGET, D2D1_BITMAP_PROPERTIES1, D2D1_DEVICE_CONTEXT_OPTIONS_NONE,
         ID2D1Bitmap1, ID2D1DeviceContext7,
     },
-    DirectComposition::{DCompositionCreateDevice, IDCompositionDevice, IDCompositionTarget},
+    DirectComposition::IDCompositionTarget,
     Dxgi::{
         Common::{DXGI_ALPHA_MODE_PREMULTIPLIED, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC},
         DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_EFFECT_FLIP_DISCARD,
@@ -126,8 +129,9 @@ impl RenderResources {
                 .CreateSwapChainForComposition(app_manager.device(), &swap_chain_desc, None)
                 .context("swap_chain")?;
 
-            let d_comp_device: IDCompositionDevice =
-                DCompositionCreateDevice(app_manager.dxgi_device())?;
+            let d_comp_device: IDCompositionDesktopDevice =
+                DCompositionCreateDevice3(app_manager.dxgi_device())?;
+
             let d_comp_target = d_comp_device
                 .CreateTargetForHwnd(border_window.as_hwnd(), true)
                 .context("d_comp_target")?;

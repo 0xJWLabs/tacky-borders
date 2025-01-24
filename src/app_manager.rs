@@ -30,6 +30,9 @@ use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_10_0;
 use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_10_1;
 use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_11_0;
 use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_11_1;
+use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_12_0;
+use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_12_1;
+use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_12_2;
 use windows::Win32::Graphics::Direct3D11::D3D11_CREATE_DEVICE_BGRA_SUPPORT;
 use windows::Win32::Graphics::Direct3D11::D3D11_SDK_VERSION;
 use windows::Win32::Graphics::Direct3D11::D3D11CreateDevice;
@@ -201,6 +204,9 @@ fn create_directx_devices(
     let creation_flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
 
     let feature_levels = [
+        D3D_FEATURE_LEVEL_12_2,
+        D3D_FEATURE_LEVEL_12_1,
+        D3D_FEATURE_LEVEL_12_0,
         D3D_FEATURE_LEVEL_11_1,
         D3D_FEATURE_LEVEL_11_0,
         D3D_FEATURE_LEVEL_10_1,

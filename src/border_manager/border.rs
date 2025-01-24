@@ -142,7 +142,7 @@ impl Border {
         let window_rule = WindowsApi::get_window_rule(handle);
 
         // Handle border creation based on the rule's enabled status.
-        match window_rule.match_window.enabled {
+        match window_rule.enabled {
             Some(false) => {
                 info!(
                     "Border creation is disabled for window: {:?}",
@@ -184,7 +184,7 @@ impl Border {
         let window_rule = WindowsApi::get_window_rule(handle);
 
         // Determine if border creation should proceed based on the window rule's enabled status.
-        match window_rule.match_window.enabled {
+        match window_rule.enabled {
             // If border creation is explicitly disabled, log and exit.
             Some(false) => {
                 let window_title =
@@ -442,40 +442,33 @@ impl Border {
         let global = &config.global_rule;
 
         let config_width = window_rule
-            .match_window
             .border_width
             .unwrap_or(config.global_rule.border_width);
         let config_offset = window_rule
-            .match_window
             .border_offset
             .unwrap_or(config.global_rule.border_offset);
 
         let active_color = window_rule
-            .match_window
             .active_color
             .as_ref()
             .unwrap_or(&global.active_color);
 
         let inactive_color = window_rule
-            .match_window
             .inactive_color
             .as_ref()
             .unwrap_or(&global.inactive_color);
 
         let animation_manager = window_rule
-            .match_window
             .animation_manager
             .as_ref()
             .unwrap_or(&global.animation_manager);
 
         let effect_manager = window_rule
-            .match_window
             .effect_manager
             .as_ref()
             .unwrap_or(&global.effect_manager);
 
         let config_style = window_rule
-            .match_window
             .border_style
             .as_ref()
             .unwrap_or(&global.border_style);
@@ -541,13 +534,11 @@ impl Border {
         self.initialize_delay = match available_windows.contains(&self.tracking_window) {
             true => 0,
             false => window_rule
-                .match_window
                 .initialize_delay
                 .unwrap_or(global.initialize_delay),
         };
 
         self.unminimize_delay = window_rule
-            .match_window
             .unminimize_delay
             .unwrap_or(global.unminimize_delay);
 
@@ -630,12 +621,8 @@ impl Border {
         let config = AppManager::get().config().clone();
         let global = &config.global_rule;
 
-        let width_config = window_rule
-            .match_window
-            .border_width
-            .unwrap_or(global.border_width);
+        let width_config = window_rule.border_width.unwrap_or(global.border_width);
         let style_config = window_rule
-            .match_window
             .border_style
             .as_ref()
             .unwrap_or(&global.border_style);

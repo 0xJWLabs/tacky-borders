@@ -1,3 +1,4 @@
+use anyhow::Context;
 use regex::Regex;
 
 use crate::{
@@ -7,8 +8,7 @@ use crate::{
     effect::manager::EffectManager,
     theme_manager::ThemeManager,
     user_config::{
-        BorderStyle, GlobalRuleConfig, MatchKind, MatchStrategy, UserConfig, WindowMatchConfig,
-        WindowRuleConfig,
+        BorderStyle, GlobalRuleConfig, MatchKind, MatchStrategy, UserConfig, WindowRuleConfig,
     },
 };
 
@@ -93,46 +93,48 @@ impl TryFrom<GlobalRuleConfig> for GlobalRule {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct WindowRule {
-    /// The matching details and settings for a specific type of window.
-    pub match_window: WindowMatch,
+#[derive(Debug, Clone)]
+pub struct CompiledRegex {
+    pattern: String,
+    regex: Regex,
 }
 
-impl TryFrom<WindowRuleConfig> for WindowRule {
-    type Error = anyhow::Error;
-
-    fn try_from(value: WindowRuleConfig) -> Result<Self, Self::Error> {
-        let match_window = WindowMatch::try_from(value.match_window)?;
-        Ok(Self { match_window })
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum ParsedMatchStrategy {
     Equals(String),
     Contains(String),
-    Regex(String),
+    Regex(CompiledRegex),
+}
+
+impl PartialEq for ParsedMatchStrategy {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Equals(a), Self::Equals(b)) => a.eq_ignore_ascii_case(b),
+            (Self::Contains(a), Self::Contains(b)) => a.eq_ignore_ascii_case(b),
+            (
+                Self::Regex(CompiledRegex { pattern: a, .. }),
+                Self::Regex(CompiledRegex { pattern: b, .. }),
+            ) => a == b,
+            _ => false,
+        }
+    }
 }
 
 impl ParsedMatchStrategy {
+    #[must_use]
     pub fn is_match(&self, value: &str) -> bool {
         match self {
-            ParsedMatchStrategy::Equals(equals) => value
-                .to_ascii_lowercase()
-                .eq(equals.to_ascii_lowercase().as_str()),
-            ParsedMatchStrategy::Contains(contains) => value
-                .to_ascii_lowercase()
-                .contains(contains.to_ascii_lowercase().as_str()),
-            ParsedMatchStrategy::Regex(regex) => Regex::new(regex)
-                .map(|re| re.captures(value).is_some())
-                .unwrap_or(false),
+            ParsedMatchStrategy::Equals(equals) => value.eq_ignore_ascii_case(equals),
+            ParsedMatchStrategy::Contains(contains) => {
+                value.to_ascii_lowercase().contains(contains)
+            }
+            ParsedMatchStrategy::Regex(CompiledRegex { regex, .. }) => regex.is_match(value),
         }
     }
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct WindowMatch {
+pub struct WindowRule {
     /// Type of match (e.g., title, class, or process).
     pub match_kind: Option<MatchKind>,
     /// Strategy for matching, such as exact match or regex.
@@ -159,33 +161,43 @@ pub struct WindowMatch {
     pub unminimize_delay: Option<u32>,
 }
 
-impl TryFrom<WindowMatchConfig> for WindowMatch {
+impl TryFrom<WindowRuleConfig> for WindowRule {
     type Error = anyhow::Error;
 
-    fn try_from(value: WindowMatchConfig) -> Result<Self, Self::Error> {
-        let match_strategy = match (value.match_strategy, value.match_value) {
+    fn try_from(value: WindowRuleConfig) -> Result<Self, Self::Error> {
+        let match_window = value.match_window;
+        let match_strategy = match (match_window.match_strategy, match_window.match_value) {
             (Some(kind), Some(value)) => Some(match kind {
                 MatchStrategy::Equals => ParsedMatchStrategy::Equals(value),
                 MatchStrategy::Contains => ParsedMatchStrategy::Contains(value),
-                MatchStrategy::Regex => ParsedMatchStrategy::Regex(value),
+                MatchStrategy::Regex => {
+                    let regex = Regex::new(&value).context("Invalid regex pattern")?;
+                    ParsedMatchStrategy::Regex(CompiledRegex {
+                        pattern: value,
+                        regex,
+                    })
+                }
             }),
             (None, Some(value)) => Some(ParsedMatchStrategy::Equals(value)),
             _ => None,
         };
 
-        let animation_manager = value
+        let animation_manager = match_window
             .animations
             .map(AnimationManager::try_from)
             .transpose()?;
 
-        let effect_manager = value.effects.map(EffectManager::try_from).transpose()?;
+        let effect_manager = match_window
+            .effects
+            .map(EffectManager::try_from)
+            .transpose()?;
 
-        let active_color = value
+        let active_color = match_window
             .active_color
             .map(|color| color.to_color())
             .transpose()?;
 
-        let inactive_color = value
+        let inactive_color = match_window
             .inactive_color
             .map(|color| color.to_color())
             .transpose()?;
@@ -196,13 +208,13 @@ impl TryFrom<WindowMatchConfig> for WindowMatch {
             effect_manager,
             active_color,
             inactive_color,
-            match_kind: value.match_kind,
-            border_style: value.border_style,
-            border_width: value.border_width,
-            border_offset: value.border_offset,
-            enabled: value.enabled,
-            initialize_delay: value.initialize_delay,
-            unminimize_delay: value.unminimize_delay,
+            match_kind: match_window.match_kind,
+            border_style: match_window.border_style,
+            border_width: match_window.border_width,
+            border_offset: match_window.border_offset,
+            enabled: match_window.enabled,
+            initialize_delay: match_window.initialize_delay,
+            unminimize_delay: match_window.unminimize_delay,
         })
     }
 }

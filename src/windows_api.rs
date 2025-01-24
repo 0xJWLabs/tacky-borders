@@ -564,29 +564,23 @@ impl WindowsApi {
             ParsedConfig::default()
         });
 
-        for rule in parsed_config.window_rules.iter() {
-            let window_name = match rule.match_window.match_kind {
+        let rule = parsed_config.window_rules.iter().find(|rule| {
+            let window_name = match rule.match_kind {
                 Some(MatchKind::Title) => &title,
                 Some(MatchKind::Process) => &process,
                 Some(MatchKind::Class) => &class,
                 None => {
                     error!("expected 'kind' for window rule but none found!");
-                    continue;
+                    return false;
                 }
             };
 
-            let has_match = if let Some(strategy) = &rule.match_window.match_strategy {
-                strategy.is_match(window_name)
-            } else {
-                false
-            };
+            rule.match_strategy
+                .as_ref()
+                .is_some_and(|s| s.is_match(window_name))
+        });
 
-            if has_match {
-                return rule.clone();
-            }
-        }
-
-        WindowRule::default()
+        rule.cloned().unwrap_or_default()
     }
 
     pub fn collect_window_handles() -> anyhow::Result<Vec<isize>> {
@@ -602,11 +596,9 @@ impl WindowsApi {
             if Self::is_window_visible_on_screen(hwnd) {
                 let window_rule = Self::get_window_rule(hwnd);
 
-                if window_rule.match_window.enabled == Some(false) {
+                if window_rule.enabled == Some(false) {
                     info!("border is disabled for {:?}", hwnd.as_hwnd());
-                } else if window_rule.match_window.enabled == Some(true)
-                    || !Self::has_filtered_style(hwnd)
-                {
+                } else if window_rule.enabled == Some(true) || !Self::has_filtered_style(hwnd) {
                     callback(hwnd, window_rule);
                 }
             }

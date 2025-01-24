@@ -3,7 +3,7 @@ use crate::app_manager::AppManager;
 use crate::border_manager::reload_borders;
 use crate::colors::GlobalColor;
 use crate::core::helpers::serde_default_i32;
-use crate::core::helpers::serde_default_u64;
+use crate::core::helpers::serde_default_u32;
 use crate::core::keybindings::KeybindingConfig;
 use crate::core::keybindings::Keybindings;
 use crate::core::value::Value;
@@ -216,53 +216,41 @@ impl MatchStrategy {
 
 /// Represents criteria used to match windows for applying specific configurations.
 #[derive(Debug, Deserialize, Clone, Default, PartialEq, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct WindowMatchConfig {
     /// Type of match (e.g., title, class, or process).
     #[serde(rename = "kind")]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub match_kind: Option<MatchKind>,
     /// The value to match against (e.g., window title or class name).
     #[serde(rename = "value")]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub match_value: Option<String>,
     /// Strategy for matching, such as exact match or regex.
     #[serde(rename = "strategy")]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub match_strategy: Option<MatchStrategy>,
     /// Color for the border when the window is active.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub active_color: Option<GlobalColor>,
     /// Color for the border when the window is inactive.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub inactive_color: Option<GlobalColor>,
     /// Animation settings for the window borders.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub animations: Option<AnimationsConfig>,
     /// Effect settings for the window borders.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub effects: Option<EffectsConfig>,
     /// Radius of the border corners.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub border_style: Option<BorderStyle>,
     /// Width of the border in pixels.
-    #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(deserialize_with = "deserialize_optional_dimension", default)]
     pub border_width: Option<i32>,
     /// Offset of the border relative to the window.
-    #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(deserialize_with = "deserialize_optional_dimension", default)]
     pub border_offset: Option<i32>,
     /// Whether borders are enabled for this match.
     #[serde(rename = "enabled")]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
     /// Delay (in milliseconds) before applying the border after initialization.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub initialize_delay: Option<u64>,
+    pub initialize_delay: Option<u32>,
     /// Delay (in milliseconds) before applying the border after unminimizing.
-    #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(alias = "restore_delay")]
-    pub unminimize_delay: Option<u64>,
+    pub unminimize_delay: Option<u32>,
 }
 
 /// Represents a rule for a specific window, including matching criteria and associated actions.
@@ -283,7 +271,7 @@ fn serde_default_global() -> GlobalRuleConfig {
 
 /// Contains global configuration settings applied across all windows.
 #[derive(Debug, Deserialize, Clone, Default, PartialEq, JsonSchema)]
-#[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct GlobalRuleConfig {
     /// Default width of the window borders.
     #[serde(
@@ -313,11 +301,11 @@ pub struct GlobalRuleConfig {
     #[serde(default)]
     pub effects: EffectsConfig,
     /// Delay (in milliseconds) before applying borders after initialization.
-    #[serde(alias = "init_delay", default = "serde_default_u64::<250>")]
-    pub initialize_delay: u64,
+    #[serde(alias = "init_delay", default = "serde_default_u32::<250>")]
+    pub initialize_delay: u32,
     /// Delay (in milliseconds) before applying borders after unminimizing.
-    #[serde(alias = "restore_delay", default = "serde_default_u64::<200>")]
-    pub unminimize_delay: u64,
+    #[serde(alias = "restore_delay", default = "serde_default_u32::<200>")]
+    pub unminimize_delay: u32,
 }
 
 /// Stores the complete configuration including global rules, window rules, and keybindings.

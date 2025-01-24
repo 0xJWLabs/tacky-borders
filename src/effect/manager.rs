@@ -25,7 +25,7 @@ use super::{EffectsConfig, engine::EffectKind, wrapper::EffectEngineVec};
 ///
 /// This struct is designed to dynamically enable or disable effects and handle the Direct2D command list operations
 /// required to render these effects onto a window border.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct EffectManager {
     /// A collection of active effects applied to the custom window border.
     ///

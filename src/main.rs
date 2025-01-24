@@ -42,6 +42,7 @@ mod core;
 mod effect;
 mod error;
 mod keyboard_hook;
+mod parsed_config;
 mod render_resources;
 mod sys_tray;
 mod theme_manager;

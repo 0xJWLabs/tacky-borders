@@ -3,15 +3,14 @@ use crate::animation::wrapper::AnimationEngineVec;
 use crate::app_manager::AppManager;
 use crate::colors::Color;
 use crate::colors::ColorImpl;
-use crate::colors::GlobalColorImpl;
 use crate::core::animation::AnimationKind;
 use crate::core::rect::Rect;
 use crate::effect::manager::EffectManager;
 use crate::effect::wrapper::EffectEngineVec;
 use crate::error::LogIfErr;
+use crate::parsed_config::ParsedConfig;
+use crate::parsed_config::WindowRule;
 use crate::render_resources::RenderResources;
-use crate::user_config::BorderStyle;
-use crate::user_config::WindowRuleConfig;
 use crate::windows_api::HWNDConversion;
 use crate::windows_api::PointerConversion;
 use crate::windows_api::ToWideString;
@@ -102,7 +101,7 @@ pub struct Border {
     pub render_rect: D2D1_ROUNDED_RECT,
     pub width: i32,
     pub offset: i32,
-    pub style: BorderStyle,
+    pub radius: f32,
     pub current_monitor: HMONITOR,
     pub current_dpi: f32,
     pub render_resources: RenderResources,
@@ -111,8 +110,8 @@ pub struct Border {
     pub animation_manager: AnimationManager,
     pub effect_manager: EffectManager,
     pub last_render_time: Option<Instant>,
-    pub initialize_delay: u64,
-    pub unminimize_delay: u64,
+    pub initialize_delay: u32,
+    pub unminimize_delay: u32,
     pub pause: bool,
     pub process_name: String,
 }
@@ -221,7 +220,7 @@ impl Border {
         true
     }
 
-    pub fn create(tracking_window: isize, window_rule: WindowRuleConfig) {
+    pub fn create(tracking_window: isize, window_rule: WindowRule) {
         std::thread::spawn(move || {
             let mut borders_hashmap = window_borders();
 
@@ -253,7 +252,7 @@ impl Border {
         });
     }
 
-    pub fn create_border_window(&mut self, window_rule: &WindowRuleConfig) -> anyhow::Result<()> {
+    pub fn create_border_window(&mut self, window_rule: &WindowRule) -> anyhow::Result<()> {
         let title = format!(
             "tacky-border | {} | {:?}",
             WindowsApi::get_window_title(self.tracking_window).unwrap_or_default(),
@@ -276,7 +275,7 @@ impl Border {
     }
 
     pub fn init(&mut self) -> anyhow::Result<()> {
-        thread::sleep(time::Duration::from_millis(self.initialize_delay));
+        thread::sleep(time::Duration::from_millis(self.initialize_delay as u64));
 
         unsafe {
             // Make the window border transparent
@@ -334,14 +333,10 @@ impl Border {
                 transform: Matrix3x2::identity(),
             };
 
-            let border_radius =
-                self.style
-                    .to_radius(self.width, self.current_dpi, self.tracking_window);
-
             self.render_rect = D2D1_ROUNDED_RECT {
                 rect: Default::default(),
-                radiusX: border_radius,
-                radiusY: border_radius,
+                radiusX: self.radius,
+                radiusY: self.radius,
             };
 
             self.active_color
@@ -433,8 +428,17 @@ impl Border {
         Ok(())
     }
 
-    fn load_from_config(&mut self, window_rule: &WindowRuleConfig) -> anyhow::Result<()> {
-        let config = AppManager::get().config().clone();
+    fn load_from_config(&mut self, window_rule: &WindowRule) -> anyhow::Result<()> {
+        let current_dpi = match WindowsApi::get_dpi_for_window(self.tracking_window) {
+            Ok(dpi) => dpi as f32,
+            Err(err) => {
+                self.exit_border_thread();
+                return Err(anyhow!("could not get dpi for window: {err}"));
+            }
+        };
+
+        let user_config = AppManager::get().config().clone();
+        let config = ParsedConfig::try_from(user_config)?;
         let global = &config.global_rule;
 
         let config_width = window_rule
@@ -446,29 +450,29 @@ impl Border {
             .border_offset
             .unwrap_or(config.global_rule.border_offset);
 
-        let config_active = window_rule
+        let active_color = window_rule
             .match_window
             .active_color
             .as_ref()
             .unwrap_or(&global.active_color);
 
-        let config_inactive = window_rule
+        let inactive_color = window_rule
             .match_window
             .inactive_color
             .as_ref()
             .unwrap_or(&global.inactive_color);
 
-        let animations_config = window_rule
+        let animation_manager = window_rule
             .match_window
-            .animations
+            .animation_manager
             .as_ref()
-            .unwrap_or(&global.animations);
+            .unwrap_or(&global.animation_manager);
 
-        let effects_config = window_rule
+        let effect_manager = window_rule
             .match_window
-            .effects
+            .effect_manager
             .as_ref()
-            .unwrap_or(&global.effects);
+            .unwrap_or(&global.effect_manager);
 
         let config_style = window_rule
             .match_window
@@ -476,24 +480,18 @@ impl Border {
             .as_ref()
             .unwrap_or(&global.border_style);
 
-        self.active_color = config_active.to_color()?;
-        self.inactive_color = config_inactive.to_color()?;
+        self.active_color = active_color.clone();
+        self.inactive_color = inactive_color.clone();
 
         self.current_monitor = WindowsApi::monitor_from_window(self.tracking_window);
-        self.current_dpi = match WindowsApi::get_dpi_for_window(self.tracking_window) {
-            Ok(dpi) => dpi as f32,
-            Err(err) => {
-                self.exit_border_thread();
-                return Err(anyhow!("could not get dpi for window: {err}"));
-            }
-        };
+        self.current_dpi = current_dpi;
 
-        self.width = (config_width as f32 * self.current_dpi / 96.0).round() as i32;
-        self.style = config_style.clone();
+        self.width = (config_width as f32 * current_dpi / 96.0).round() as i32;
+        self.radius = config_style.to_radius(self.width, current_dpi, self.tracking_window);
         self.offset = config_offset;
 
-        self.animation_manager = AnimationManager::try_from(animations_config.clone())?;
-        self.effect_manager = EffectManager::try_from(effects_config.clone())?;
+        self.animation_manager = animation_manager.clone();
+        self.effect_manager = effect_manager.clone();
 
         let max_active_padding = self
             .effect_manager
@@ -595,7 +593,7 @@ impl Border {
         Ok(())
     }
 
-    fn update_color(&mut self, check_delay: Option<u64>) -> anyhow::Result<()> {
+    fn update_color(&mut self, check_delay: Option<u32>) -> anyhow::Result<()> {
         self.is_window_active = self.tracking_window == *get_active_window();
 
         if self.current_animations().contains_kind(AnimationKind::Fade) {
@@ -643,7 +641,7 @@ impl Border {
             .unwrap_or(&global.border_style);
 
         self.width = (width_config as f32 * self.current_dpi / 96.0).round() as i32;
-        self.style = style_config.clone();
+        self.radius = style_config.to_radius(self.width, self.current_dpi, self.tracking_window);
     }
 
     fn current_animations(&self) -> &AnimationEngineVec {
@@ -678,10 +676,7 @@ impl Border {
         let border_width = self.width as f32;
         let border_offset = self.offset as f32;
         let window_padding = self.window_padding as f32;
-
-        let border_radius =
-            self.style
-                .to_radius(self.width, self.current_dpi, self.tracking_window);
+        let border_radius = self.radius;
 
         self.render_rect.rect = D2D_RECT_F {
             left: border_width / 2.0 + window_padding - border_offset,
@@ -1141,7 +1136,7 @@ impl Border {
             // When a window is about to be unminimized, hide the border and let the thread sleep
             // to wait for the window animation to finish, then show the border.
             WM_APP_MINIMIZEEND => {
-                thread::sleep(time::Duration::from_millis(self.unminimize_delay));
+                thread::sleep(time::Duration::from_millis(self.unminimize_delay as u64));
 
                 self.animation_manager.set_last_animation_time(None);
 

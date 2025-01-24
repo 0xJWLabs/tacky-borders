@@ -4,8 +4,9 @@ use crate::app_manager::AppManager;
 use crate::border_manager::Border;
 use crate::core::rect::Rect;
 use crate::error::LogIfErr;
+use crate::parsed_config::ParsedConfig;
+use crate::parsed_config::WindowRule;
 use crate::user_config::MatchKind;
-use crate::user_config::WindowRuleConfig;
 use crate::windows_callback::enum_windows;
 use anyhow::Context;
 use anyhow::anyhow;
@@ -532,7 +533,7 @@ impl WindowsApi {
         Ok(process_name)
     }
 
-    pub fn get_window_rule(hwnd: isize) -> WindowRuleConfig {
+    pub fn get_window_rule(hwnd: isize) -> WindowRule {
         let title = match Self::get_window_title(hwnd) {
             Ok(val) => val,
             Err(err) => {
@@ -558,8 +559,12 @@ impl WindowsApi {
         };
 
         let config = AppManager::get().config().clone();
+        let parsed_config = ParsedConfig::try_from(config).unwrap_or_else(|err| {
+            error!("Failed to parse config: {:?}", err);
+            ParsedConfig::default()
+        });
 
-        for rule in config.window_rules.iter() {
+        for rule in parsed_config.window_rules.iter() {
             let window_name = match rule.match_window.match_kind {
                 Some(MatchKind::Title) => &title,
                 Some(MatchKind::Process) => &process,
@@ -570,15 +575,10 @@ impl WindowsApi {
                 }
             };
 
-            let Some(match_value) = &rule.match_window.match_value else {
-                error!("expected `value` for window rule but non found!");
-                continue;
-            };
-
             let has_match = if let Some(strategy) = &rule.match_window.match_strategy {
-                strategy.is_match(window_name, match_value)
+                strategy.is_match(window_name)
             } else {
-                window_name.to_lowercase().eq(&match_value.to_lowercase())
+                false
             };
 
             if has_match {
@@ -586,7 +586,7 @@ impl WindowsApi {
             }
         }
 
-        WindowRuleConfig::default()
+        WindowRule::default()
     }
 
     pub fn collect_window_handles() -> anyhow::Result<Vec<isize>> {
@@ -595,9 +595,7 @@ impl WindowsApi {
         Ok(handles)
     }
 
-    pub fn process_window_handles(
-        callback: &dyn Fn(isize, WindowRuleConfig),
-    ) -> anyhow::Result<()> {
+    pub fn process_window_handles(callback: &dyn Fn(isize, WindowRule)) -> anyhow::Result<()> {
         let handles = Self::collect_window_handles()?;
 
         handles.iter().for_each(|&hwnd| {

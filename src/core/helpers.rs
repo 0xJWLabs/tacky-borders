@@ -3,7 +3,7 @@ pub fn type_name_of_val<T: ?Sized>(_val: &T) -> &'static str {
     std::any::type_name::<T>()
 }
 
-pub fn serde_default_u64<const V: u64>() -> u64 {
+pub fn serde_default_u32<const V: u32>() -> u32 {
     V
 }
 

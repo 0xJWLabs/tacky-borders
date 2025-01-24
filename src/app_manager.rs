@@ -234,7 +234,7 @@ fn create_directx_devices(
     }?;
 
     debug!(
-        "[create_directx_devices] DirectX device created successfully (feature level: {feature_level:X?})"
+        "[create_directx_devices] DirectX: Device created successfully (feature level: {feature_level:X?})"
     );
 
     let device = device_opt.context("Could not get D3D11 device")?;

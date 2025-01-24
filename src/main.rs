@@ -51,23 +51,23 @@ mod windows_api;
 mod windows_callback;
 
 fn main() -> anyhow::Result<()> {
+    if let Err(e) = &initialize_logger() {
+        error!("logger initialization failed: {e}");
+    };
+    debug!("[main] Application: Starting");
     let res = start_application();
 
     if let Err(err) = &res {
         error!("{err:?}");
         WindowsApi::show_error_dialog("Fatal error", &err.to_string());
     } else {
-        debug!("exiting tacky-borders...");
+        debug!("[main] Application: Exit");
     }
 
     res
 }
 
 fn start_application() -> anyhow::Result<()> {
-    if let Err(e) = &initialize_logger() {
-        error!("logger initialization failed: {e}");
-    };
-
     if !WindowsApi::imm_disable_ime().as_bool() {
         error!("could not disable ime!");
     }
@@ -90,7 +90,7 @@ fn start_application() -> anyhow::Result<()> {
 
     WindowsApi::process_window_handles(&Border::create).log_if_err();
 
-    debug!("[start_application] tacky-borders event started");
+    debug!("[start_application] Application: Started");
 
     let mut message = MSG::default();
     loop {
@@ -100,7 +100,7 @@ fn start_application() -> anyhow::Result<()> {
             let _ = WindowsApi::translate_message(&message);
             WindowsApi::dispatch_message_w(&message);
         } else if message.message == WM_QUIT {
-            debug!("[start_application] tacky-borders is shutting down gracefully");
+            debug!("[start_application] Application: Shutting Down");
             break;
         } else {
             let last_error = unsafe { GetLastError() };
@@ -110,6 +110,8 @@ fn start_application() -> anyhow::Result<()> {
             return Err(anyhow!("unexpected exit from message loop".to_string()));
         }
     }
+
+    debug!("[start_application] Application: Shut Down");
 
     Ok(())
 }

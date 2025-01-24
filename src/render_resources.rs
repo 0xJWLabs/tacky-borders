@@ -2,7 +2,7 @@ use std::mem::ManuallyDrop;
 
 use anyhow::Context;
 use windows::Win32::Foundation::FALSE;
-use windows::Win32::Graphics::Direct2D::{D2D1_BITMAP_OPTIONS, D2D1_BITMAP_OPTIONS_NONE};
+use windows::Win32::Graphics::Direct2D::D2D1_BITMAP_OPTIONS;
 use windows::Win32::Graphics::DirectComposition::{
     DCompositionCreateDevice3, IDCompositionDesktopDevice,
 };
@@ -205,9 +205,16 @@ impl RenderResources {
 }
 
 impl Bitmaps {
-    fn create_bitmap_properties(extra: Option<D2D1_BITMAP_OPTIONS>) -> D2D1_BITMAP_PROPERTIES1 {
+    fn create_bitmap_properties<I>(bitmap_options: I) -> D2D1_BITMAP_PROPERTIES1
+    where
+        I: IntoIterator<Item = D2D1_BITMAP_OPTIONS>,
+    {
+        let bitmaps = bitmap_options
+            .into_iter()
+            .fold(D2D1_BITMAP_OPTIONS_TARGET, |acc, opt| acc | opt);
+
         D2D1_BITMAP_PROPERTIES1 {
-            bitmapOptions: D2D1_BITMAP_OPTIONS_TARGET | extra.unwrap_or(D2D1_BITMAP_OPTIONS_NONE),
+            bitmapOptions: bitmaps,
             pixelFormat: D2D1_PIXEL_FORMAT {
                 format: DXGI_FORMAT_B8G8R8A8_UNORM,
                 alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED,

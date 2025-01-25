@@ -1,10 +1,14 @@
 use core::fmt;
+use regex::Captures;
+use regex::Regex;
 use schema_jsonrs::JsonSchema;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::de;
+use std::ffi::OsStr;
 use std::fs::DirBuilder;
 use std::path::Path;
+use std::path::PathBuf;
 
 use crate::user_config::UserConfig;
 
@@ -68,6 +72,26 @@ impl ThemeManager {
     }
 }
 
+fn get_theme_path(theme_dir: &std::path::Path, theme_name: &str) -> Option<std::path::PathBuf> {
+    let extensions = ["json", "jsonc"];
+    #[cfg(feature = "yml")]
+    {
+        let yaml_path = theme_dir.join(format!("{}.yaml", theme_name));
+        if yaml_path.exists() {
+            return Some(yaml_path);
+        }
+    }
+
+    for ext in extensions.iter() {
+        let path = theme_dir.join(format!("{}.{}", theme_name, ext));
+        if path.exists() {
+            return Some(path);
+        }
+    }
+
+    None
+}
+
 pub fn deserialize_theme<'de, D>(deserializer: D) -> Result<ThemeManager, D::Error>
 where
     D: Deserializer<'de>,
@@ -76,58 +100,47 @@ where
 
     match theme_name {
         Some(theme_name) => {
-            let config_dir = UserConfig::get_config_dir().map_err(|e| {
-                de::Error::custom(format!("failed to retrieve the config directory: {}", e))
-            })?;
-
-            let theme_dir = config_dir.join("themes");
-
-            // Ensure theme directory exists, creating it if necessary.
-            if !theme_dir.exists() {
-                create_theme_directory(&theme_dir).map_err(|e| {
-                    de::Error::custom(format!("failed to create themes directory: {}", e))
+            if let Some(theme_path) = fix_absolute_path(&theme_name) {
+                if is_valid_theme(&theme_path) {
+                    Ok(ThemeManager(Some(
+                        theme_path.to_string_lossy().into_owned(),
+                    )))
+                } else {
+                    Err(de::Error::custom(format!(
+                        "theme '{}' is not valid",
+                        theme_path.to_string_lossy()
+                    )))
+                }
+            } else {
+                let config_dir = UserConfig::get_config_dir().map_err(|e| {
+                    de::Error::custom(format!("failed to retrieve the config directory: {}", e))
                 })?;
 
-                return Err(de::Error::custom(format!(
-                    "theme '{}' is not found in the newly created themes directory",
-                    theme_name
-                )));
-            }
+                let theme_dir = config_dir.join("themes");
 
-            // Helper to check if a theme file exists and return its path.
-            fn get_theme_path(
-                theme_dir: &std::path::Path,
-                theme_name: &str,
-            ) -> Option<std::path::PathBuf> {
-                let extensions = ["json", "jsonc"];
-                #[cfg(feature = "yml")]
-                {
-                    let yaml_path = theme_dir.join(format!("{}.yaml", theme_name));
-                    if yaml_path.exists() {
-                        return Some(yaml_path);
-                    }
+                // Ensure theme directory exists, creating it if necessary.
+                if !theme_dir.exists() {
+                    create_theme_directory(&theme_dir).map_err(|e| {
+                        de::Error::custom(format!("failed to create themes directory: {}", e))
+                    })?;
+
+                    return Err(de::Error::custom(format!(
+                        "theme '{}' is not found in the newly created themes directory",
+                        theme_name
+                    )));
                 }
 
-                for ext in extensions.iter() {
-                    let path = theme_dir.join(format!("{}.{}", theme_name, ext));
-                    if path.exists() {
-                        return Some(path);
-                    }
+                // Try to find the theme file with any valid extension.
+                if let Some(theme_path) = get_theme_path(&theme_dir, &theme_name) {
+                    Ok(ThemeManager(Some(
+                        theme_path.to_string_lossy().into_owned(),
+                    )))
+                } else {
+                    Err(de::Error::custom(format!(
+                        "theme '{}' is not found in the themes directory",
+                        theme_name
+                    )))
                 }
-
-                None
-            }
-
-            // Try to find the theme file with any valid extension.
-            if let Some(theme_path) = get_theme_path(&theme_dir, &theme_name) {
-                Ok(ThemeManager(Some(
-                    theme_path.to_string_lossy().into_owned(),
-                )))
-            } else {
-                Err(de::Error::custom(format!(
-                    "theme '{}' is not found in the themes directory",
-                    theme_name
-                )))
             }
         }
         None => Ok(ThemeManager(None)),
@@ -138,4 +151,46 @@ fn create_theme_directory(path: &Path) -> anyhow::Result<()> {
     DirBuilder::new().recursive(true).create(path)?;
     info!("created theme directory at {:?}", path);
     Ok(())
+}
+
+fn fix_absolute_path(path: &str) -> Option<PathBuf> {
+    let expanded_path = expand_env_variables(path);
+    let path = expanded_path.replace('/', "\\"); // Normalize separators on Windows
+    let path = if path.starts_with('\\') && !path.starts_with("\\\\") {
+        if let Ok(drive) = std::env::var("SystemDrive") {
+            format!("{}{}", drive, path)
+        } else {
+            format!("C:{}", path) // Default to C: if SystemDrive is missing
+        }
+    } else {
+        path
+    };
+
+    let p = Path::new(&path);
+
+    if p.is_absolute() {
+        return Some(p.to_path_buf());
+    }
+
+    None
+}
+
+fn expand_env_variables(path: &str) -> String {
+    let re = Regex::new("%([[:word:]]*)%").expect("Invalid Regex");
+    re.replace_all(path, |captures: &Captures| match &captures[1] {
+        "" => String::from("%"),
+        varname if varname.eq_ignore_ascii_case("userconfig") => {
+            let dir = UserConfig::get_config_dir().unwrap_or_default();
+            dir.to_string_lossy().to_string()
+        }
+        varname => std::env::var(varname).expect("Bad Var Name"),
+    })
+    .into()
+}
+
+fn is_valid_theme(path: &Path) -> bool {
+    match path.extension().and_then(OsStr::to_str) {
+        Some(ext) => matches!(ext, "jsonc" | "json" | "yaml"),
+        None => false,
+    }
 }

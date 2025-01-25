@@ -89,6 +89,7 @@ use windows::Win32::UI::WindowsAndMessaging::LAYERED_WINDOW_ATTRIBUTES_FLAGS;
 use windows::Win32::UI::WindowsAndMessaging::MB_ICONERROR;
 use windows::Win32::UI::WindowsAndMessaging::MB_OK;
 use windows::Win32::UI::WindowsAndMessaging::MB_SYSTEMMODAL;
+use windows::Win32::UI::WindowsAndMessaging::MB_YESNO;
 use windows::Win32::UI::WindowsAndMessaging::MSG;
 use windows::Win32::UI::WindowsAndMessaging::MessageBoxW;
 use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
@@ -721,6 +722,22 @@ impl WindowsApi {
                 MB_ICONERROR | MB_OK | MB_SYSTEMMODAL,
             );
         }
+    }
+
+    pub fn show_yes_no_dialog(title: &str, message: &str) -> bool {
+        let title_wide = title.to_wide_string();
+        let message_wide = message.to_wide_string();
+
+        let res = unsafe {
+            MessageBoxW(
+                None,
+                PCWSTR(message_wide.as_ptr()),
+                PCWSTR(title_wide.as_ptr()),
+                MB_YESNO,
+            )
+        };
+
+        !matches!(res.0, 0 | 7)
     }
 
     #[allow(dead_code)]

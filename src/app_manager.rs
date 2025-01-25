@@ -150,14 +150,11 @@ impl AppManager {
     fn new() -> Self {
         let active_window = WindowsApi::get_foreground_window();
 
-        let config_dir = UserConfig::get_config_dir().unwrap_or_default();
-        let config_file = match UserConfig::detect_config_file(&config_dir) {
-            Ok(file) => file,
-            Err(_) => {
-                println!("Creating default config file (AppManager)");
-                UserConfig::create_default_config(&config_dir).unwrap_or_default()
-            }
-        };
+        let config_file = UserConfig::detect_config_file().unwrap_or_else(|_| {
+            debug!("[new] App Manager: Creating default config file");
+            UserConfig::create_default_config().unwrap_or_default()
+        });
+
         let mut config_watcher = ConfigWatcher::new(config_file, Duration::from_millis(200));
 
         let config = UserConfig::create().unwrap_or_else(|err| {

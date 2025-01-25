@@ -2,6 +2,7 @@ use crate::animation::AnimationsConfig;
 use crate::app_manager::AppManager;
 use crate::border_manager::reload_borders;
 use crate::colors::GlobalColor;
+use crate::core::helpers::parse_length_str;
 use crate::core::helpers::serde_default_i32;
 use crate::core::helpers::serde_default_u32;
 use crate::core::keybindings::KeybindingConfig;
@@ -85,24 +86,20 @@ impl<'de> Deserialize<'de> for BorderStyle {
         D: Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        if s.eq_ignore_ascii_case("ROUND") {
-            Ok(BorderStyle::Round)
-        } else if s.eq_ignore_ascii_case("SQUARE") {
-            Ok(BorderStyle::Square)
-        } else if s.eq_ignore_ascii_case("SMALLROUND") {
-            Ok(BorderStyle::SmallRound)
-        } else if s.eq_ignore_ascii_case("AUTO") {
-            Ok(BorderStyle::Auto)
-        } else if s.to_ascii_uppercase().starts_with("RADIUS(") && s.ends_with(")") {
-            let inner = &s[7..s.len() - 1];
-            let trimmed = inner.strip_suffix("px").unwrap_or(&s);
+        let upper = s.to_ascii_uppercase();
 
-            trimmed
-                .parse::<f32>()
-                .map(BorderStyle::Radius)
-                .map_err(|_| de::Error::custom("Invalid Radius value"))
-        } else {
-            Err(de::Error::custom("Invalid border style"))
+        match upper.as_str() {
+            "ROUND" => Ok(BorderStyle::Round),
+            "SQUARE" => Ok(BorderStyle::Square),
+            "SMALLROUND" => Ok(BorderStyle::SmallRound),
+            "AUTO" => Ok(BorderStyle::Auto),
+            _ if upper.starts_with("RADIUS(") && upper.ends_with(')') => {
+                let inner = &s[7..s.len() - 1];
+                parse_length_str(inner)
+                    .map(|value| BorderStyle::Radius(value as f32))
+                    .ok_or_else(|| de::Error::custom("Invalid radius value"))
+            }
+            _ => Err(de::Error::custom("Invalid border style")),
         }
     }
 }

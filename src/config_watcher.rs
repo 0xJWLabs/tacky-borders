@@ -29,10 +29,10 @@ impl<T> ThreadHandle<T> {
         if let Some(handle) = self.0.take() {
             handle
                 .join()
-                .map_err(|e| anyhow!("[join] Thread Handle: Thread panicked: {:?}", e))?
+                .map_err(|e| anyhow!("Thread Handle: Thread panicked: {:?}", e))?
         } else {
             Err(anyhow!(
-                "[join] Thread Handle: Already joined or no thread available"
+                "Thread Handle: Already joined or no thread available"
             ))
         }
     }
@@ -42,7 +42,7 @@ impl<T> Drop for ThreadHandle<T> {
     /// Ensures that the thread is properly joined or dropped when the `ThreadHandle` is dropped.
     fn drop(&mut self) {
         if self.0.is_some() {
-            error!("[drop] Thread Handle: Dropped without being joined!");
+            error!("Thread Handle: Dropped without being joined!");
         }
     }
 }
@@ -78,21 +78,66 @@ impl ConfigWatcher {
                 }
             }
             Err(err) => {
-                error!("[handle_events] Config Watcher: failed to handle events (error: {err:?})")
+                error!("Config Watcher: failed to handle events (error: {err:?})")
             }
         }
+    }
+
+    fn handle(
+        debounce: Duration,
+        running: Arc<AtomicBool>,
+        config_path: PathBuf,
+        timeout: Duration,
+    ) -> anyhow::Result<()> {
+        let mut debouncer = new_debouncer(timeout, None, Self::handle_events).map_err(|e| {
+            anyhow!(
+                "Config Watcher: Failed to create debouncer (error: {:?})",
+                e
+            )
+        })?;
+
+        debug!(
+            "Config Watcher: Watching (File: {})",
+            config_path.display().to_string()
+        );
+
+        debouncer
+            .watch(config_path.as_path(), RecursiveMode::Recursive)
+            .map_err(|e| {
+                anyhow!(
+                    "Config Watcher: Failed to watch config path: (error: {:?})",
+                    e
+                )
+            })?;
+
+        let mut last_checked = Instant::now();
+
+        while running.load(Ordering::SeqCst) {
+            let elapsed = last_checked.elapsed();
+            if elapsed < debounce {
+                thread::sleep(debounce - elapsed);
+            }
+            last_checked = Instant::now();
+        }
+
+        debouncer
+            .unwatch(config_path.as_path())
+            .map_err(|e| anyhow!("Config Watcher: Failed to unwatch (error: {:?})", e))?;
+
+        debug!("Config Watcher: Stopped");
+        Ok(())
     }
 
     pub fn start(&mut self) -> anyhow::Result<()> {
         if !self.config_path.exists() {
             return Err(anyhow!(
-                "[start] Config Watcher: Configuration file does not exist: {}",
+                "Config Watcher: Configuration file does not exist: {}",
                 self.config_path.display()
             ));
         }
 
         if self.running.swap(true, Ordering::SeqCst) {
-            return Err(anyhow!("[start] Config Watcher: Is already running"));
+            return Err(anyhow!("Config Watcher: Is already running"));
         }
 
         let running = Arc::clone(&self.running);
@@ -101,61 +146,22 @@ impl ConfigWatcher {
         let debounce = Duration::from_millis(500);
 
         let handle = thread::spawn({
-            move || -> anyhow::Result<()> {
-                let mut debouncer =
-                    new_debouncer(timeout, None, Self::handle_events).map_err(|e| {
-                        anyhow!(
-                            "[start] Config Watcher: Failed to create debouncer (error: {:?})",
-                            e
-                        )
-                    })?;
-
-                debug!(
-                    "[start] Config Watcher: Watching (File: {})",
-                    config_path.display().to_string()
-                );
-
-                debouncer
-                    .watch(config_path.as_path(), RecursiveMode::Recursive)
-                    .map_err(|e| {
-                        anyhow!(
-                            "[start] Config Watcher: Failed to watch config path: (error: {:?})",
-                            e
-                        )
-                    })?;
-
-                let mut last_checked = Instant::now();
-
-                while running.load(Ordering::SeqCst) {
-                    let elapsed = last_checked.elapsed();
-                    if elapsed < debounce {
-                        thread::sleep(debounce - elapsed);
-                    }
-                    last_checked = Instant::now();
-                }
-
-                debouncer.unwatch(config_path.as_path()).map_err(|e| {
-                    anyhow!("[start] Config Watcher: Failed to unwatch (error: {:?})", e)
-                })?;
-
-                debug!("[start] Config Watcher: Stopped");
-                Ok(())
-            }
+            move || -> anyhow::Result<()> { Self::handle(debounce, running, config_path, timeout) }
         });
 
         self.thread.cast(handle);
 
-        debug!("[start] Config Watcher: Started");
+        debug!("Config Watcher: Started");
 
         Ok(())
     }
 
     pub fn stop(&mut self) -> anyhow::Result<()> {
         if !self.running.load(Ordering::SeqCst) {
-            debug!("[stop] Config Watcher: Is not running; skipping cleanup");
+            debug!("Config Watcher: Is not running; skipping cleanup");
             return Ok(());
         }
-        debug!("[stop] Config Watcher: Stopping");
+        debug!("Config Watcher: Stopping");
         self.running.store(false, Ordering::SeqCst);
         self.thread.join()?;
 
@@ -170,7 +176,7 @@ impl ConfigWatcher {
 impl Drop for ConfigWatcher {
     fn drop(&mut self) {
         if let Err(err) = self.stop() {
-            debug!("[drop] Config Watcher: Error stopping ConfigWatcher (error: {err:?})");
+            debug!("Config Watcher: Error stopping ConfigWatcher (error: {err:?})");
         }
     }
 }

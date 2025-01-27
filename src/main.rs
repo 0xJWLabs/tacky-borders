@@ -4,9 +4,9 @@
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
 )]
-#[macro_use]
-extern crate log;
 extern crate sp_log2;
+#[macro_use]
+extern crate tacky_borders_logger;
 
 use anyhow::anyhow;
 use app_manager::AppManager;
@@ -40,6 +40,7 @@ mod colors;
 mod config_watcher;
 mod core;
 mod effect;
+mod env;
 mod error;
 mod keyboard_hook;
 mod parsed_config;
@@ -55,14 +56,15 @@ fn main() -> anyhow::Result<()> {
     if let Err(e) = &initialize_logger() {
         error!("logger initialization failed: {e}");
     };
-    debug!("[main] Application: Starting");
+
+    debug!("Application: Starting");
     let res = start_application();
 
     if let Err(err) = &res {
         error!("{err:?}");
         WindowsApi::show_error_dialog("Fatal error", &err.to_string());
     } else {
-        debug!("[main] Application: Exit");
+        debug!("Application: Exit");
     }
 
     res
@@ -91,7 +93,7 @@ fn start_application() -> anyhow::Result<()> {
 
     WindowsApi::process_window_handles(&Border::create).log_if_err();
 
-    debug!("[start_application] Application: Started");
+    debug!("Application: Started");
 
     let mut message = MSG::default();
     loop {
@@ -101,26 +103,22 @@ fn start_application() -> anyhow::Result<()> {
             let _ = WindowsApi::translate_message(&message);
             WindowsApi::dispatch_message_w(&message);
         } else if message.message == WM_QUIT {
-            debug!("[start_application] Application: Shutting Down");
+            debug!("Application: Shutting Down");
             break;
         } else {
             let last_error = unsafe { GetLastError() };
-            error!(
-                "[start_application] Unexpected termination of the message loop. Last error: {last_error:?}"
-            );
+            error!("Unexpected termination of the message loop. Last error: {last_error:?}");
             return Err(anyhow!("unexpected exit from message loop".to_string()));
         }
     }
 
-    debug!("[start_application] Application: Shut Down");
+    debug!("Application: Shut Down");
 
     Ok(())
 }
 
 fn exit_application() {
-    debug!(
-        "[exit_application] Stopping hooks and posting quit message to shut down the application"
-    );
+    debug!("Stopping hooks and posting quit message to shut down the application");
     if let Some(hook) = KEYBOARD_HOOK.get() {
         hook.stop().log_if_err();
     }

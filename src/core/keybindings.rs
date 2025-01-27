@@ -1,6 +1,11 @@
 use crate::sys_tray::SystemTrayEvent;
+#[cfg(feature = "fast-hash")]
+use fx_hash::FxHashMap as HashMap;
 use schema_jsonrs::JsonSchema;
 use serde::Deserialize;
+use serde::Serialize;
+#[cfg(not(feature = "fast-hash"))]
+use std::collections::HashMap;
 
 #[derive(Clone)]
 pub struct KeybindingConfig {
@@ -36,15 +41,62 @@ impl core::fmt::Debug for KeybindingConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize, JsonSchema)]
-#[serde(default)]
-pub struct Keybindings {
-    #[serde(default = "default_reload_key")]
-    pub reload: String,
-    #[serde(default = "default_open_config_key")]
-    pub open_config: String,
-    #[serde(default = "default_exit_key")]
-    pub exit: String,
+pub trait KeybindingExt<V> {
+    fn get_value(&self, key: &str) -> V;
+}
+
+impl KeybindingExt<String> for HashMap<String, String> {
+    fn get_value(&self, key: &str) -> String {
+        self.get(key).cloned().unwrap_or_else(|| key.to_string())
+    }
+}
+
+macro_rules! zoom_and_enhance {
+    ($(#[$meta:meta])* pub struct $name:ident { $($(#[$fmeta:meta])* pub $fname:ident : $ftype:ty),* $(,)? }) => {
+        $(#[$meta])*
+        pub struct $name {
+            $($(#[$fmeta])* pub $fname : $ftype),*
+        }
+
+        impl $name {
+            pub fn field_titles() -> HashMap<String, String> {
+                static NAMES: &'static [&'static str] = &[$(stringify!($fname)),*];
+                NAMES
+                    .iter()
+                    .map(|&name| {
+                        let formatted_name = name.split('_')
+                            .map(|word| {
+                                let mut chars = word.chars();
+                                match chars.next() {
+                                    Some(first) => {
+                                        let uppercase_first = first.to_uppercase().collect::<String>();
+                                        let rest = chars.as_str();
+                                        format!("{}{}", uppercase_first, rest)
+                                    },
+                                    None => "".to_string(),
+                                }
+                            })
+                            .collect::<Vec<String>>()
+                            .join(" ");
+                        (name.to_string(), formatted_name)
+                    })
+                    .collect::<HashMap<String, String>>()
+            }
+        }
+    };
+}
+
+zoom_and_enhance! {
+    #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+    #[serde(default)]
+    pub struct Keybindings {
+        #[serde(default = "default_reload_key")]
+        pub reload: String,
+        #[serde(default = "default_open_config_key")]
+        pub open_config: String,
+        #[serde(default = "default_exit_key")]
+        pub exit: String,
+    }
 }
 
 fn default_reload_key() -> String {
@@ -70,20 +122,25 @@ impl Default for Keybindings {
 }
 
 fn create_keybindings(value: &Keybindings) -> Vec<KeybindingConfig> {
+    let field_names = Keybindings::field_titles();
     let bindings = vec![
         KeybindingConfig::new(
-            "Reload",
+            field_names.get_value("reload").as_str(),
             value.reload.as_str(),
             Some(SystemTrayEvent::ReloadConfig),
         ),
         KeybindingConfig::new(
-            "Open Config",
+            field_names.get_value("open_config").as_str(),
             value.open_config.as_str(),
             Some(SystemTrayEvent::OpenConfig),
         ),
-        KeybindingConfig::new("Exit", value.exit.as_str(), Some(SystemTrayEvent::Exit)),
+        KeybindingConfig::new(
+            field_names.get_value("exit").as_str(),
+            value.exit.as_str(),
+            Some(SystemTrayEvent::Exit),
+        ),
     ];
-    debug!("[create_keybindings] Keybindings: Created ({bindings:#?})");
+    debug!("Keybindings: Created ({bindings:#?})");
     bindings
 }
 

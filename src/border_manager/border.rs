@@ -266,7 +266,7 @@ impl Border {
             .unwrap_or_else(|_| "unknown".to_string());
 
         debug!(
-            "[create_border_window] Border created for: Process - {} (Tracking Window ID: {:?})",
+            "Border: Created (Process: {}, Tracking Window ID: {:?})",
             self.process_name,
             self.tracking_window.as_hwnd()
         );
@@ -387,7 +387,7 @@ impl Border {
                 .context("could not create effects command list")?;
 
             debug!(
-                "[init] Window Border Event: Started (Process: {}, Tracking Window ID: {:?})",
+                "Border: Window Border Event Started (Process: {}, Tracking Window ID: {:?})",
                 self.process_name,
                 self.tracking_window()
             );
@@ -402,7 +402,7 @@ impl Border {
                     WindowsApi::dispatch_message_w(&message);
                 } else if message.message == WM_QUIT {
                     debug!(
-                        "[init] Window Border Event: Stopping (Process: {}, Tracking Window ID: {:?})",
+                        "Window Border Event: Stopping Window Border Event (Process: {}, Tracking Window ID: {:?})",
                         self.process_name,
                         self.tracking_window()
                     );
@@ -410,7 +410,7 @@ impl Border {
                 } else {
                     let last_error = GetLastError();
                     error!(
-                        "[init] Window Border Event: Stopping (Process: {}, Tracking Window ID: {:?}) (error: {last_error:?})",
+                        "Border: Stopping Window Border Event (Process: {}, Tracking Window ID: {:?}) (error: {last_error:?})",
                         self.process_name,
                         self.tracking_window()
                     );
@@ -419,7 +419,7 @@ impl Border {
             }
 
             debug!(
-                "[init] Window Border Event: Stopped (Process: {}, Tracking Window ID: {:?})",
+                "Border: Window Border Event Stopped (Process: {}, Tracking Window ID: {:?})",
                 self.process_name,
                 self.tracking_window()
             );

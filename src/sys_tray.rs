@@ -1,17 +1,17 @@
+use crate::core::helpers::type_name_of_val;
 use crate::exit_application;
 use crate::user_config::UserConfig;
-use anyhow::bail;
 use anyhow::Context;
 use anyhow::Error;
+use anyhow::bail;
 use std::str::FromStr;
+use tray_icon_win::Icon;
+use tray_icon_win::TrayIcon;
+use tray_icon_win::TrayIconBuilder;
 use tray_icon_win::menu::Menu;
 use tray_icon_win::menu::MenuEvent;
 use tray_icon_win::menu::MenuItem;
 use tray_icon_win::menu::PredefinedMenuItem;
-use tray_icon_win::Icon;
-use tray_icon_win::TrayIcon;
-use tray_icon_win::TrayIconBuilder;
-use crate::core::helpers::type_name_of_val;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SystemTrayEvent {

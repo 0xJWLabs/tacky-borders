@@ -1,6 +1,4 @@
 use core::fmt;
-use regex::Captures;
-use regex::Regex;
 use schema_jsonrs::JsonSchema;
 use serde::Deserialize;
 use serde::Deserializer;
@@ -10,6 +8,7 @@ use std::fs::DirBuilder;
 use std::path::Path;
 use std::path::PathBuf;
 
+use crate::env;
 use crate::user_config::UserConfig;
 
 #[derive(PartialEq, Clone, Default, JsonSchema)]
@@ -154,38 +153,14 @@ fn create_theme_directory(path: &Path) -> anyhow::Result<()> {
 }
 
 fn fix_absolute_path(path: &str) -> Option<PathBuf> {
-    let expanded_path = expand_env_variables(path);
-    let path = expanded_path.replace('/', "\\"); // Normalize separators on Windows
-    let path = if path.starts_with('\\') && !path.starts_with("\\\\") {
-        if let Ok(drive) = std::env::var("SystemDrive") {
-            format!("{}{}", drive, path)
+    env::full_path(path).ok().and_then(|p| {
+        let p = Path::new(p.as_ref());
+        if p.is_absolute() {
+            Some(p.to_path_buf())
         } else {
-            format!("C:{}", path) // Default to C: if SystemDrive is missing
+            None
         }
-    } else {
-        path
-    };
-
-    let p = Path::new(&path);
-
-    if p.is_absolute() {
-        return Some(p.to_path_buf());
-    }
-
-    None
-}
-
-fn expand_env_variables(path: &str) -> String {
-    let re = Regex::new("%([[:word:]]*)%").expect("Invalid Regex");
-    re.replace_all(path, |captures: &Captures| match &captures[1] {
-        "" => String::from("%"),
-        varname if varname.eq_ignore_ascii_case("userconfig") => {
-            let dir = UserConfig::get_config_dir().unwrap_or_default();
-            dir.to_string_lossy().to_string()
-        }
-        varname => std::env::var(varname).expect("Bad Var Name"),
     })
-    .into()
 }
 
 fn is_valid_theme(path: &Path) -> bool {

@@ -151,7 +151,7 @@ impl AppManager {
         let active_window = WindowsApi::get_foreground_window();
 
         let config_file = UserConfig::detect_config_file().unwrap_or_else(|_| {
-            debug!("[new] App Manager: Creating default config file");
+            debug!("App Manager: Creating Default Config File");
             UserConfig::create_default_config().unwrap_or_default()
         });
 
@@ -230,9 +230,7 @@ fn create_directx_devices(
         )
     }?;
 
-    debug!(
-        "[create_directx_devices] DirectX: Device created successfully (feature level: {feature_level:X?})"
-    );
+    debug!("App Manager: DirectX Device Created (Feature Level: {feature_level:X?})");
 
     let device = device_opt.context("Could not get D3D11 device")?;
     let dxgi_device: IDXGIDevice = device.cast().context("ID3D11Device cast")?;

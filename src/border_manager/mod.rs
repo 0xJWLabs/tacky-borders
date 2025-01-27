@@ -10,12 +10,12 @@ use fx_hash::FxHashMap as HashMap;
 #[cfg(not(feature = "fast-hash"))]
 use std::collections::HashMap;
 use std::sync::MutexGuard;
-use windows::core::w;
 use windows::Win32::Foundation::GetLastError;
+use windows::Win32::UI::WindowsAndMessaging::IDC_ARROW;
 use windows::Win32::UI::WindowsAndMessaging::LoadCursorW;
 use windows::Win32::UI::WindowsAndMessaging::RegisterClassW;
-use windows::Win32::UI::WindowsAndMessaging::IDC_ARROW;
 use windows::Win32::UI::WindowsAndMessaging::WNDCLASSW;
+use windows::core::w;
 
 pub fn window_borders() -> MutexGuard<'static, HashMap<isize, Border>> {
     AppManager::get().borders()

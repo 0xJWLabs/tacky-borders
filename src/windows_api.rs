@@ -58,6 +58,7 @@ use windows::Win32::System::Threading::OpenProcess;
 use windows::Win32::System::Threading::PROCESS_NAME_WIN32;
 use windows::Win32::System::Threading::PROCESS_QUERY_LIMITED_INFORMATION;
 use windows::Win32::System::Threading::QueryFullProcessImageNameW;
+use windows::Win32::System::WindowsProgramming::GetUserNameW;
 use windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2;
 use windows::Win32::UI::HiDpi::GetDpiForSystem;
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
@@ -681,6 +682,27 @@ impl WindowsApi {
         ) {
             Ok(window) => Ok(window.0 as isize),
             Err(e) => Err(e),
+        }
+    }
+
+    pub fn username() -> anyhow::Result<String> {
+        unsafe {
+            let mut buffer = vec![0u16; 256]; // 256 wchar_t space for the username
+            let mut size = buffer.len() as u32;
+
+            // Wrap the buffer in a PWSTR (pointer to a wide string)
+            let pwsz = PWSTR(buffer.as_mut_ptr());
+
+            // Call GetUserNameW to fill the buffer with the username
+            let result = GetUserNameW(Some(pwsz), &mut size);
+            if result.is_ok() {
+                let len = (0..).take_while(|&i| *pwsz.0.add(i) != 0).count();
+                let wide_slice = std::slice::from_raw_parts(pwsz.0, len);
+                let os_string = OsString::from_wide(wide_slice);
+                Ok(os_string.to_string_lossy().into())
+            } else {
+                Err(anyhow!("username is not found"))
+            }
         }
     }
 

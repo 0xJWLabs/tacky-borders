@@ -80,42 +80,31 @@ impl KeyboardHook {
     ///
     /// Assumes that a message loop is currently running.
     pub fn start(&self) -> anyhow::Result<()> {
-        debug!("[start] Keyboard Hook: Initializing");
+        debug!("Keyboard Hook: Initializing");
         let hook = unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook_proc), None, 0) }?;
         *self.hook.lock().unwrap() = hook.0.as_int();
-        debug!(
-            "[start] Keyboard Hook: Successfully initialized (Hook ID: {})",
-            hook.0.as_int()
-        );
+        debug!("Keyboard Hook: Initialized (Hook ID: {})", hook.0.as_int());
         Ok(())
     }
 
     pub fn update(&self, keybindings: &[KeybindingConfig]) {
-        debug!(
-            "[update] Keyboard Hook: Updating keybindings ({} entries)",
-            keybindings.len()
-        );
+        let hook = self.hook.lock().unwrap();
+        debug!("Keyboard Hook: Updating (Hook ID: {})", hook.as_int());
         *self.keybindings_by_trigger_key.lock().unwrap() =
             Self::group_keybindings(&keybindings.to_owned());
-        debug!("[update] Keyboard Hook: Successfully updated keybindings");
+        debug!("Keyboard Hook: Updated (Hook ID: {})", hook.as_int());
     }
 
     /// Stops the low-level keyboard hook.
     pub fn stop(&self) -> anyhow::Result<()> {
         let mut hook = self.hook.lock().unwrap();
         if *hook != isize::default() {
-            debug!(
-                "[stop] Keyboard Hook: Stopping (Hook ID: {})...",
-                hook.as_int()
-            );
+            debug!("Keyboard Hook: Stopping (Hook ID: {})...", hook.as_int());
             unsafe { UnhookWindowsHookEx(HHOOK(hook.as_ptr())) }?;
             *hook = 0;
-            debug!(
-                "[stop] Keyboard Hook: Sucessfully stopped (Hook ID: {})...",
-                hook.as_int()
-            );
+            debug!("Keyboard Hook: Stopped (Hook ID: {})...", hook.as_int());
         } else {
-            debug!("[stop] Keyboard Hook: Not active; skipping stop");
+            debug!("Keyboard Hook: Not active; skipping stop");
         }
 
         Ok(())

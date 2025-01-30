@@ -9,6 +9,8 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use crate::env;
+use crate::env::OStringExt;
+use crate::env::PathBufExt;
 use crate::user_config::UserConfig;
 
 #[derive(PartialEq, Clone, Default, JsonSchema)]
@@ -63,7 +65,7 @@ impl ThemeManager {
 
     pub fn theme_name(&self) -> Option<String> {
         self.0.as_ref().and_then(|path| {
-            Path::new(path)
+            path.as_path()
                 .file_stem()
                 .and_then(|name| name.to_str())
                 .map(|name| name.to_string())
@@ -101,9 +103,13 @@ where
         Some(theme_name) => {
             if let Some(theme_path) = fix_absolute_path(&theme_name) {
                 if is_valid_theme(&theme_path) {
-                    Ok(ThemeManager(Some(
-                        theme_path.to_string_lossy().into_owned(),
-                    )))
+                    match theme_path.clone().try_into_string() {
+                        Some(theme_path_str) => Ok(ThemeManager(Some(theme_path_str))),
+                        None => Err(de::Error::custom(format!(
+                            "theme '{}' is not valid",
+                            theme_path.to_string_lossy()
+                        ))),
+                    }
                 } else {
                     Err(de::Error::custom(format!(
                         "theme '{}' is not valid",
@@ -131,9 +137,13 @@ where
 
                 // Try to find the theme file with any valid extension.
                 if let Some(theme_path) = get_theme_path(&theme_dir, &theme_name) {
-                    Ok(ThemeManager(Some(
-                        theme_path.to_string_lossy().into_owned(),
-                    )))
+                    match theme_path.clone().try_into_string() {
+                        Some(theme_path_str) => Ok(ThemeManager(Some(theme_path_str))),
+                        None => Err(de::Error::custom(format!(
+                            "theme '{}' is not found in the themes directory",
+                            theme_path.to_string_lossy()
+                        ))),
+                    }
                 } else {
                     Err(de::Error::custom(format!(
                         "theme '{}' is not found in the themes directory",

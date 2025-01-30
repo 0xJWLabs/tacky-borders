@@ -1,6 +1,6 @@
 #![allow(clippy::wrong_self_convention)]
 
-use std::borrow::Cow;
+use std::{borrow::Cow, path::PathBuf};
 
 use super::XString;
 
@@ -26,16 +26,12 @@ pub trait PathBufExt {
 /// ie it would be a GAT, which is very new in Rust and we don't want to rely on.
 pub trait WstrRefExt {
     /// Iterator over characters
-    type Chars: Iterator<Item = char> + CharsExt;
+    type Chars: Iterator<Item = char>;
     fn chars_approx(self) -> Self::Chars;
-}
-
-/// Methods on the characters iterator from [`Wstr.chars_approx()`](WstrRefExt::chars_approx)
-pub trait CharsExt {
-    fn len(&self) -> usize;
 }
 
 pub trait OStringExt {
     /// Convert an output string we have been accumulating into the public output type
     fn as_ocow(self) -> Cow<'static, str>;
+    fn as_path(&self) -> PathBuf;
 }

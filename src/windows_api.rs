@@ -1,4 +1,6 @@
 #![allow(dead_code)]
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+
 extern crate windows;
 use crate::app_manager::AppManager;
 use crate::border_manager::Border;

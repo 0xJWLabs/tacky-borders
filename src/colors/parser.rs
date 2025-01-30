@@ -8,6 +8,7 @@ use windows::Win32::Graphics::Direct2D::Common::D2D1_GRADIENT_STOP;
 
 use crate::app_manager::AppManager;
 
+use super::Color;
 use super::error::Error;
 use super::error::ErrorKind;
 use super::error::Result;
@@ -15,7 +16,6 @@ use super::gradient::ColorMapping;
 use super::gradient::Gradient;
 use super::gradient::GradientDirection;
 use super::solid::Solid;
-use super::Color;
 use colorparser_css::GradientCoordinates;
 
 /// Parses a `ColorMapping` into a `Color`.
@@ -156,7 +156,7 @@ pub fn parse_color_string(s: &str) -> anyhow::Result<Color> {
     let theme = config.theme;
 
     let css_color = match theme.path() {
-        Some(theme) => CssColor::from_html_with_theme(s, &theme).map_err(|e| {
+        Some(theme) => CssColor::from_html_with_theme(s, theme).map_err(|e| {
             Error::new(
                 ErrorKind::InvalidInput,
                 format!("CSS parsing failed: {}", e),

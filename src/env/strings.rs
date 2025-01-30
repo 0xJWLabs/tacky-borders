@@ -1,4 +1,4 @@
-use super::wtraits::{AsRefStrExt, CharsExt, OStringExt, PathBufExt, WstrRefExt};
+use super::wtraits::{AsRefStrExt, OStringExt, PathBufExt, WstrRefExt};
 use std::str::Chars;
 use std::{borrow::Cow, path::PathBuf};
 
@@ -21,20 +21,18 @@ impl<'s> WstrRefExt for &'s str {
     }
 }
 
-impl CharsExt for Chars<'_> {
-    fn len(&self) -> usize {
-        self.as_str().len()
-    }
-}
-
 impl OStringExt for String {
     fn as_ocow(self) -> Cow<'static, str> {
         self.into()
+    }
+    fn as_path(&self) -> PathBuf {
+        PathBuf::from(self)
     }
 }
 
 impl PathBufExt for PathBuf {
     fn try_into_string(self) -> Option<String> {
+        // Try to convert the PathBuf into an OsString and then into a String
         self.into_os_string().into_string().ok()
     }
 }
